@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import { getYahooCandles } from '@/lib/actions/yahoo-candles.actions';
-import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, type CandleSet } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, type CandleSet } from '@/lib/yahoo-candles';
 import { ema, macd, rsi, sma, type Series } from '@/lib/indicators';
 import {
     COUNT_GLYPHS,
@@ -97,10 +97,17 @@ const TIMEFRAME_KEYS: Record<string, StringKey> = {
     '1m': 'chart.tf.1m',
     '5m': 'chart.tf.5m',
     '15m': 'chart.tf.15m',
+    '30m': 'chart.tf.30m',
     '60m': 'chart.tf.60m',
+    '2h': 'chart.tf.2h',
+    '4h': 'chart.tf.4h',
     '1d': 'chart.tf.1d',
     '1wk': 'chart.tf.1wk',
+    '1mo': 'chart.tf.1mo',
 };
+
+/** The interval the trader last chose is theirs, not the page's: it survives a reload and a symbol. */
+const INTERVAL_STORAGE_KEY = 'openstock:chart-interval';
 
 // The app's design tokens are authored in oklch()/lab(), which lightweight-charts' own colour parser
 // rejects. Rather than hard-coding a second palette, the browser is asked to rasterise each token and
@@ -173,6 +180,25 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [transfer, setTransfer] = useState<'ok' | 'bad' | 'copied' | 'blocked' | null>(null);
     // Bumped whenever the chart pans or zooms, so the drawings are re-projected onto the new scale.
     const [, setFrame] = useState(0);
+
+    // Read after mount rather than during the first render: the server has no storage, and reading it
+    // in the initial state would hydrate a different toolbar than the one that was sent.
+    useEffect(() => {
+        try {
+            const stored = window.localStorage.getItem(INTERVAL_STORAGE_KEY);
+            if (isCandleIntervalId(stored)) setIntervalId(stored);
+        } catch {
+            /* private mode: the daily interval is a fine default */
+        }
+    }, []);
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(INTERVAL_STORAGE_KEY, intervalId);
+        } catch {
+            /* private mode: the choice simply is not remembered */
+        }
+    }, [intervalId]);
 
     const load = useCallback(async () => {
         setStatus('loading');
