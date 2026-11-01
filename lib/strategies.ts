@@ -332,6 +332,14 @@ const stdev = (values: number[]): number | null => {
     return Math.sqrt(variance);
 };
 
+/** Bars in a year for the interval, or 0 when annualising would be a lie (intraday history is short). */
+export function barsPerYear(intervalId: string): number {
+    if (intervalId === '1d') return 252;
+    if (intervalId === '1wk') return 52;
+    if (intervalId === '1mo') return 12;
+    return 0;
+}
+
 /**
  * The twelve metrics, each null when the data cannot support it rather than a flattering guess.
  * `barsPerYear` is 252 daily, 52 weekly, 12 monthly; 0 means "do not annualise" (intraday).

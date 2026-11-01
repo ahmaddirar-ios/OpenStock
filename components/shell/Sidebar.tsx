@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, CandlestickChart, Code2, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
+import { BookOpen, CandlestickChart, Code2, FlaskConical, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -65,6 +65,9 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 </Link>
                 <Link href="/charts" className={cn('side-item', pathname === '/charts' && 'is-active')}>
                     <CandlestickChart /> {tx(lang, 'nav.charts')}
+                </Link>
+                <Link href="/strategies" className={cn('side-item', pathname.startsWith('/strategies') && 'is-active')}>
+                    <FlaskConical /> {tx(lang, 'nav.strategies')}
                 </Link>
             </nav>
 

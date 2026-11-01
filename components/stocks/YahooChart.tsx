@@ -1,7 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import {
+    LineSeries,
+    createSeriesMarkers,
+    type IChartApi,
+    type ISeriesApi,
+    type ISeriesMarkersPluginApi,
+    type SeriesMarker,
+    type Time,
+    type UTCTimestamp,
+} from 'lightweight-charts';
 import {
     ChevronDown,
     Download,
@@ -20,6 +29,7 @@ import {
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
+import StrategyMenu from '@/components/stocks/StrategyMenu';
 import { getYahooCandles, getCompareCandles } from '@/lib/actions/yahoo-candles.actions';
 import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, type CandleSet } from '@/lib/yahoo-candles';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
@@ -50,6 +60,7 @@ import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { createCandleHost, token, type CandleHost, type IndicatorFlags } from '@/lib/candle-host';
 import { INDICATOR_BUTTONS, INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
+import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { tx, type Lang, type StringKey } from '@/lib/i18n';
 
 type Indicator = keyof IndicatorFlags;
@@ -110,6 +121,10 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const hostRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+    // Strategy markers live on the price series; the plugin is rebuilt with every host, so the
+    // markers to draw are kept in a ref and re-applied to whichever series is standing.
+    const markersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
+    const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const [intervalId, setIntervalId] = useState<string>(DEFAULT_CANDLE_INTERVAL);
@@ -140,6 +155,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [compareData, setCompareData] = useState<Record<string, CandleSet | null>>({});
     const [compareInput, setCompareInput] = useState('');
     const [compareOpen, setCompareOpen] = useState(false);
+    // The lab links back with ?strategy=…, so the chart opens already armed. Read after mount so the
+    // first paint the server sent and the first paint the browser renders stay identical.
+    const [autoStrategy, setAutoStrategy] = useState<StrategyId | null>(null);
 
     // Read after mount rather than during the first render: the server has no storage, and reading it
     // in the initial state would hydrate a different toolbar than the one that was sent.
@@ -149,6 +167,10 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             if (isCandleIntervalId(stored)) setIntervalId(stored);
         } catch {
             /* private mode: the daily interval is a fine default */
+        }
+        const requested = new URLSearchParams(window.location.search).get('strategy');
+        if (requested && (STRATEGY_IDS as readonly string[]).includes(requested)) {
+            setAutoStrategy(requested as StrategyId);
         }
     }, []);
 
@@ -286,13 +308,20 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         host.fit();
         chartRef.current = host.chart;
         seriesRef.current = host.price;
+        markersApiRef.current = createSeriesMarkers(host.price, markersRef.current);
 
         return () => {
             chartRef.current = null;
             seriesRef.current = null;
+            markersApiRef.current = null;
             host.destroy();
         };
     }, [data, on, intervalId, compareList, compareData, symbol, compareFrom]);
+
+    const applyStrategyMarkers = useCallback((markers: SeriesMarker<UTCTimestamp>[] | null) => {
+        markersRef.current = markers ?? [];
+        markersApiRef.current?.setMarkers(markersRef.current);
+    }, []);
 
     useEffect(() => {
         if (!expanded) return;
@@ -647,6 +676,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         </>
                     )}
                 </div>
+                <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />
                 <button
                     type="button"
                     onClick={() => setExpanded((value) => !value)}

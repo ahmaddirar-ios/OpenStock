@@ -3,6 +3,7 @@ import type { Candle } from '@/lib/yahoo-candles';
 import { macd } from '@/lib/indicators';
 import {
     STRATEGY_IDS,
+    barsPerYear,
     backtest,
     defaultParams,
     metrics,
@@ -27,6 +28,16 @@ const series = (closes: number[]): Candle[] => closes.map((close, i) => flat(clo
 
 // 6 flat bars, ten rising bars, then four falling: exactly one up-cross at 6 and one down-cross at 16.
 const UP_THEN_DOWN = series([10, 10, 10, 10, 10, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 9, 9, 9, 9]);
+
+describe('annualisation', () => {
+    it('knows what a year of bars is, and refuses intraday', () => {
+        expect(barsPerYear('1d')).toBe(252);
+        expect(barsPerYear('1wk')).toBe(52);
+        expect(barsPerYear('1mo')).toBe(12);
+        expect(barsPerYear('5m')).toBe(0);
+        expect(barsPerYear('4h')).toBe(0);
+    });
+});
 
 describe('the library', () => {
     it('exposes six strategies with defaults', () => {
