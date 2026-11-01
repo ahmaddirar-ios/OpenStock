@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Code2, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
+import { BookOpen, CandlestickChart, Code2, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -62,6 +62,9 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 </Link>
                 <Link href="/screener" className={cn('side-item', pathname === '/screener' && 'is-active')}>
                     <SlidersHorizontal /> {tx(lang, 'nav.screener')}
+                </Link>
+                <Link href="/charts" className={cn('side-item', pathname === '/charts' && 'is-active')}>
+                    <CandlestickChart /> {tx(lang, 'nav.charts')}
                 </Link>
             </nav>
 

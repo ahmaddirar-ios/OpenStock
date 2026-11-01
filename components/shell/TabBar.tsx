@@ -17,6 +17,7 @@ const PAGE_LABELS: Record<string, StringKey> = {
     '/watchlist': 'nav.watchlist',
     '/portfolio': 'nav.portfolio',
     '/screener': 'nav.screener',
+    '/charts': 'nav.charts',
     '/profile': 'nav.profile',
 };
 

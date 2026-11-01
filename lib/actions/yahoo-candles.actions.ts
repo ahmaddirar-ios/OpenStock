@@ -36,9 +36,17 @@ export async function getYahooCandles(symbol: string, intervalId: string): Promi
     return fetchCandles(yahooSymbol, intervalId);
 }
 
-/** Candles for a comparison symbol: plain US tickers are accepted too, not only suffixed ones. */
-export async function getCompareCandles(symbol: string, intervalId: string): Promise<CandleSet | null> {
+/**
+ * Candles for a chart pane: a plain US ticker (AAPL) is accepted as well as a suffixed listing
+ * (2222.SR), which is what the grid's symbol field hands over. Everything else is the same call.
+ */
+export async function getSymbolCandles(symbol: string, intervalId: string): Promise<CandleSet | null> {
     const yahooSymbol = compareYahooSymbol(symbol);
     if (!yahooSymbol) return null;
     return fetchCandles(yahooSymbol, intervalId);
+}
+
+/** Candles for a comparison symbol: plain US tickers are accepted too, not only suffixed ones. */
+export async function getCompareCandles(symbol: string, intervalId: string): Promise<CandleSet | null> {
+    return getSymbolCandles(symbol, intervalId);
 }
