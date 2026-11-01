@@ -17,6 +17,7 @@ import {
     Eraser,
     ExternalLink,
     GitCompare,
+    History,
     Loader2,
     Maximize2,
     Minimize2,
@@ -30,8 +31,26 @@ import {
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import StrategyMenu from '@/components/stocks/StrategyMenu';
-import { getYahooCandles, getCompareCandles } from '@/lib/actions/yahoo-candles.actions';
+import ReplayPanel from '@/components/stocks/ReplayPanel';
+import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, type CandleSet } from '@/lib/yahoo-candles';
+import {
+    MIN_WARMUP_BARS,
+    buy as paperBuy,
+    clampCursor,
+    cursorForTime,
+    minStartIndex,
+    openAccount,
+    parseSession,
+    randomCursor,
+    sell as paperSell,
+    serializeSession,
+    sessionKey,
+    visibleCandles,
+    type OrderFailure,
+    type PaperAccount,
+    type ReplaySpeed,
+} from '@/lib/replay';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
 import {
     COUNT_GLYPHS,
@@ -102,6 +121,15 @@ const COMPARE_STORAGE_KEY = 'openstock:chart-compare';
 /** Pane colours, in order: the charted symbol first, then each comparison. */
 const COMPARE_COLORS = ['--muted-foreground', '--brand', '--up', '--down'];
 
+/** A stored replay session is untrusted input: a broken one is a fresh start, never a crash. */
+const readReplaySession = (symbol: string) => {
+    try {
+        return parseSession(window.localStorage.getItem(sessionKey(symbol)));
+    } catch {
+        return null;
+    }
+};
+
 type Props = {
     /** The app symbol, e.g. 2222.SR, 0700.HK. */
     symbol: string;
@@ -125,6 +153,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     // markers to draw are kept in a ref and re-applied to whichever series is standing.
     const markersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
     const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+    // The candle host is kept so a replay step can replace the candles in place: rebuilding the
+    // chart on every bar would throw away the trader's zoom, which is exactly what a replay needs.
+    const candleHostRef = useRef<CandleHost | null>(null);
+    const displayRef = useRef<CandleSet | null>(null);
+    const replayRef = useRef(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const [intervalId, setIntervalId] = useState<string>(DEFAULT_CANDLE_INTERVAL);
@@ -158,6 +191,41 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     // The lab links back with ?strategy=…, so the chart opens already armed. Read after mount so the
     // first paint the server sent and the first paint the browser renders stay identical.
     const [autoStrategy, setAutoStrategy] = useState<StrategyId | null>(null);
+    // Bar replay: a cursor into a deeper series, and a paper account traded at that cursor only.
+    const [replay, setReplay] = useState(false);
+    const [replaySet, setReplaySet] = useState<CandleSet | null>(null);
+    const [replayStatus, setReplayStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+    const [cursorTime, setCursorTime] = useState<number | null>(null);
+    const [playing, setPlaying] = useState(false);
+    const [speed, setSpeed] = useState<ReplaySpeed>(2);
+    const [account, setAccount] = useState<PaperAccount>(() => openAccount());
+    const [orderError, setOrderError] = useState<OrderFailure | null>(null);
+    const [resumedFrom, setResumedFrom] = useState<number | null>(null);
+
+    const replayCandles = useMemo(() => replaySet?.candles ?? [], [replaySet]);
+
+    // The cursor is a time, not an index: on an interval change the same day is found again on the
+    // coarser series, so a weekly replay continues where the daily one stood instead of at bar 500.
+    const cursor = useMemo(() => {
+        if (!replay) return data ? data.candles.length - 1 : 0;
+        if (replayCandles.length === 0) return 0;
+        if (cursorTime == null) return minStartIndex(replayCandles.length);
+        return clampCursor(cursorForTime(replayCandles, cursorTime), replayCandles.length);
+    }, [replay, data, replayCandles, cursorTime]);
+
+    // The one series the chart ever sees. In replay it stops at the cursor, so nothing downstream —
+    // indicator, drawing, marker — can be shaped by a bar the trader has not reached yet.
+    const displayData = useMemo<CandleSet | null>(() => {
+        if (!replay) return data;
+        if (!replaySet) return null;
+        return { candles: visibleCandles(replayCandles, cursor), currency: replaySet.currency };
+    }, [replay, data, replaySet, replayCandles, cursor]);
+
+    // Latest-value refs for the callbacks that must not re-run when a replay bar advances.
+    displayRef.current = displayData;
+    replayRef.current = replay;
+    const hasDisplay = displayData != null;
+    const barTimes = useMemo(() => displayData?.candles.map((c) => c.time) ?? [], [displayData]);
 
     // Read after mount rather than during the first render: the server has no storage, and reading it
     // in the initial state would hydrate a different toolbar than the one that was sent.
@@ -203,7 +271,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
     useEffect(() => {
         let cancelled = false;
-        if (compareList.length === 0) {
+        // Compare is hidden in replay: fetching it would draw a percent pane built from bars the
+        // trader has not reached, which is the one thing the mode must not do.
+        if (replay || compareList.length === 0) {
             setCompareData({});
             return;
         }
@@ -214,7 +284,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             if (!cancelled) setCompareData(Object.fromEntries(entries));
         })();
         return () => { cancelled = true; };
-    }, [compareList, intervalId]);
+    }, [compareList, intervalId, replay]);
 
     const load = useCallback(async () => {
         setStatus('loading');
@@ -231,6 +301,76 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         void load();
     }, [load]);
+
+    // Entering replay swaps the light chart payload for the lab's deep history (10y daily, 10y weekly,
+    // the whole listing monthly). The same symbol on another interval keeps the cursor's day.
+    useEffect(() => {
+        if (!replay) {
+            setReplaySet(null);
+            setReplayStatus('idle');
+            setPlaying(false);
+            setOrderError(null);
+            setResumedFrom(null);
+            return;
+        }
+        let cancelled = false;
+        setReplayStatus('loading');
+        setPlaying(false);
+        void (async () => {
+            const deep = await getStrategyCandles(symbol, intervalId);
+            if (cancelled) return;
+            if (!deep || deep.candles.length < MIN_WARMUP_BARS + 2) {
+                setReplaySet(null);
+                setReplayStatus('error');
+                return;
+            }
+            setReplaySet(deep);
+            const stored = readReplaySession(symbol);
+            if (stored) {
+                setCursorTime(stored.cursorTime);
+                setAccount(stored.account);
+                setResumedFrom(stored.cursorTime);
+            } else {
+                setCursorTime(deep.candles[minStartIndex(deep.candles.length)].time);
+                setAccount(openAccount());
+                setResumedFrom(null);
+            }
+            setOrderError(null);
+            setReplayStatus('ready');
+        })();
+        return () => { cancelled = true; };
+    }, [replay, symbol, intervalId]);
+
+    // The session is remembered per symbol in this browser — TradingView remembers its replay too,
+    // and a demo that forgets a practice position overnight is not worth practising in.
+    useEffect(() => {
+        if (!replay || replayStatus !== 'ready' || cursorTime == null) return;
+        try {
+            window.localStorage.setItem(sessionKey(symbol), serializeSession({ cursorTime, account }));
+        } catch {
+            /* private mode: the session simply is not remembered */
+        }
+    }, [replay, replayStatus, cursorTime, account, symbol]);
+
+    // Autoplay steps on a wall-clock timer, not on a render, so the speed means bars per second.
+    useEffect(() => {
+        if (!playing || replayCandles.length === 0) return;
+        const id = window.setInterval(() => {
+            setCursorTime((current) => {
+                const index = current == null
+                    ? minStartIndex(replayCandles.length)
+                    : clampCursor(cursorForTime(replayCandles, current), replayCandles.length);
+                const next = Math.min(replayCandles.length - 1, index + 1);
+                return replayCandles[next].time;
+            });
+        }, Math.max(60, Math.round(1000 / speed)));
+        return () => window.clearInterval(id);
+    }, [playing, replayCandles, speed]);
+
+    // The last bar is the end of the replay; pressing play there would look broken.
+    useEffect(() => {
+        if (playing && replayCandles.length > 0 && cursor >= replayCandles.length - 1) setPlaying(false);
+    }, [playing, cursor, replayCandles.length]);
 
     // Drawings belong to the symbol, not to the session: switching symbols starts from that symbol's set.
     useEffect(() => {
@@ -251,26 +391,27 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         saveDrawings(symbol, drawings);
     }, [symbol, drawings]);
 
-    const barTimes = useMemo(() => data?.candles.map((c) => c.time) ?? [], [data]);
-
     // The common start date for the compare pane: the latest first-bar among the series, so symbols
     // with different amounts of history (AAPL back to 1980, 2222.SR to 2019) are measured together.
     const compareFrom = useMemo(() => {
-        const sets = [data, ...compareList.map((compared) => compareData[compared])].filter((set): set is CandleSet => !!set);
+        const sets = [displayData, ...compareList.map((compared) => compareData[compared])].filter((set): set is CandleSet => !!set);
         const starts = sets.map((set) => set.candles[0]?.time).filter((time): time is number => typeof time === 'number');
         return starts.length > 0 ? Math.max(...starts) : 0;
-    }, [data, compareList, compareData]);
+    }, [displayData, compareList, compareData]);
 
     useEffect(() => {
         const el = hostRef.current;
-        if (!el || !data) return;
+        const current = displayRef.current;
+        if (!el || !current) return;
 
         // Compare: the charted symbol and each comparison as percent change from the first bar, in a
-        // pane under the price so a Saudi stock and a US stock share one axis.
+        // pane under the price so a Saudi stock and a US stock share one axis. Replay never extends:
+        // a percent pane built from later bars is exactly the future the mode hides.
         const extend = (host: CandleHost) => {
+            if (replayRef.current) return;
             const { chart, addPane } = host;
             const compareSets: [string, { time: number; value: number }[]][] = [
-                [symbol, percentSeries(data.candles, compareFrom)],
+                [symbol, percentSeries(current.candles, compareFrom)],
             ];
             for (const compared of compareList) {
                 const set = compareData[compared];
@@ -299,24 +440,51 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
         const host = createCandleHost(el, {
             timeVisible: intervalId !== '1d' && intervalId !== '1wk',
-            data,
+            data: current,
             indicators: on,
             extend,
             onRangeChange: () => setFrame((frame) => frame + 1),
         });
 
-        host.fit();
+        // Replay opens on the recent end of a ten-year series, not compressed into a thousand bars.
+        if (replayRef.current) {
+            const count = current.candles.length;
+            host.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 150), to: count + 5 });
+        } else {
+            host.fit();
+        }
+        candleHostRef.current = host;
         chartRef.current = host.chart;
         seriesRef.current = host.price;
         markersApiRef.current = createSeriesMarkers(host.price, markersRef.current);
 
         return () => {
+            candleHostRef.current = null;
             chartRef.current = null;
             seriesRef.current = null;
             markersApiRef.current = null;
             host.destroy();
         };
-    }, [data, on, intervalId, compareList, compareData, symbol, compareFrom]);
+    }, [hasDisplay, on, intervalId, compareList, compareData, symbol, compareFrom]);
+
+    // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
+    useEffect(() => {
+        if (displayData) candleHostRef.current?.setData(displayData);
+    }, [displayData]);
+
+    // Entering or leaving replay re-frames the view once. Steps after that never touch it, which is
+    // what makes a fast replay readable instead of a chart that keeps re-fitting itself.
+    const framedFor = useRef('');
+    useEffect(() => {
+        const host = candleHostRef.current;
+        const count = displayData?.candles.length ?? 0;
+        if (!host || count === 0) return;
+        const key = `${replay ? 'replay' : 'live'}:${intervalId}`;
+        if (framedFor.current === key) return;
+        framedFor.current = key;
+        if (replay) host.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - 150), to: count + 5 });
+        else host.fit();
+    }, [replay, intervalId, displayData]);
 
     const applyStrategyMarkers = useCallback((markers: SeriesMarker<UTCTimestamp>[] | null) => {
         markersRef.current = markers ?? [];
@@ -424,6 +592,66 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     };
     const removeCompare = (compared: string) => setCompareList((list) => list.filter((s) => s !== compared));
 
+    // -- Bar replay & the paper account --------------------------------------
+    // Everything the account values itself at comes from the replay bar on screen, never the live
+    // quote in the page header — that is the difference between practising and watching.
+    const replayBar = displayData?.candles[cursor] ?? null;
+
+    const moveCursor = (time: number) => {
+        setPlaying(false);
+        setCursorTime(time);
+        setOrderError(null);
+    };
+
+    const startReplay = () => {
+        setPlaying(false);
+        setOrderError(null);
+        setReplay(true);
+    };
+
+    const exitReplay = () => {
+        setPlaying(false);
+        setOrderError(null);
+        setReplay(false);
+    };
+
+    const placePaperOrder = (side: 'buy' | 'sell', quantity: number) => {
+        if (!replayBar) {
+            setOrderError('badPrice');
+            return;
+        }
+        const order = { price: replayBar.close, quantity, time: replayBar.time };
+        const result = side === 'buy' ? paperBuy(account, order) : paperSell(account, order);
+        if (result.ok) {
+            setAccount(result.account);
+            setOrderError(null);
+        } else {
+            setOrderError(result.reason);
+        }
+    };
+
+    /** A new practice account, back at a bar with warm-up behind it — never at the live edge. */
+    const resetPaperAccount = () => {
+        setAccount(openAccount());
+        setOrderError(null);
+        setPlaying(false);
+        if (replayCandles.length > 0) setCursorTime(replayCandles[minStartIndex(replayCandles.length)].time);
+    };
+
+    /** Play from the start again when the replay is standing on its last bar. */
+    const togglePlayback = () => {
+        if (playing) {
+            setPlaying(false);
+            return;
+        }
+        if (replayCandles.length === 0) return;
+        if (cursor >= replayCandles.length - 1) {
+            setCursorTime(replayCandles[minStartIndex(replayCandles.length)].time);
+        }
+        setPlaying(true);
+    };
+
+
     const summary = (drawing: Drawing) => {
         const prices = drawing.points.map((point) => point.price.toFixed(2));
         if (drawing.tool === 'text') return drawing.text ?? '';
@@ -498,7 +726,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         <div className={cn('relative', expanded ? 'size-full' : 'h-[420px]')} dir="ltr">
             <div ref={hostRef} className="size-full" />
 
-            {status === 'ready' && (
+            {status === 'ready' && !replay && (
                 <ChartDrawings
                     drawings={drawings}
                     selectedId={selectedId}
@@ -518,13 +746,13 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 />
             )}
 
-            {status === 'loading' && (
+            {status === 'loading' && !replay && (
                 <div className="absolute inset-0 flex items-center justify-center gap-2 text-[13px] text-faint">
                     <Loader2 className="size-4 animate-spin" /> {t('chart.loading')}
                 </div>
             )}
 
-            {status === 'error' && (
+            {status === 'error' && !replay && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-[13px] text-faint">
                     <p>{t('chart.error')}</p>
                     <div className="flex items-center gap-2">
@@ -626,6 +854,16 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         {t(indicator.label)}
                     </button>
                 ))}
+                <button
+                    type="button"
+                    onClick={() => (replay ? exitReplay() : startReplay())}
+                    aria-pressed={replay}
+                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', replay && 'is-up')}
+                    title={t('replay.title')}
+                >
+                    <History className="size-3.5" /> {t('replay.open')}
+                </button>
+                {!replay && (
                 <div className="relative">
                     <button
                         type="button"
@@ -676,7 +914,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         </>
                     )}
                 </div>
-                <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />
+                )}
+                {!replay && <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />}
                 <button
                     type="button"
                     onClick={() => setExpanded((value) => !value)}
@@ -688,6 +927,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 </button>
             </div>
 
+            {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away. */}
+            {!replay && (
             <div className="flex flex-wrap items-center gap-1.5">
                 <button
                     type="button"
@@ -885,8 +1126,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     onChange={(event) => void importFile(event.target.files?.[0])}
                 />
             </div>
+            )}
 
-            {compareList.length > 0 && (
+            {!replay && compareList.length > 0 && (
                 <div className="flex flex-wrap items-center gap-3 rounded-[10px] bg-page/60 px-3 py-1.5 text-[12px]" dir="ltr">
                     <span className="text-[11px] font-semibold text-faint">{t('chart.compare')}</span>
                     {compareLegend.map((entry, i) => (
@@ -903,7 +1145,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 </div>
             )}
 
-            {drawings.length > 0 && (
+            {!replay && drawings.length > 0 && (
                 <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-[10px] bg-page/60 p-1">
                     <p className="px-2 pt-0.5 text-[11px] font-semibold text-faint">
                         {t('chart.list')} · {drawings.length}
@@ -955,7 +1197,32 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 {body}
             </div>
 
-            <p className="text-[12px] text-faint">{t('chart.drawingHint')}</p>
+            {replay && (
+                <ReplayPanel
+                    lang={lang}
+                    candles={replayCandles}
+                    cursor={cursor}
+                    playing={playing}
+                    speed={speed}
+                    account={account}
+                    currency={replaySet?.currency || data?.currency || 'USD'}
+                    loading={replayStatus === 'loading'}
+                    error={orderError}
+                    resumedFrom={resumedFrom}
+                    onCursor={moveCursor}
+                    onTogglePlay={togglePlayback}
+                    onSpeed={setSpeed}
+                    onStart={moveCursor}
+                    onFirst={() => { if (replayCandles.length > 0) moveCursor(replayCandles[0].time); }}
+                    onRandom={() => { if (replayCandles.length > 0) moveCursor(replayCandles[randomCursor(replayCandles.length)].time); }}
+                    onExit={exitReplay}
+                    onBuy={(quantity) => placePaperOrder('buy', quantity)}
+                    onSell={(quantity) => placePaperOrder('sell', quantity)}
+                    onReset={resetPaperAccount}
+                />
+            )}
+
+            <p className="text-[12px] text-faint">{t(replay ? 'replay.noFuture' : 'chart.drawingHint')}</p>
             <p className="text-[12px] text-faint">
                 <ExternalLink className="me-1 inline size-3.5" />
                 <a href={tradingViewSymbolUrl(tvSymbol)} target="_blank" rel="noopener noreferrer" className="underline">
