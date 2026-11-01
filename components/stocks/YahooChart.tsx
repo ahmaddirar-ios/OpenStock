@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
     CandlestickSeries,
     HistogramSeries,
@@ -45,16 +45,22 @@ import {
     toolDef,
     withPoint,
     withText,
+    type CountDegree,
+    type CountKind,
     type Drawing,
     type DrawPoint,
     type ScreenPoint,
     type ShapeTool,
 } from '@/lib/chart-drawings';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
+import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { tx, type Lang, type StringKey } from '@/lib/i18n';
 
 type Indicator = 'sma' | 'ema' | 'rsi' | 'macd';
 type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer';
+
+/** A row of a dropdown. */
+type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
 
 const INDICATORS: { id: Indicator; label: StringKey }[] = [
     { id: 'sma', label: 'chart.ind.sma' },
@@ -156,6 +162,13 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [menu, setMenu] = useState<MenuId | null>(null);
+    // The count the automatic numbering targets: whatever degree/kind was last picked by hand.
+    const [countChoice, setCountChoice] = useState<{ degree: CountDegree; kind: CountKind }>({
+        degree: 'minor',
+        kind: 'impulse',
+    });
+    const [sensitivity, setSensitivity] = useState<AutoSensitivity>(AUTO_SENSITIVITIES[0]);
+    const [autoNotice, setAutoNotice] = useState<StringKey | null>(null);
     const [paste, setPaste] = useState('');
     const [transfer, setTransfer] = useState<'ok' | 'bad' | 'copied' | 'blocked' | null>(null);
     // Bumped whenever the chart pans or zooms, so the drawings are re-projected onto the new scale.
@@ -339,6 +352,36 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     };
 
     const commit = (drawing: Drawing) => setDrawings((list) => [...list, drawing]);
+
+    /**
+     * Numbers the waves on the candles that are loaded. One shot, like a normal tool: the result is
+     * an ordinary drawing, so it can be dragged, recoloured or deleted straight away.
+     */
+    const runAutoCount = (choice: { degree: CountDegree; kind: CountKind }, sensitivityId: AutoSensitivity) => {
+        const candles = data?.candles ?? [];
+        setSensitivity(sensitivityId);
+        if (candles.length === 0) {
+            setAutoNotice('chart.count.autoLoading');
+            return;
+        }
+        const drawing = autoCount(candles, {
+            ...(sensitivityId === 'atr'
+                ? { mode: 'atr' as const }
+                : { mode: 'percent' as const, percent: Number(sensitivityId) }),
+            ...choice,
+        });
+        if (!drawing) {
+            setAutoNotice('chart.count.autoNone');
+            return;
+        }
+        commit(drawing);
+        setSelectedId(drawing.id);
+        setTool(null);
+        setPendingLabels(null);
+        setAutoNotice(null);
+        setMenu(null);
+    };
+
     const moveHandle = (id: string, index: number, point: DrawPoint) =>
         setDrawings((list) => list.map((d) => (d.id === id ? withPoint(d, index, point) : d)));
     const editText = (id: string, text: string) =>
@@ -483,16 +526,27 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 active && 'text-brand-ink',
             )}
         >
-            <span className="flex-1">{label}</span>
+            <span className="flex-1 whitespace-nowrap">{label}</span>
             {active && <span className="text-[11px]">●</span>}
         </button>
     );
 
-    const dropdown = (id: MenuId, label: string, items: { key: string; label: string; onClick: () => void; active?: boolean }[]) => (
+    /** The same wording the manual count rows use, so the automatic rows read as the same feature. */
+    const countLabel = ({ degree, kind }: { degree: CountDegree; kind: CountKind }) =>
+        `${t(COUNT_TOOL[kind] === 'ew-count' ? 'chart.count.impulse' : 'chart.count.correction')} · ${t(
+            (`chart.count.degree${degree[0].toUpperCase()}${degree.slice(1)}`) as StringKey,
+        )}`;
+
+    const hasCandles = (data?.candles.length ?? 0) > 0;
+
+    const dropdown = (id: MenuId, label: string, items: MenuItem[], footer?: ReactNode) => (
         <div key={id} className="relative">
             <button
                 type="button"
-                onClick={() => setMenu((current) => (current === id ? null : id))}
+                onClick={() => {
+                    setMenu((current) => (current === id ? null : id));
+                    setAutoNotice(null);
+                }}
                 aria-expanded={menu === id}
                 className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', menu === id && 'is-up')}
             >
@@ -501,8 +555,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             {menu === id && (
                 <>
                     <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
-                    <div className="absolute z-30 mt-1 flex max-h-80 min-w-52 flex-col gap-0.5 overflow-y-auto rounded-[12px] bg-card p-1.5 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
-                        {items.map((item) => menuItem(item.key, item.label, item.onClick, item.active))}
+                    <div className="absolute z-30 mt-1 flex max-h-[24rem] min-w-52 flex-col gap-0.5 overflow-y-auto rounded-[12px] bg-card p-1.5 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
+                        {items.map((item) =>
+                            menuItem(item.key, item.label, item.onClick, item.active),
+                        )}
+                        {footer}
                     </div>
                 </>
             )}
@@ -592,12 +649,42 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     t('chart.group.counts'),
                     COUNT_OPTIONS.map(({ degree, kind }) => ({
                         key: `${degree}-${kind}`,
-                        label: `${t(COUNT_TOOL[kind] === 'ew-count' ? 'chart.count.impulse' : 'chart.count.correction')} · ${t(
-                            (`chart.count.degree${degree[0].toUpperCase()}${degree.slice(1)}`) as StringKey,
-                        )}`,
-                        onClick: () => startTool(COUNT_TOOL[kind], COUNT_GLYPHS[degree][kind]),
+                        label: countLabel({ degree, kind }),
+                        onClick: () => {
+                            setCountChoice({ degree, kind });
+                            startTool(COUNT_TOOL[kind], COUNT_GLYPHS[degree][kind]);
+                        },
                         active: tool === COUNT_TOOL[kind] && pendingLabels === COUNT_GLYPHS[degree][kind],
                     })),
+                    <div key="auto" className="mt-1 border-t border-line pt-1.5">
+                        <p className="px-2 pb-1.5 text-[10.5px] font-bold uppercase tracking-wide text-faint">
+                            {t('chart.count.auto')} · {countLabel(countChoice)}
+                        </p>
+                        <div className="flex items-center gap-1 px-2">
+                            {AUTO_SENSITIVITIES.map((id) => (
+                                <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => runAutoCount(countChoice, id)}
+                                    disabled={!hasCandles}
+                                    aria-pressed={sensitivity === id}
+                                    title={id === 'atr' ? t('chart.count.autoAtr') : undefined}
+                                    className={cn(
+                                        'flex-1 rounded-full px-2 py-1 text-[11.5px] font-semibold transition-colors',
+                                        sensitivity === id ? 'bg-brand text-brand-ink' : 'bg-page text-muted hover:bg-hover',
+                                        !hasCandles && 'cursor-not-allowed opacity-40',
+                                    )}
+                                >
+                                    {id === 'atr' ? 'ATR' : `${Math.round(Number(id) * 100)}%`}
+                                </button>
+                            ))}
+                        </div>
+                        {autoNotice && (
+                            <p role="status" className="px-2 pt-1.5 text-[11px] leading-snug text-faint">
+                                {t(autoNotice)}
+                            </p>
+                        )}
+                    </div>,
                 )}
                 {dropdown(
                     'cycles',
