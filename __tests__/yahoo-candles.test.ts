@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANDLE_INTERVALS, candlesFromChart, intervalById } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, aggregateCandles, candlesFromChart, intervalById, isCandleIntervalId, type Candle } from '@/lib/yahoo-candles';
 
 const payload = (overrides: Record<string, unknown> = {}) => ({
     chart: {
@@ -101,13 +101,138 @@ describe('candlesFromChart', () => {
 });
 
 describe('intervals', () => {
+    it('lists the intervals in the order a trader reads them, minute to month', () => {
+        expect(CANDLE_INTERVALS.map((i) => i.id)).toEqual([
+            '1m',
+            '5m',
+            '15m',
+            '30m',
+            '60m',
+            '2h',
+            '4h',
+            '1d',
+            '1wk',
+            '1mo',
+        ]);
+    });
+
     it('pairs each interval with a range Yahoo accepts', () => {
-        expect(intervalById('1m').range).toBe('5d');
-        expect(intervalById('1wk').range).toBe('2y');
+        expect(intervalById('1m').request).toEqual({ interval: '1m', range: '5d' });
+        expect(intervalById('30m').request).toEqual({ interval: '30m', range: '1mo' });
+        expect(intervalById('1wk').request).toEqual({ interval: '1wk', range: '2y' });
+        expect(intervalById('1mo').request).toEqual({ interval: '1mo', range: 'max' });
+    });
+
+    it('never asks for a range Yahoo rejects for the interval it requests', () => {
+        // Yahoo's own table: a minute is capped at a week, intraday at 60 days, 60m at 730 days,
+        // and daily or coarser is open. A request outside it comes back empty, not clamped.
+        const days: Record<string, number> = { '1m': 7, '5m': 60, '15m': 60, '30m': 60, '60m': 730, '1d': Infinity, '1wk': Infinity, '1mo': Infinity };
+        const span: Record<string, number> = { '1d': 1, '5d': 5, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730, '5y': 1825, '10y': 3650, max: Infinity };
+
+        for (const { id, request } of CANDLE_INTERVALS) {
+            expect(span[request.range], `${id}: unknown range ${request.range}`).toBeDefined();
+            expect(span[request.range], `${id} asks for ${request.range}`).toBeLessThanOrEqual(days[request.interval]);
+        }
+    });
+
+    it('builds the intervals Yahoo has no bar size for out of the hour', () => {
+        expect(intervalById('2h').request.interval).toBe('60m');
+        expect(intervalById('2h').aggregate).toBe(2);
+        expect(intervalById('4h').request.interval).toBe('60m');
+        expect(intervalById('4h').aggregate).toBe(4);
+    });
+
+    it('leaves the intervals Yahoo does price alone', () => {
+        for (const id of ['1m', '5m', '15m', '30m', '60m', '1d', '1wk', '1mo']) {
+            expect(intervalById(id).aggregate ?? 1).toBe(1);
+        }
+    });
+
+    it('accepts only the intervals the toolbar offers', () => {
+        expect(isCandleIntervalId('4h')).toBe(true);
+        expect(isCandleIntervalId('1mo')).toBe(true);
+        expect(isCandleIntervalId('4x')).toBe(false);
+        expect(isCandleIntervalId(null)).toBe(false);
+        expect(isCandleIntervalId(60)).toBe(false);
     });
 
     it('falls back to daily for an unknown interval, so a bad query string cannot break the chart', () => {
         expect(intervalById('7s').id).toBe('1d');
-        expect(CANDLE_INTERVALS).toHaveLength(6);
+        expect(intervalById('').id).toBe('1d');
+        expect(DEFAULT_CANDLE_INTERVAL).toBe('1d');
+    });
+
+    it('keeps the hourly history long enough for a count on the slower intervals', () => {
+        // 4h bars off a three-month hour feed would be about twenty bars: not enough to count.
+        expect(intervalById('2h').request.range).toBe('6mo');
+        expect(intervalById('4h').request.range).toBe('1y');
+    });
+});
+
+describe('aggregateCandles', () => {
+    const hour = (time: number, o: number, h: number, l: number, c: number, v = 1): Candle => ({
+        time,
+        open: o,
+        high: h,
+        low: l,
+        close: c,
+        volume: v,
+    });
+    const DAY = 86_400;
+    const TEN_AM = 1_700_000_000 + 10 * 3600;
+
+    it('folds a run of bars into one, keeping the first open and the last close', () => {
+        const hourly = [
+            hour(TEN_AM, 10, 12, 9, 11, 5),
+            hour(TEN_AM + 3600, 11, 15, 10, 14, 6),
+            hour(TEN_AM + 7200, 14, 16, 13, 15, 7),
+            hour(TEN_AM + 10_800, 15, 15.5, 8, 9, 8),
+        ];
+
+        expect(aggregateCandles(hourly, 4)).toEqual([
+            { time: TEN_AM, open: 10, high: 16, low: 8, close: 9, volume: 26 },
+        ]);
+    });
+
+    it('starts a new bar on the exchange day, so no bar spans two sessions', () => {
+        const first = [0, 1, 2, 3, 4].map((i) => hour(TEN_AM + i * 3600, 10 + i, 11 + i, 9 + i, 10.5 + i));
+        const nextDay = [0, 1, 2].map((i) => hour(TEN_AM + DAY + i * 3600, 20 + i, 21 + i, 19 + i, 20.5 + i));
+
+        const fours = aggregateCandles([...first, ...nextDay], 4);
+
+        expect(fours).toHaveLength(3);
+        expect(fours[0].time).toBe(TEN_AM);
+        expect(fours[1].time).toBe(TEN_AM + 4 * 3600);
+        expect(fours[2].time).toBe(TEN_AM + DAY);
+        expect(fours[2]).toMatchObject({ open: 20, high: 23, low: 19, close: 22.5, volume: 3 });
+    });
+
+    it('keeps the bar that is still forming rather than dropping its data', () => {
+        const seven = [0, 1, 2, 3, 4, 5, 6].map((i) => hour(TEN_AM + i * 3600, 10 + i, 12 + i, 9 + i, 11 + i, 2));
+
+        const fours = aggregateCandles(seven, 4);
+
+        expect(fours).toHaveLength(2);
+        expect(fours[1]).toMatchObject({ open: 14, high: 18, low: 13, close: 17, volume: 6 });
+    });
+
+    it('keeps the open, high, low and close in a sane order on every bar', () => {
+        const hourly = Array.from({ length: 40 }, (_, i) =>
+            hour(TEN_AM + i * 3600, 10 + Math.sin(i) * 2, 12 + Math.cos(i) * 3, 8 + Math.sin(i) * 2, 11 + Math.cos(i), 1),
+        );
+
+        for (const candle of aggregateCandles(hourly, 4)) {
+            expect(candle.high).toBeGreaterThanOrEqual(Math.max(candle.open, candle.close));
+            expect(candle.low).toBeLessThanOrEqual(Math.min(candle.open, candle.close));
+            expect(candle.high).toBeGreaterThanOrEqual(candle.low);
+        }
+    });
+
+    it('is a no-op for a factor of one or an empty series', () => {
+        const hourly = [hour(TEN_AM, 10, 11, 9, 10.5)];
+
+        expect(aggregateCandles(hourly, 1)).toEqual(hourly);
+        expect(aggregateCandles([], 4)).toEqual([]);
+        expect(aggregateCandles(hourly, 0)).toEqual(hourly);
     });
 });

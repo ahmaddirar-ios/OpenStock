@@ -31,23 +31,92 @@ export function yahooCandleSymbol(symbol: string): string | null {
     return SUFFIXED_SYMBOL.test(upper) ? upper : null;
 }
 
-// Yahoo only accepts certain range/interval pairs; keeping them here means the interface can never
-// ask for a combination Yahoo rejects (1m is limited to a week, intraday to months).
-export const CANDLE_INTERVALS = [
-    { id: '1m', range: '5d' },
-    { id: '5m', range: '1mo' },
-    { id: '15m', range: '1mo' },
-    { id: '60m', range: '3mo' },
-    { id: '1d', range: '6mo' },
-    { id: '1wk', range: '2y' },
-] as const;
+// Yahoo only accepts certain range/interval pairs, and only prices a fixed set of bar sizes:
+// 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1d, 5d, 1wk, 1mo, 3mo. There is no 2h or 4h bar, so those are
+// requested as hours and folded together — the range is sized for the interval the user actually
+// sees, not for the hours it is built from. Keeping the pairs here means the interface can never ask
+// for a combination Yahoo rejects (a minute is capped at a week, intraday at 60 days, 60m at 730).
+export type CandleInterval = {
+    /** What the toolbar and the drawings storage key use. */
+    id: string;
+    /** The bar size and span asked of Yahoo. */
+    request: { interval: string; range: string };
+    /** How many requested bars make one bar on screen; absent for a bar Yahoo prices itself. */
+    aggregate?: number;
+};
 
-export type CandleInterval = (typeof CANDLE_INTERVALS)[number];
+export const CANDLE_INTERVALS: readonly CandleInterval[] = [
+    { id: '1m', request: { interval: '1m', range: '5d' } },
+    { id: '5m', request: { interval: '5m', range: '1mo' } },
+    { id: '15m', request: { interval: '15m', range: '1mo' } },
+    { id: '30m', request: { interval: '30m', range: '1mo' } },
+    { id: '60m', request: { interval: '60m', range: '6mo' } },
+    { id: '2h', request: { interval: '60m', range: '6mo' }, aggregate: 2 },
+    { id: '4h', request: { interval: '60m', range: '1y' }, aggregate: 4 },
+    { id: '1d', request: { interval: '1d', range: '6mo' } },
+    { id: '1wk', request: { interval: '1wk', range: '2y' } },
+    { id: '1mo', request: { interval: '1mo', range: 'max' } },
+];
+
 export const DEFAULT_CANDLE_INTERVAL = '1d';
 
-/** The interval a request asked for, falling back to the daily one. */
+/** The interval a request asked for, falling back to the daily one by name rather than by position. */
 export const intervalById = (id: string): CandleInterval =>
-    CANDLE_INTERVALS.find((interval) => interval.id === id) ?? CANDLE_INTERVALS[4];
+    CANDLE_INTERVALS.find((interval) => interval.id === id) ??
+    CANDLE_INTERVALS.find((interval) => interval.id === DEFAULT_CANDLE_INTERVAL)!;
+
+/** True for an interval the toolbar offers, so a stored or hand-edited value can be trusted back. */
+export const isCandleIntervalId = (value: unknown): value is string =>
+    typeof value === 'string' && CANDLE_INTERVALS.some((interval) => interval.id === value);
+
+const DAY_SECONDS = 86_400;
+
+/**
+ * Folds `factor` bars into one, for the bar sizes Yahoo does not price (2h, 4h).
+ *
+ * A bar never spans two exchange days: folding is counted from the first bar of each day, so a four
+ * hour bar is the session's first four hours rather than a window sliding across the close. The bar
+ * that is still forming is kept — it is the one a trader is watching — and volume adds up.
+ */
+export function aggregateCandles(candles: Candle[], factor: number): Candle[] {
+    const size = Math.floor(factor);
+    if (!Array.isArray(candles) || !(size >= 2)) return candles;
+
+    const folded: Candle[] = [];
+    let current: Candle | null = null;
+    let day = -1;
+    let indexInDay = 0;
+
+    for (const candle of candles) {
+        if (!candle || !Number.isFinite(candle.time)) continue;
+        const candleDay = Math.floor(candle.time / DAY_SECONDS);
+        const newDay = candleDay !== day;
+        if (newDay) {
+            day = candleDay;
+            indexInDay = 0;
+        }
+
+        if (!current || newDay || indexInDay === size) {
+            current = {
+                time: candle.time,
+                open: candle.open,
+                high: candle.high,
+                low: candle.low,
+                close: candle.close,
+                volume: candle.volume,
+            };
+            folded.push(current);
+        } else {
+            current.high = Math.max(current.high, candle.high);
+            current.low = Math.min(current.low, candle.low);
+            current.close = candle.close;
+            current.volume += candle.volume;
+        }
+        indexInDay += 1;
+    }
+
+    return folded;
+}
 
 type YahooChartJson = {
     chart?: {
