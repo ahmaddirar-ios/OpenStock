@@ -36,7 +36,7 @@ export default async function PortfolioPage() {
             <header className="page-head">
                 <div>
                     <h1 className="page-title">{tx(lang, 'pf.title')}</h1>
-                    <p className="page-sub num">{tx(lang, 'pf.sub').replace('{n}', arDigits(rows.length, lang))}</p>
+                    <p className="page-sub num">{rows.length === 1 ? tx(lang, 'pf.subOne') : tx(lang, 'pf.sub').replace('{n}', arDigits(rows.length, lang))}</p>
                 </div>
                 <PositionFormModal lang={lang}>
                     <button type="button" className="btn btn-primary"><Plus /> {tx(lang, 'pf.add')}</button>

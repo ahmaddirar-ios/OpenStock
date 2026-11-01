@@ -462,6 +462,7 @@ const en = {
     // Portfolio
     'pf.title': 'Portfolio',
     'pf.sub': '{n} positions · cost basis and unrealised P&L',
+    'pf.subOne': '1 position · cost basis and unrealised P&L',
     'pf.add': 'Add position',
     'pf.empty': 'No positions yet',
     'pf.emptySub': 'Add what you hold to see its value and its profit or loss.',
@@ -934,6 +935,7 @@ const ar: Record<StringKey, string> = {
     // Portfolio
     'pf.title': 'المحفظة',
     'pf.sub': '{n} مركز · الكلفة والربح غير المحقّق',
+    'pf.subOne': 'مركز واحد · الكلفة والربح غير المحقّق',
     'pf.add': 'أضف مركزًا',
     'pf.empty': 'لا مراكز بعد',
     'pf.emptySub': 'أضف ما تملكه لعرض قيمته وربحه أو خسارته.',
