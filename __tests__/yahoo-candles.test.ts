@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, aggregateCandles, candlesFromChart, intervalById, isCandleIntervalId, type Candle } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, aggregateCandles, candlesFromChart, intervalById, isCandleIntervalId, strategyRange, type Candle } from '@/lib/yahoo-candles';
 
 const payload = (overrides: Record<string, unknown> = {}) => ({
     chart: {
@@ -234,5 +234,26 @@ describe('aggregateCandles', () => {
         expect(aggregateCandles(hourly, 1)).toEqual(hourly);
         expect(aggregateCandles([], 4)).toEqual([]);
         expect(aggregateCandles(hourly, 0)).toEqual(hourly);
+    });
+});
+
+
+describe('strategyRange', () => {
+    it('reaches ten years for daily and weekly bars', () => {
+        expect(strategyRange('1d')).toBe('10y');
+        expect(strategyRange('1wk')).toBe('10y');
+    });
+
+    it('asks for the whole listing monthly', () => {
+        expect(strategyRange('1mo')).toBe('max');
+    });
+
+    it('leaves an intraday interval with the history Yahoo actually has', () => {
+        expect(strategyRange('5m')).toBe('1mo');
+        expect(strategyRange('60m')).toBe('6mo');
+    });
+
+    it('falls back to the daily range for an unknown id', () => {
+        expect(strategyRange('wat')).toBe(strategyRange('1d'));
     });
 });

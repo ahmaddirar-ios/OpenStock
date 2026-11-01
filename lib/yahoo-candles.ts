@@ -65,6 +65,23 @@ export const intervalById = (id: string): CandleInterval =>
     CANDLE_INTERVALS.find((interval) => interval.id === id) ??
     CANDLE_INTERVALS.find((interval) => interval.id === DEFAULT_CANDLE_INTERVAL)!;
 
+/**
+ * How much history the strategy lab asks for. The chart deliberately keeps a light range (6 months
+ * daily) so a page of charts stays small; a 200-bar average cannot be judged on that, so the lab
+ * reaches deeper — and says so when an intraday interval cannot.
+ */
+export const STRATEGY_RANGES: Record<string, string> = {
+    '1d': '10y',
+    '1wk': '10y',
+    '1mo': 'max',
+};
+
+/** The range for a lab run: deeper where it matters, unchanged where Yahoo has nothing more. */
+export function strategyRange(intervalId: string): string {
+    const interval = intervalById(intervalId);
+    return STRATEGY_RANGES[interval.id] ?? interval.request.range;
+}
+
 /** True for an interval the toolbar offers, so a stored or hand-edited value can be trusted back. */
 export const isCandleIntervalId = (value: unknown): value is string =>
     typeof value === 'string' && CANDLE_INTERVALS.some((interval) => interval.id === value);
