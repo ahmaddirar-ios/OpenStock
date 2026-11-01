@@ -38,6 +38,12 @@ describe('percentSeries', () => {
         expect(percentSeries([])).toEqual([]);
         expect(percentSeries([candle(1, 0), candle(2, 0)])).toEqual([]);
     });
+
+    it('measures from a common start and drops earlier points', () => {
+        const points = percentSeries(SERIES, 3);
+        expect(points[0]).toEqual({ time: 3, value: 0 });
+        expect(points[1].value).toBeCloseTo((150 / 90 - 1) * 100);
+    });
 });
 
 describe('latestChange', () => {

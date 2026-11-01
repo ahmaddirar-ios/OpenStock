@@ -285,6 +285,14 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
     const barTimes = useMemo(() => data?.candles.map((c) => c.time) ?? [], [data]);
 
+    // The common start date for the compare pane: the latest first-bar among the series, so symbols
+    // with different amounts of history (AAPL back to 1980, 2222.SR to 2019) are measured together.
+    const compareFrom = useMemo(() => {
+        const sets = [data, ...compareList.map((compared) => compareData[compared])].filter((set): set is CandleSet => !!set);
+        const starts = sets.map((set) => set.candles[0]?.time).filter((time): time is number => typeof time === 'number');
+        return starts.length > 0 ? Math.max(...starts) : 0;
+    }, [data, compareList, compareData]);
+
     useEffect(() => {
         const host = hostRef.current;
         if (!host || !data) return;
@@ -345,10 +353,10 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
         // Compare: the charted symbol and each comparison as percent change from the first bar, in a
         // pane under the price so a Saudi stock and a US stock share one axis.
-        const compareSets: [string, { time: number; value: number }[]][] = [[symbol, percentSeries(data.candles)]];
+        const compareSets: [string, { time: number; value: number }[]][] = [[symbol, percentSeries(data.candles, compareFrom)]];
         for (const compared of compareList) {
             const set = compareData[compared];
-            if (set) compareSets.push([compared, percentSeries(set.candles)]);
+            if (set) compareSets.push([compared, percentSeries(set.candles, compareFrom)]);
         }
         if (compareSets.length > 1) {
             const compareIndex = addPane(chart, 0.24);
@@ -398,7 +406,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             chartRef.current = null;
             seriesRef.current = null;
         };
-    }, [data, on, intervalId, compareList, compareData, symbol]);
+    }, [data, on, intervalId, compareList, compareData, symbol, compareFrom]);
 
     useEffect(() => {
         if (!expanded) return;
@@ -642,10 +650,10 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const hasCandles = (data?.candles.length ?? 0) > 0;
 
     const compareLegend = [
-        ...(data ? [{ symbol, change: latestChange(data.candles) }] : []),
+        ...(data ? [{ symbol, change: latestChange(data.candles, compareFrom) }] : []),
         ...compareList.flatMap((compared) => {
             const set = compareData[compared];
-            return set ? [{ symbol: compared, change: latestChange(set.candles) }] : [];
+            return set ? [{ symbol: compared, change: latestChange(set.candles, compareFrom) }] : [];
         }),
     ];
 

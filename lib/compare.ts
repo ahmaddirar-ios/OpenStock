@@ -23,16 +23,20 @@ export function compareYahooSymbol(input: string): string | null {
     return PLAIN_TICKER.test(upper) ? upper : null;
 }
 
-/** Percent change from the first usable close, so every series starts at 0. */
-export function percentSeries(candles: Candle[]): ComparePoint[] {
-    const first = candles.find((candle) => Number.isFinite(candle.close) && candle.close > 0)?.close;
+/**
+ * Percent change from the first usable close at or after `from`, so every series is measured from
+ * the same date when symbols carry different amounts of history. Points before `from` are dropped.
+ */
+export function percentSeries(candles: Candle[], from = -Infinity): ComparePoint[] {
+    const window = candles.filter((candle) => candle.time >= from);
+    const first = window.find((candle) => Number.isFinite(candle.close) && candle.close > 0)?.close;
     if (!first) return [];
-    return candles.map((candle) => ({ time: candle.time, value: (candle.close / first - 1) * 100 }));
+    return window.map((candle) => ({ time: candle.time, value: (candle.close / first - 1) * 100 }));
 }
 
 /** The latest percent change of a series, or null when it cannot be computed. */
-export function latestChange(candles: Candle[]): number | null {
-    const points = percentSeries(candles);
+export function latestChange(candles: Candle[], from = -Infinity): number | null {
+    const points = percentSeries(candles, from);
     return points.length === 0 ? null : points[points.length - 1].value;
 }
 
