@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Code2, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, Star } from "lucide-react";
+import { BookOpen, Code2, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, Star, Wallet } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -56,6 +56,9 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 <Link href="/watchlist" className={cn('side-item', pathname === '/watchlist' && 'is-active')}>
                     <Star /> <span className="flex-1">{tx(lang, 'nav.watchlist')}</span>
                     <span className="num text-xs text-faint">{watchlist.length}</span>
+                </Link>
+                <Link href="/portfolio" className={cn('side-item', pathname === '/portfolio' && 'is-active')}>
+                    <Wallet /> {tx(lang, 'nav.portfolio')}
                 </Link>
             </nav>
 
