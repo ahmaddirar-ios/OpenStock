@@ -158,6 +158,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const candleHostRef = useRef<CandleHost | null>(null);
     const displayRef = useRef<CandleSet | null>(null);
     const replayRef = useRef(false);
+    const replayPanelRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const [intervalId, setIntervalId] = useState<string>(DEFAULT_CANDLE_INTERVAL);
@@ -371,6 +372,14 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         if (playing && replayCandles.length > 0 && cursor >= replayCandles.length - 1) setPlaying(false);
     }, [playing, cursor, replayCandles.length]);
+
+    // The transport sits under a 420 px chart, so opening replay scrolls its controls into view
+    // rather than leaving the trader to hunt for them below the fold.
+    useEffect(() => {
+        if (replay && replayStatus === 'ready') {
+            replayPanelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }, [replay, replayStatus]);
 
     // Drawings belong to the symbol, not to the session: switching symbols starts from that symbol's set.
     useEffect(() => {
@@ -1128,6 +1137,32 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             </div>
             )}
 
+            <div ref={replayPanelRef} />
+            {replay && (
+                <ReplayPanel
+                    lang={lang}
+                    candles={replayCandles}
+                    cursor={cursor}
+                    playing={playing}
+                    speed={speed}
+                    account={account}
+                    currency={replaySet?.currency || data?.currency || 'USD'}
+                    loading={replayStatus === 'loading'}
+                    error={orderError}
+                    resumedFrom={resumedFrom}
+                    onCursor={moveCursor}
+                    onTogglePlay={togglePlayback}
+                    onSpeed={setSpeed}
+                    onStart={moveCursor}
+                    onFirst={() => { if (replayCandles.length > 0) moveCursor(replayCandles[0].time); }}
+                    onRandom={() => { if (replayCandles.length > 0) moveCursor(replayCandles[randomCursor(replayCandles.length)].time); }}
+                    onExit={exitReplay}
+                    onBuy={(quantity) => placePaperOrder('buy', quantity)}
+                    onSell={(quantity) => placePaperOrder('sell', quantity)}
+                    onReset={resetPaperAccount}
+                />
+            )}
+
             {!replay && compareList.length > 0 && (
                 <div className="flex flex-wrap items-center gap-3 rounded-[10px] bg-page/60 px-3 py-1.5 text-[12px]" dir="ltr">
                     <span className="text-[11px] font-semibold text-faint">{t('chart.compare')}</span>
@@ -1196,31 +1231,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             <div className={cn(expanded && 'fixed inset-3 z-50 rounded-[14px] bg-card p-3 shadow-[0_0_0_4px_var(--frame),0_24px_60px_oklch(0_0_0/0.6)]')}>
                 {body}
             </div>
-
-            {replay && (
-                <ReplayPanel
-                    lang={lang}
-                    candles={replayCandles}
-                    cursor={cursor}
-                    playing={playing}
-                    speed={speed}
-                    account={account}
-                    currency={replaySet?.currency || data?.currency || 'USD'}
-                    loading={replayStatus === 'loading'}
-                    error={orderError}
-                    resumedFrom={resumedFrom}
-                    onCursor={moveCursor}
-                    onTogglePlay={togglePlayback}
-                    onSpeed={setSpeed}
-                    onStart={moveCursor}
-                    onFirst={() => { if (replayCandles.length > 0) moveCursor(replayCandles[0].time); }}
-                    onRandom={() => { if (replayCandles.length > 0) moveCursor(replayCandles[randomCursor(replayCandles.length)].time); }}
-                    onExit={exitReplay}
-                    onBuy={(quantity) => placePaperOrder('buy', quantity)}
-                    onSell={(quantity) => placePaperOrder('sell', quantity)}
-                    onReset={resetPaperAccount}
-                />
-            )}
 
             <p className="text-[12px] text-faint">{t(replay ? 'replay.noFuture' : 'chart.drawingHint')}</p>
             <p className="text-[12px] text-faint">
