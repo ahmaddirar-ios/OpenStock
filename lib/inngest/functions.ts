@@ -5,6 +5,8 @@ import { getAllUsersForNewsEmail, getWatchlistSymbolsByEmail } from "@/lib/actio
 import { getNews } from "@/lib/actions/finnhub.actions";
 import { getFormattedTodayDate } from "@/lib/utils";
 import { callAIProviderWithFallback } from "@/lib/ai-provider";
+import { refreshScreenerSlice, SCREENER_BATCH_LIMIT } from "@/lib/screener-refresh";
+import { SCREENER_TOTAL } from "@/lib/screener-universe";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
@@ -478,5 +480,22 @@ export const checkInactiveUsers = inngest.createFunction(
         });
 
         return { processed: inactiveUsers.length, sent: results };
+    }
+);
+
+// Keeps the screener snapshot warm without anyone opening the page. Walks the universe in batches,
+// one step each, so a slow Yahoo day does not fail the whole run.
+export const refreshScreener = inngest.createFunction(
+    { id: 'refresh-screener', concurrency: 1, triggers: [{ cron: '0 6 * * *' }] }, // Daily at 06:00
+    async ({ step }) => {
+        const offsets: number[] = [];
+        for (let offset = 0; offset < SCREENER_TOTAL; offset += SCREENER_BATCH_LIMIT) offsets.push(offset);
+
+        let priced = 0;
+        for (const offset of offsets) {
+            const result = await step.run(`screener-batch-${offset}`, () => refreshScreenerSlice(offset, SCREENER_BATCH_LIMIT));
+            priced += result.priced;
+        }
+        return { batches: offsets.length, priced };
     }
 );
