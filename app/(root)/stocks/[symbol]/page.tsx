@@ -4,6 +4,7 @@ import TradingViewWidget from "@/components/TradingViewWidget";
 import StockHeader, { StockHeaderSkeleton } from "@/components/stocks/StockHeader";
 import StockSentimentCard from "@/components/stocks/StockSentimentCard";
 import StockChart from "@/components/stocks/StockChart";
+import YahooChart from "@/components/stocks/YahooChart";
 import Panel from "@/components/Panel";
 import NewsList from "@/components/watchlist/NewsList";
 import NewsSkeleton from "@/components/watchlist/NewsSkeleton";
@@ -16,6 +17,7 @@ import {
 import { getStockSentimentInsights } from '@/lib/actions/adanos.actions';
 import { getStockMetrics } from '@/lib/actions/finnhub.actions';
 import { formatSymbolForTradingView, isChartEmbeddable, tradingViewSymbolUrl } from '@/lib/utils';
+import { yahooCandleSymbol } from '@/lib/yahoo-candles';
 import { getLang } from '@/lib/i18n-server';
 import { tx, type Lang } from '@/lib/i18n';
 import { arDigits } from "@/lib/i18n";
@@ -64,6 +66,11 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                 <div className="flex min-w-0 flex-col gap-3">
                     {isChartEmbeddable(tvSymbol) ? (
                         <StockChart tvSymbol={tvSymbol} scriptUrl={`${scriptUrl}advanced-chart.js`} lang={lang} />
+                    ) : yahooCandleSymbol(symbol) ? (
+                        // TradingView will not embed this exchange, so the chart is drawn from Yahoo's candles
+                        <Panel title={tx(lang, 'stock.chart')} sub={tx(lang, 'stock.chartYahoo')}>
+                            <YahooChart symbol={symbol} tvSymbol={tvSymbol} lang={lang} />
+                        </Panel>
                     ) : (
                         // TradingView refuses this exchange's chart in embeds; say so instead of showing its error
                         <Panel title={tx(lang, 'stock.chart')} sub={tx(lang, 'stock.chartTVOnly')}>
