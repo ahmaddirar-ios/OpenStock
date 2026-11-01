@@ -1,15 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-    CandlestickSeries,
-    HistogramSeries,
-    LineSeries,
-    createChart,
-    type IChartApi,
-    type ISeriesApi,
-    type UTCTimestamp,
-} from 'lightweight-charts';
+import { LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import {
     ChevronDown,
     Download,
@@ -31,7 +23,6 @@ import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawing
 import { getYahooCandles, getCompareCandles } from '@/lib/actions/yahoo-candles.actions';
 import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, type CandleSet } from '@/lib/yahoo-candles';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { ema, macd, rsi, sma, type Series } from '@/lib/indicators';
 import {
     COUNT_GLYPHS,
     COUNT_OPTIONS,
@@ -57,20 +48,15 @@ import {
 } from '@/lib/chart-drawings';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
+import { createCandleHost, token, type CandleHost, type IndicatorFlags } from '@/lib/candle-host';
+import { INDICATOR_BUTTONS, INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import { tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type Indicator = 'sma' | 'ema' | 'rsi' | 'macd';
+type Indicator = keyof IndicatorFlags;
 type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
-
-const INDICATORS: { id: Indicator; label: StringKey }[] = [
-    { id: 'sma', label: 'chart.ind.sma' },
-    { id: 'ema', label: 'chart.ind.ema' },
-    { id: 'rsi', label: 'chart.ind.rsi' },
-    { id: 'macd', label: 'chart.ind.macd' },
-];
 
 const TOOL_KEYS: Record<ShapeTool, StringKey> = {
     trend: 'chart.tool.trend',
@@ -96,19 +82,6 @@ const TOOL_KEYS: Record<ShapeTool, StringKey> = {
     sine: 'chart.pat.sine',
 };
 
-const TIMEFRAME_KEYS: Record<string, StringKey> = {
-    '1m': 'chart.tf.1m',
-    '5m': 'chart.tf.5m',
-    '15m': 'chart.tf.15m',
-    '30m': 'chart.tf.30m',
-    '60m': 'chart.tf.60m',
-    '2h': 'chart.tf.2h',
-    '4h': 'chart.tf.4h',
-    '1d': 'chart.tf.1d',
-    '1wk': 'chart.tf.1wk',
-    '1mo': 'chart.tf.1mo',
-};
-
 /** The interval the trader last chose is theirs, not the page's: it survives a reload and a symbol. */
 const INTERVAL_STORAGE_KEY = 'openstock:chart-interval';
 
@@ -117,33 +90,6 @@ const COMPARE_STORAGE_KEY = 'openstock:chart-compare';
 
 /** Pane colours, in order: the charted symbol first, then each comparison. */
 const COMPARE_COLORS = ['--muted-foreground', '--brand', '--up', '--down'];
-
-// The app's design tokens are authored in oklch()/lab(), which lightweight-charts' own colour parser
-// rejects. Rather than hard-coding a second palette, the browser is asked to rasterise each token and
-// the resulting channels are handed back as rgba(), so the chart still follows the theme.
-const toRgba = (css: string, fallback: string, alpha?: number): string => {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 1;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return fallback;
-    ctx.fillStyle = css;
-    ctx.fillRect(0, 0, 1, 1);
-    const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-    if (a === 0 && alpha == null) return fallback;
-    return `rgba(${r}, ${g}, ${b}, ${alpha ?? Number((a / 255).toFixed(3))})`;
-};
-
-const token = (name: string, fallback: string, alpha?: number) => {
-    if (typeof window === 'undefined') return fallback;
-    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return raw ? toRgba(raw, fallback, alpha) : fallback;
-};
-
-const line = (series: Series, candles: CandleSet['candles']) =>
-    candles.flatMap((candle, i) => {
-        const value = series[i];
-        return value == null ? [] : [{ time: candle.time as UTCTimestamp, value }];
-    });
 
 type Props = {
     /** The app symbol, e.g. 2222.SR, 0700.HK. */
@@ -294,117 +240,57 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     }, [data, compareList, compareData]);
 
     useEffect(() => {
-        const host = hostRef.current;
-        if (!host || !data) return;
-
-        const up = token('--up', '#4ade80');
-        const down = token('--down', '#f87171');
-        const grid = token('--line', '#1c2320');
-
-        const chart = createChart(host, {
-            autoSize: true,
-            layout: {
-                background: { color: 'transparent' },
-                textColor: token('--faint', '#7d8a84'),
-                attributionLogo: false,
-                fontFamily: 'inherit',
-            },
-            grid: { vertLines: { color: grid }, horzLines: { color: grid } },
-            rightPriceScale: { borderColor: grid },
-            timeScale: {
-                borderColor: grid,
-                timeVisible: intervalId !== '1d' && intervalId !== '1wk',
-                secondsVisible: false,
-            },
-            localization: { locale: 'en-US' },
-        });
-
-        const candles = chart.addSeries(CandlestickSeries, {
-            upColor: up,
-            downColor: down,
-            wickUpColor: up,
-            wickDownColor: down,
-            borderVisible: false,
-        });
-        candles.setData(
-            data.candles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })),
-        );
-
-        const upFill = token('--up', '#4ade80', 0.4);
-        const downFill = token('--down', '#f87171', 0.4);
-        const volume = chart.addSeries(HistogramSeries, {
-            priceFormat: { type: 'volume' },
-            priceScaleId: 'volume',
-            priceLineVisible: false,
-            lastValueVisible: false,
-        });
-        volume.setData(
-            data.candles.map((c) => ({
-                time: c.time as UTCTimestamp,
-                value: c.volume,
-                color: c.close >= c.open ? upFill : downFill,
-            })),
-        );
-        chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-
-        const closes = data.candles.map((c) => c.close);
-        if (on.sma) candlesAdd(chart, line(sma(closes, 20), data.candles), token('--brand', '#34d399'));
-        if (on.ema) candlesAdd(chart, line(ema(closes, 50), data.candles), token('--muted-foreground', '#94a3b8'));
+        const el = hostRef.current;
+        if (!el || !data) return;
 
         // Compare: the charted symbol and each comparison as percent change from the first bar, in a
         // pane under the price so a Saudi stock and a US stock share one axis.
-        const compareSets: [string, { time: number; value: number }[]][] = [[symbol, percentSeries(data.candles, compareFrom)]];
-        for (const compared of compareList) {
-            const set = compareData[compared];
-            if (set) compareSets.push([compared, percentSeries(set.candles, compareFrom)]);
-        }
-        if (compareSets.length > 1) {
-            const compareIndex = addPane(chart, 0.24);
+        const extend = (host: CandleHost) => {
+            const { chart, addPane } = host;
+            const compareSets: [string, { time: number; value: number }[]][] = [
+                [symbol, percentSeries(data.candles, compareFrom)],
+            ];
+            for (const compared of compareList) {
+                const set = compareData[compared];
+                if (set) compareSets.push([compared, percentSeries(set.candles, compareFrom)]);
+            }
+            if (compareSets.length <= 1) return;
+
+            const compareIndex = addPane(0.24);
             const palette = COMPARE_COLORS.map((name, i) => token(name, i === 0 ? '#94a3b8' : '#34d399'));
             compareSets.forEach(([, points], i) => {
                 chart
-                    .addSeries(LineSeries, { color: palette[i % palette.length], lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceFormat: { type: 'percent' } }, compareIndex)
+                    .addSeries(
+                        LineSeries,
+                        {
+                            color: palette[i % palette.length],
+                            lineWidth: 1,
+                            priceLineVisible: false,
+                            lastValueVisible: false,
+                            priceFormat: { type: 'percent' },
+                        },
+                        compareIndex,
+                    )
                     .setData(points.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
             });
-        }
+        };
 
-        // Oscillators get their own pane under the price, the way a trader expects to read them.
-        const oscillators = Number(on.rsi) + Number(on.macd);
-        if (on.rsi) {
-            const index = addPane(chart, oscillators > 1 ? 0.2 : 0.28);
-            const series = chart.addSeries(LineSeries, { color: token('--brand', '#34d399'), lineWidth: 1, priceLineVisible: false }, index);
-            series.setData(line(rsi(closes, 14), data.candles));
-        }
-        if (on.macd) {
-            const index = addPane(chart, oscillators > 1 ? 0.2 : 0.28);
-            const { macd: macdLine, signal, histogram } = macd(closes);
-            const hist = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, index);
-            // The palette is read once per render, not per bar: each lookup rasterises the token.
-            const macdUp = token('--up', '#4ade80');
-            const macdDown = token('--down', '#f87171');
-            hist.setData(
-                data.candles.flatMap((c, i) => {
-                    const value = histogram[i];
-                    return value == null ? [] : [{ time: c.time as UTCTimestamp, value, color: value >= 0 ? macdUp : macdDown }];
-                }),
-            );
-            chart.addSeries(LineSeries, { color: token('--brand', '#34d399'), lineWidth: 1, priceLineVisible: false }, index).setData(line(macdLine, data.candles));
-            chart.addSeries(LineSeries, { color: token('--muted-foreground', '#94a3b8'), lineWidth: 1, priceLineVisible: false }, index).setData(line(signal, data.candles));
-        }
+        const host = createCandleHost(el, {
+            timeVisible: intervalId !== '1d' && intervalId !== '1wk',
+            data,
+            indicators: on,
+            extend,
+            onRangeChange: () => setFrame((frame) => frame + 1),
+        });
 
-        chart.timeScale().fitContent();
-        chartRef.current = chart;
-        seriesRef.current = candles;
-
-        // v5 returns void from subscribe*, so the handler is kept and handed back for the cleanup.
-        const onRangeChange = () => setFrame((frame) => frame + 1);
-        chart.timeScale().subscribeVisibleLogicalRangeChange(onRangeChange);
+        host.fit();
+        chartRef.current = host.chart;
+        seriesRef.current = host.price;
 
         return () => {
-            chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRangeChange);
-            chart.remove();
             chartRef.current = null;
             seriesRef.current = null;
+            host.destroy();
         };
     }, [data, on, intervalId, compareList, compareData, symbol, compareFrom]);
 
@@ -573,7 +459,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     };
 
     const timeframes = useMemo(
-        () => CANDLE_INTERVALS.map((i) => ({ id: i.id as string, label: t(TIMEFRAME_KEYS[i.id] ?? 'chart.tf.1d') })),
+        () => CANDLE_INTERVALS.map((i) => ({ id: i.id as string, label: t(INTERVAL_LABEL_KEYS[i.id] ?? 'chart.tf.1d') })),
         [t],
     );
 
@@ -700,7 +586,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     </button>
                 ))}
                 <span className="mx-1 h-4 w-px bg-line" />
-                {INDICATORS.map((indicator) => (
+                {INDICATOR_BUTTONS.map((indicator) => (
                     <button
                         key={indicator.id}
                         type="button"
@@ -1048,17 +934,4 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             </p>
         </div>
     );
-}
-
-/** Adds a line series to the price pane (pane 0) — the SMA and EMA overlays. */
-function candlesAdd(chart: IChartApi, points: { time: UTCTimestamp; value: number }[], color: string) {
-    if (points.length === 0) return;
-    chart.addSeries(LineSeries, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(points);
-}
-
-/** Creates a pane under the price and returns its index, so an oscillator can be added to it. */
-function addPane(chart: IChartApi, stretch: number): number {
-    const pane = chart.addPane();
-    pane.setStretchFactor(stretch);
-    return chart.panes().indexOf(pane);
 }
