@@ -15,19 +15,22 @@ import {
     Download,
     Eraser,
     ExternalLink,
+    GitCompare,
     Loader2,
     Maximize2,
     Minimize2,
     MousePointer2,
     Pencil,
+    Plus,
     RefreshCw,
     Trash2,
     Upload,
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
-import { getYahooCandles } from '@/lib/actions/yahoo-candles.actions';
+import { getYahooCandles, getCompareCandles } from '@/lib/actions/yahoo-candles.actions';
 import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, type CandleSet } from '@/lib/yahoo-candles';
+import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
 import { ema, macd, rsi, sma, type Series } from '@/lib/indicators';
 import {
     COUNT_GLYPHS,
@@ -109,6 +112,12 @@ const TIMEFRAME_KEYS: Record<string, StringKey> = {
 /** The interval the trader last chose is theirs, not the page's: it survives a reload and a symbol. */
 const INTERVAL_STORAGE_KEY = 'openstock:chart-interval';
 
+/** The symbols the trader compares against, remembered like the interval. */
+const COMPARE_STORAGE_KEY = 'openstock:chart-compare';
+
+/** Pane colours, in order: the charted symbol first, then each comparison. */
+const COMPARE_COLORS = ['--muted-foreground', '--brand', '--up', '--down'];
+
 // The app's design tokens are authored in oklch()/lab(), which lightweight-charts' own colour parser
 // rejects. Rather than hard-coding a second palette, the browser is asked to rasterise each token and
 // the resulting channels are handed back as rgba(), so the chart still follows the theme.
@@ -180,6 +189,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [transfer, setTransfer] = useState<'ok' | 'bad' | 'copied' | 'blocked' | null>(null);
     // Bumped whenever the chart pans or zooms, so the drawings are re-projected onto the new scale.
     const [, setFrame] = useState(0);
+    // Compare overlays: the symbols, their candles, and the little add control.
+    const [compareList, setCompareList] = useState<string[]>([]);
+    const [compareData, setCompareData] = useState<Record<string, CandleSet | null>>({});
+    const [compareInput, setCompareInput] = useState('');
+    const [compareOpen, setCompareOpen] = useState(false);
 
     // Read after mount rather than during the first render: the server has no storage, and reading it
     // in the initial state would hydrate a different toolbar than the one that was sent.
@@ -199,6 +213,40 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             /* private mode: the choice simply is not remembered */
         }
     }, [intervalId]);
+
+    // The compared symbols are read after mount (localStorage has no server side) and saved on change.
+    useEffect(() => {
+        try {
+            const stored = JSON.parse(window.localStorage.getItem(COMPARE_STORAGE_KEY) ?? '[]');
+            if (Array.isArray(stored)) setCompareList(normalizeCompareInputs(stored.map(String), symbol));
+        } catch {
+            /* private mode: no remembered comparisons */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(COMPARE_STORAGE_KEY, JSON.stringify(compareList));
+        } catch {
+            /* private mode: the choice simply is not remembered */
+        }
+    }, [compareList]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (compareList.length === 0) {
+            setCompareData({});
+            return;
+        }
+        void (async () => {
+            const entries = await Promise.all(
+                compareList.map(async (compared) => [compared, await getCompareCandles(compared, intervalId)] as const),
+            );
+            if (!cancelled) setCompareData(Object.fromEntries(entries));
+        })();
+        return () => { cancelled = true; };
+    }, [compareList, intervalId]);
 
     const load = useCallback(async () => {
         setStatus('loading');
@@ -295,6 +343,23 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         if (on.sma) candlesAdd(chart, line(sma(closes, 20), data.candles), token('--brand', '#34d399'));
         if (on.ema) candlesAdd(chart, line(ema(closes, 50), data.candles), token('--muted-foreground', '#94a3b8'));
 
+        // Compare: the charted symbol and each comparison as percent change from the first bar, in a
+        // pane under the price so a Saudi stock and a US stock share one axis.
+        const compareSets: [string, { time: number; value: number }[]][] = [[symbol, percentSeries(data.candles)]];
+        for (const compared of compareList) {
+            const set = compareData[compared];
+            if (set) compareSets.push([compared, percentSeries(set.candles)]);
+        }
+        if (compareSets.length > 1) {
+            const compareIndex = addPane(chart, 0.24);
+            const palette = COMPARE_COLORS.map((name, i) => token(name, i === 0 ? '#94a3b8' : '#34d399'));
+            compareSets.forEach(([, points], i) => {
+                chart
+                    .addSeries(LineSeries, { color: palette[i % palette.length], lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceFormat: { type: 'percent' } }, compareIndex)
+                    .setData(points.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
+            });
+        }
+
         // Oscillators get their own pane under the price, the way a trader expects to read them.
         const oscillators = Number(on.rsi) + Number(on.macd);
         if (on.rsi) {
@@ -333,7 +398,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             chartRef.current = null;
             seriesRef.current = null;
         };
-    }, [data, on, intervalId]);
+    }, [data, on, intervalId, compareList, compareData, symbol]);
 
     useEffect(() => {
         if (!expanded) return;
@@ -424,6 +489,17 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         setDrawings([]);
         setSelectedId(null);
     };
+
+    const addCompare = () => {
+        const candidate = compareYahooSymbol(compareInput);
+        const valid = candidate
+            && candidate !== symbol.trim().toUpperCase()
+            && !compareList.includes(candidate)
+            && compareList.length < COMPARE_LIMIT;
+        if (valid) setCompareList((list) => [...list, candidate]);
+        setCompareInput('');
+    };
+    const removeCompare = (compared: string) => setCompareList((list) => list.filter((s) => s !== compared));
 
     const summary = (drawing: Drawing) => {
         const prices = drawing.points.map((point) => point.price.toFixed(2));
@@ -565,6 +641,14 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
     const hasCandles = (data?.candles.length ?? 0) > 0;
 
+    const compareLegend = [
+        ...(data ? [{ symbol, change: latestChange(data.candles) }] : []),
+        ...compareList.flatMap((compared) => {
+            const set = compareData[compared];
+            return set ? [{ symbol: compared, change: latestChange(set.candles) }] : [];
+        }),
+    ];
+
     const dropdown = (id: MenuId, label: string, items: MenuItem[], footer?: ReactNode) => (
         <div key={id} className="relative">
             <button
@@ -619,6 +703,56 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         {t(indicator.label)}
                     </button>
                 ))}
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setCompareOpen((value) => !value)}
+                        aria-expanded={compareOpen}
+                        className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', compareList.length > 0 && 'is-up')}
+                        title={t('chart.compare')}
+                    >
+                        <GitCompare className="size-3.5" /> {t('chart.compare')}
+                        {compareList.length > 0 && <span className="num text-faint">{compareList.length}</span>}
+                    </button>
+                    {compareOpen && (
+                        <>
+                            <div className="fixed inset-0 z-20" onClick={() => setCompareOpen(false)} />
+                            <div className="absolute end-0 z-30 mt-1 flex w-64 flex-col gap-1.5 rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
+                                <p className="px-1 text-[11.5px] text-faint">{t('chart.compareHint')}</p>
+                                <form
+                                    onSubmit={(event) => { event.preventDefault(); addCompare(); }}
+                                    className="flex gap-1.5"
+                                >
+                                    <input
+                                        value={compareInput}
+                                        onChange={(event) => setCompareInput(event.target.value)}
+                                        placeholder={t('chart.comparePlaceholder')}
+                                        dir="ltr"
+                                        className="mono h-8 flex-1 rounded-[8px] bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
+                                    />
+                                    <button type="submit" className="pill h-8 px-2.5" disabled={compareList.length >= COMPARE_LIMIT} aria-label={t('chart.compareAdd')}>
+                                        <Plus className="size-3.5" />
+                                    </button>
+                                </form>
+                                {compareList.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                        {compareList.map((compared) => (
+                                            <span key={compared} className="pill mono h-7 gap-1.5 px-2 text-[11.5px]">
+                                                {compared}
+                                                <button type="button" onClick={() => removeCompare(compared)} aria-label={`${t('chart.compareRemove')} ${compared}`}>
+                                                    <X className="size-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {compareList.length >= COMPARE_LIMIT && (
+                                    <p className="px-1 text-[11px] text-faint">{t('chart.compareMax')}</p>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
                 <button
                     type="button"
                     onClick={() => setExpanded((value) => !value)}
@@ -827,6 +961,23 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     onChange={(event) => void importFile(event.target.files?.[0])}
                 />
             </div>
+
+            {compareList.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 rounded-[10px] bg-page/60 px-3 py-1.5 text-[12px]" dir="ltr">
+                    <span className="text-[11px] font-semibold text-faint">{t('chart.compare')}</span>
+                    {compareLegend.map((entry, i) => (
+                        <span key={entry.symbol} className="flex items-center gap-1.5">
+                            <span className="size-2 rounded-full" style={{ background: `var(${COMPARE_COLORS[i % COMPARE_COLORS.length]})` }} />
+                            <span className="mono">{entry.symbol}</span>
+                            {entry.change != null && (
+                                <span className={entry.change >= 0 ? 'text-up' : 'text-down'}>
+                                    {entry.change >= 0 ? '+' : ''}{entry.change.toFixed(2)}%
+                                </span>
+                            )}
+                        </span>
+                    ))}
+                </div>
+            )}
 
             {drawings.length > 0 && (
                 <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-[10px] bg-page/60 p-1">
