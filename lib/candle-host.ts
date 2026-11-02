@@ -50,6 +50,8 @@ export type CandleHost = {
     /** Spaces the right axis arithmetically, logarithmically, or as percent from the base bar. */
     setScaleMode: (mode: ScaleMode) => void;
     setTimeVisible: (visible: boolean) => void;
+    /** The chart as an image, for the export button; null before the library is ready. */
+    screenshot: () => HTMLCanvasElement | null;
     fit: () => void;
     /**
      * The bar under the crosshair — or the last bar when the cursor is away — with the value of
@@ -419,6 +421,13 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             options.onPriceSeries?.(price);
         },
         setTimeVisible: (visible) => chart.timeScale().applyOptions({ timeVisible: visible }),
+        screenshot: () => {
+            try {
+                return chart.takeScreenshot();
+            } catch {
+                return null;
+            }
+        },
         // `fitContent()` waits on the chart's own layout pass, so a pane fitted while its container
         // is still settling keeps the default window instead of the data. The logical range is the
         // same intent, applied immediately and deterministically.

@@ -27,7 +27,7 @@ import {
 } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
-export type ActiveTool = ShapeTool | 'select';
+export type ActiveTool = ShapeTool | 'select' | 'measure';
 
 type Props = {
     drawings: Drawing[];
@@ -91,6 +91,8 @@ export default function ChartDrawings({
     const [draft, setDraft] = useState<DrawPoint[]>([]);
     const [preview, setPreview] = useState<DrawPoint | null>(null);
     const [dragging, setDragging] = useState<{ id: string; index: number } | null>(null);
+    // The measure box lives only while the measure tool is on: it is a reading, not a drawing.
+    const [measure, setMeasure] = useState<{ from: DrawPoint; to: DrawPoint } | null>(null);
     const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const drawingsRef = useRef(drawings);
@@ -131,6 +133,11 @@ export default function ChartDrawings({
     const onPointerDown = (event: React.PointerEvent) => {
         if (!tool) return;
         const cursor = cursorOf(event);
+        if (tool === 'measure') {
+            const point = fromScreen(cursor.x, cursor.y);
+            if (point) setMeasure({ from: point, to: point });
+            return;
+        }
         const drawn = drawings.map(screenOf);
         const drawable = drawings.map((_, i) => usable(drawn[i]));
 
@@ -182,6 +189,11 @@ export default function ChartDrawings({
 
     const onPointerMove = (event: React.PointerEvent) => {
         const cursor = cursorOf(event);
+        if (tool === 'measure' && measure) {
+            const point = fromScreen(cursor.x, cursor.y);
+            if (point) setMeasure({ from: measure.from, to: point });
+            return;
+        }
         if (dragging) {
             const point = fromScreen(cursor.x, cursor.y);
             if (point) onMoveHandle(dragging.id, dragging.index, snapPoint ? snapPoint(point) : point);
@@ -207,6 +219,7 @@ export default function ChartDrawings({
     };
     const onKeyDown = (event: React.KeyboardEvent) => {
         if (event.key !== 'Escape') return;
+        setMeasure(null);
         setDraft([]);
         setPreview(null);
         setDragging(null);
@@ -219,6 +232,47 @@ export default function ChartDrawings({
         onEditText(editing.id, editing.value);
         setEditing(null);
     };
+
+    // The measure box: a rectangle between the two points with what it measures beside it.
+    const measureBox = (() => {
+        if (!measure) return null;
+        const a = toScreen(measure.from);
+        const b = toScreen(measure.to);
+        if (!a || !b) return null;
+        const price = measure.to.price - measure.from.price;
+        const percent = measure.from.price === 0 ? 0 : (price / measure.from.price) * 100;
+        const seconds = Math.abs(measure.to.time - measure.from.time);
+        const days = seconds / 86400;
+        const span = days >= 1 ? `${days.toFixed(1)}D` : `${(seconds / 3600).toFixed(1)}H`;
+        const tone = price >= 0 ? '#26A69A' : '#EF5350';
+        const label = `${price >= 0 ? '+' : '−'}${Math.abs(price).toFixed(2)} (${percent >= 0 ? '+' : '−'}${Math.abs(percent).toFixed(2)}%) · ${span}`;
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        return (
+            <g key="measure">
+                <rect
+                    x={x}
+                    y={y}
+                    width={Math.abs(b.x - a.x)}
+                    height={Math.abs(b.y - a.y)}
+                    fill={`color-mix(in oklab, ${tone} 16%, transparent)`}
+                    stroke={tone}
+                    strokeWidth={1.4}
+                />
+                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={tone} strokeWidth={1.2} strokeDasharray="4 3" />
+                <text
+                    x={b.x + 8}
+                    y={b.y - 8}
+                    fontSize={12}
+                    className="mono"
+                    fill={tone}
+                    style={{ paintOrder: 'stroke', stroke: 'black', strokeWidth: 3 }}
+                >
+                    {label}
+                </text>
+            </g>
+        );
+    })();
 
     // Everything stored, plus the shape being drawn right now.
     const shapes: Drawing[] = draft.length > 0 && preview && tool && tool !== 'select'
@@ -539,6 +593,7 @@ export default function ChartDrawings({
                 aria-label={label('chart.canvas')}
             >
                 {shapes.map((drawing) => shapeFor(drawing))}
+                {tool === 'measure' && measureBox}
                 {/* Dots already placed, while a multi-click shape is being drawn. */}
                 {draft.map((point, i) => {
                     const spot = toScreen(point);
@@ -571,7 +626,7 @@ export default function ChartDrawings({
             )}
 
             {/* How many clicks are still expected, so a five-point pattern is not a guessing game. */}
-            {tool && tool !== 'select' && pointsNeeded(tool) > 1 && (
+            {tool && tool !== 'select' && tool !== 'measure' && pointsNeeded(tool) > 1 && (
                 <div className="absolute bottom-2 left-2 z-20 rounded-full bg-page/85 px-2.5 py-1 text-[11.5px] text-faint shadow-[inset_0_0_0_1px_var(--line)]">
                     {label('chart.clicks')} {draft.length + 1}/{pointsNeeded(tool)}
                 </div>

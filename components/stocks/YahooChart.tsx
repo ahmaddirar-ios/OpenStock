@@ -13,6 +13,7 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import {
+    Camera,
     ChevronDown,
     ClipboardPaste,
     Copy,
@@ -34,6 +35,7 @@ import {
     Pencil,
     Plus,
     RefreshCw,
+    Ruler,
     Trash2,
     Upload,
     X,
@@ -818,6 +820,50 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         setSelectedId(null);
     };
 
+    /** The chart plus the drawings layer, stamped with the symbol and interval, as a PNG. */
+    const exportImage = useCallback(async () => {
+        const host = candleHostRef.current;
+        const shot = host?.screenshot();
+        if (!host || !shot) return;
+        const out = document.createElement('canvas');
+        out.width = shot.width;
+        out.height = shot.height;
+        const ctx = out.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(shot, 0, 0);
+
+        // The drawings are an SVG layer over the canvas, so it is serialised and painted on top.
+        const svg = hostRef.current?.parentElement?.querySelector('svg.absolute.inset-0') as SVGSVGElement | null;
+        if (svg && svg.clientWidth > 0) {
+            const clone = svg.cloneNode(true) as SVGSVGElement;
+            clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            clone.setAttribute('viewBox', `0 0 ${svg.clientWidth} ${svg.clientHeight}`);
+            clone.setAttribute('width', String(shot.width));
+            clone.setAttribute('height', String(shot.height));
+            clone.setAttribute('font-family', 'ui-sans-serif, system-ui, sans-serif');
+            const markup = new XMLSerializer().serializeToString(clone);
+            await new Promise<void>((resolve) => {
+                const image = new Image();
+                image.onload = () => {
+                    ctx.drawImage(image, 0, 0, shot.width, shot.height);
+                    resolve();
+                };
+                image.onerror = () => resolve();
+                image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+            });
+        }
+
+        const scale = shot.width / Math.max(1, hostRef.current?.clientWidth ?? shot.width);
+        ctx.font = `600 ${Math.round(13 * scale)}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
+        ctx.fillText(`${symbol} · ${intervalId} · OpenStock`, 12 * scale, 20 * scale);
+
+        const link = document.createElement('a');
+        link.download = `openstock-${symbol.replace(/[^A-Za-z0-9]/g, '')}-${intervalId}.png`;
+        link.href = out.toDataURL('image/png');
+        link.click();
+    }, [symbol, intervalId]);
+
     const addCompare = () => {
         const candidate = compareYahooSymbol(compareInput);
         const valid = candidate
@@ -1274,8 +1320,17 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 {!replay && <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />}
                 <button
                     type="button"
-                    onClick={() => setExpanded((value) => !value)}
+                    onClick={() => void exportImage()}
                     className="icon-btn ms-auto"
+                    aria-label={t('chart.export')}
+                    title={t('chart.export')}
+                >
+                    <Camera />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setExpanded((value) => !value)}
+                    className="icon-btn"
                     aria-label={t(expanded ? 'chart.exitFullscreen' : 'chart.fullscreen')}
                     title={t(expanded ? 'chart.exitFullscreen' : 'chart.fullscreen')}
                 >
@@ -1294,6 +1349,15 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     title={t('chart.tool.select')}
                 >
                     <MousePointer2 className="size-3.5" /> {t('chart.tool.select')}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => startTool('measure')}
+                    aria-pressed={tool === 'measure'}
+                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', tool === 'measure' && 'is-up')}
+                    title={t('chart.tool.measure')}
+                >
+                    <Ruler className="size-3.5" /> {t('chart.tool.measure')}
                 </button>
                 {dropdown(
                     'lines',
