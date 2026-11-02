@@ -3,6 +3,8 @@
 // Browser-only: it needs a real element and the page's computed CSS tokens.
 
 import {
+    AreaSeries,
+    BarSeries,
     CandlestickSeries,
     HistogramSeries,
     LineSeries,
@@ -10,8 +12,10 @@ import {
     type IChartApi,
     type ISeriesApi,
     type MouseEventParams,
+    type SeriesType,
     type UTCTimestamp,
 } from 'lightweight-charts';
+import { heikinAshi, type ChartType } from '@/lib/chart-view';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import {
     STUDIES,
@@ -27,14 +31,19 @@ import type { CandleSet } from '@/lib/yahoo-candles';
 
 export type CandleHost = {
     chart: IChartApi;
-    /** The candle series, which is what screen coordinates are measured against. */
-    price: ISeriesApi<'Candlestick'>;
+    /**
+     * The series the price is drawn on, and what screen coordinates are measured against. Its type
+     * follows the chart type, so consumers hold this live reference rather than a snapshot.
+     */
+    price: ISeriesApi<SeriesType>;
     /** Adds a pane under the price and returns its index (the compare pane uses it). */
     addPane: (stretch: number) => number;
     /** Replaces the candles without touching the view, so a live update never jumps the zoom. */
     setData: (set: CandleSet | null) => void;
     /** Replaces every study on the chart: overlays on the price, oscillators in their own panes. */
     setStudies: (studies: StudyConfig[]) => void;
+    /** Redraws the same candles as bodies, hollow bodies, Heikin Ashi, bars, a line or an area. */
+    setChartType: (type: ChartType) => void;
     setTimeVisible: (visible: boolean) => void;
     fit: () => void;
     /**
@@ -56,6 +65,13 @@ export type CandleHostOptions = {
     /** The candles the host starts with; more can arrive through setData. */
     data?: CandleSet | null;
     studies?: StudyConfig[];
+    /** The type to open with; anything unknown reads as candles. */
+    chartType?: ChartType;
+    /**
+     * Called with the price series now on screen — once at creation and again whenever the chart
+     * type replaces it, so the page can re-attach markers to the series that exists.
+     */
+    onPriceSeries?: (series: ISeriesApi<SeriesType>) => void;
     /**
      * Extra series the page needs under the price and above the oscillators — the compare pane.
      * Runs once per host, before the indicator panes are laid out.
@@ -131,13 +147,56 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         localization: { locale: 'en-US' },
     });
 
-    const price = chart.addSeries(CandlestickSeries, {
-        upColor: up,
-        downColor: down,
-        wickUpColor: up,
-        wickDownColor: down,
-        borderVisible: false,
-    });
+    const brand = token('--brand', '#34d399');
+    const brandFill = token('--brand', '#34d399', 0.24);
+    let chartType: ChartType = options.chartType ?? 'candles';
+
+    // A series' type is fixed at creation in lightweight-charts, so changing the chart type means
+    // replacing this one series. The volume series is on its own scale at the bottom, so it can stay.
+    const createPriceSeries = (): ISeriesApi<SeriesType> => {
+        if (chartType === 'bars') {
+            return chart.addSeries(BarSeries, { upColor: up, downColor: down, thinBars: false });
+        }
+        if (chartType === 'line') {
+            return chart.addSeries(LineSeries, {
+                color: brand,
+                lineWidth: 2,
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+        }
+        if (chartType === 'area') {
+            return chart.addSeries(AreaSeries, {
+                lineColor: brand,
+                topColor: brandFill,
+                bottomColor: 'rgba(0,0,0,0)',
+                lineWidth: 2,
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+        }
+        if (chartType === 'hollow') {
+            // The up body is not filled: its outline and wick carry the colour instead.
+            return chart.addSeries(CandlestickSeries, {
+                upColor: 'rgba(0,0,0,0)',
+                downColor: down,
+                borderVisible: true,
+                borderUpColor: up,
+                borderDownColor: down,
+                wickUpColor: up,
+                wickDownColor: down,
+            });
+        }
+        return chart.addSeries(CandlestickSeries, {
+            upColor: up,
+            downColor: down,
+            wickUpColor: up,
+            wickDownColor: down,
+            borderVisible: false,
+        });
+    };
+
+    let price = createPriceSeries();
 
     const volume = chart.addSeries(HistogramSeries, {
         priceFormat: { type: 'volume' },
@@ -167,7 +226,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let hoverTime: number | null = null;
     const readoutListeners = new Set<(readout: BarReadout | null) => void>();
 
-    const readAt = (time: number | null = hoverTime) => readoutAt(data?.candles ?? [], readoutSeries, time);
+    const readAt = (time: number | null = hoverTime) => readoutAt(bars(), readoutSeries, time);
     const emitReadout = () => {
         const readout = readAt();
         for (const listener of readoutListeners) listener(readout);
@@ -188,17 +247,32 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         return chart.panes().indexOf(pane);
     };
 
-    const applyCandles = () => {
+    /**
+     * The bars every consumer sees: the real candles, or their Heikin Ashi reading. Choosing Heikin
+     * Ashi changes the chart's data, not just its paint — a study and the legend then agree with the
+     * axis they are drawn against (and with TradingView), at the cost of the values differing from
+     * the strategy lab, which always works on real candles.
+     */
+    const bars = () => {
         const candles = data?.candles ?? [];
-        price.setData(
-            candles.map((candle) => ({
-                time: candle.time as UTCTimestamp,
-                open: candle.open,
-                high: candle.high,
-                low: candle.low,
-                close: candle.close,
-            })),
-        );
+        return chartType === 'heikin' ? heikinAshi(candles) : candles;
+    };
+
+    const applyCandles = () => {
+        const candles = bars();
+        if (chartType === 'line' || chartType === 'area') {
+            price.setData(candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.close })));
+        } else {
+            price.setData(
+                candles.map((candle) => ({
+                    time: candle.time as UTCTimestamp,
+                    open: candle.open,
+                    high: candle.high,
+                    low: candle.low,
+                    close: candle.close,
+                })),
+            );
+        }
         volume.setData(
             candles.map((candle) => ({
                 time: candle.time as UTCTimestamp,
@@ -217,7 +291,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     const buildStudies = () => {
         clearIndicators();
         readoutSeries = {};
-        const candles = data?.candles ?? [];
+        const candles = bars();
         if (candles.length === 0) return;
 
         const oscillators = studies.filter((study) => STUDIES[study.id]?.group === 'oscillator').length;
@@ -285,7 +359,9 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
 
     const host: CandleHost = {
         chart,
-        price,
+        get price() {
+            return price;
+        },
         addPane,
         setData: (set) => {
             data = set;
@@ -297,6 +373,16 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             studies = next;
             buildStudies();
             emitReadout();
+        },
+        setChartType: (next) => {
+            if (next === chartType) return;
+            chartType = next;
+            chart.removeSeries(price);
+            price = createPriceSeries();
+            applyCandles();
+            buildStudies();
+            emitReadout();
+            options.onPriceSeries?.(price);
         },
         setTimeVisible: (visible) => chart.timeScale().applyOptions({ timeVisible: visible }),
         // `fitContent()` waits on the chart's own layout pass, so a pane fitted while its container
@@ -328,6 +414,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
 
     applyCandles();
+    options.onPriceSeries?.(price);
     // The page's own panes (compare) go under the price and above the oscillators.
     options.extend?.(host);
     buildStudies();

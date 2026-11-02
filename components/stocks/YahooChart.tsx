@@ -8,6 +8,7 @@ import {
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type SeriesMarker,
+    type SeriesType,
     type Time,
     type UTCTimestamp,
 } from 'lightweight-charts';
@@ -93,10 +94,17 @@ import ChartLegend from '@/components/stocks/ChartLegend';
 import type { BarReadout } from '@/lib/chart-readout';
 import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
+import {
+    CHART_TYPES,
+    CHART_TYPE_KEYS,
+    readChartType,
+    writeChartType,
+    type ChartType,
+} from '@/lib/chart-view';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -161,7 +169,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
     const hostRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
-    const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+    const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
     // Strategy markers live on the price series; the plugin is rebuilt with every host, so the
     // markers to draw are kept in a ref and re-applied to whichever series is standing.
     const markersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
@@ -175,6 +183,17 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const fileRef = useRef<HTMLInputElement>(null);
 
     const [intervalId, setIntervalId] = useState<string>(DEFAULT_CANDLE_INTERVAL);
+    // The chart type is this browser's, like the interval: read after mount, saved on change. The
+    // host is built with it through a ref, so switching type never rebuilds the whole chart.
+    const [chartType, setChartType] = useState<ChartType>('candles');
+    const chartTypeRef = useRef<ChartType>(chartType);
+    chartTypeRef.current = chartType;
+    useEffect(() => {
+        setChartType(readChartType(window.localStorage));
+    }, []);
+    useEffect(() => {
+        writeChartType(window.localStorage, chartType);
+    }, [chartType]);
     const [data, setData] = useState<CandleSet | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     // The study list is this browser's, shared with every pane on /charts: read after mount, saved
@@ -484,6 +503,13 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             timeVisible: intervalId !== '1d' && intervalId !== '1wk',
             data: current,
             studies: studiesRef.current,
+            chartType: chartTypeRef.current,
+            onPriceSeries: (series) => {
+                // The host replaces the price series when the chart type changes; the markers and the
+                // coordinate reference must follow the series that is actually on screen.
+                seriesRef.current = series;
+                markersApiRef.current = createSeriesMarkers(series, markersRef.current);
+            },
             extend,
             onRangeChange: () => setFrame((frame) => frame + 1),
         });
@@ -500,8 +526,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         // chart: it fires on hover, on a replay step, and on an indicator toggle alike.
         const unsubscribeReadout = host.subscribeReadout(setReadout);
         chartRef.current = host.chart;
-        seriesRef.current = host.price;
-        markersApiRef.current = createSeriesMarkers(host.price, markersRef.current);
 
         return () => {
             unsubscribeReadout();
@@ -517,6 +541,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         candleHostRef.current?.setStudies(studies);
     }, [studies]);
+
+    // A chart type is a redraw, not a rebuild: the zoom, panes and drawings stay put.
+    useEffect(() => {
+        candleHostRef.current?.setChartType(chartType);
+    }, [chartType]);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
@@ -994,6 +1023,19 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 ))}
                 <span className="mx-1 h-4 w-px bg-line" />
                 <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
+                {dropdown(
+                    'type',
+                    t('chart.type'),
+                    CHART_TYPES.map((type) => ({
+                        key: type,
+                        label: t(CHART_TYPE_KEYS[type]),
+                        onClick: () => {
+                            setChartType(type);
+                            setMenu(null);
+                        },
+                        active: chartType === type,
+                    })),
+                )}
                 <button
                     type="button"
                     onClick={() => (replay ? exitReplay() : startReplay())}
