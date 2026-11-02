@@ -29,19 +29,24 @@ type Props = {
 export default function ChartStudiesMenu({ lang, studies, onChange, className }: Props) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
-    // Text being typed in a parameter box, kept per input until it is committed on blur: clamping on
-    // every keystroke would rewrite "1" to the minimum before the trader finishes "120".
+    // Text being typed in a parameter box, kept per input so the box shows exactly what was typed
+    // while the chart already follows the last usable number. A draft is dropped on blur, so the box
+    // falls back to the clamped value that was actually applied.
     const [drafts, setDrafts] = useState<Record<string, string>>({});
     const box = useRef<HTMLDivElement>(null);
     const t = (key: StringKey) => tx(lang, key);
 
     useEffect(() => {
         if (!open) return;
+        const dismiss = () => {
+            setOpen(false);
+            setDrafts({});
+        };
         const onDown = (event: MouseEvent) => {
-            if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+            if (box.current && !box.current.contains(event.target as Node)) dismiss();
         };
         const onKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setOpen(false);
+            if (event.key === 'Escape') dismiss();
         };
         document.addEventListener('mousedown', onDown);
         document.addEventListener('keydown', onKey);
@@ -61,15 +66,14 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
         onChange(studies.filter((_, i) => i !== index));
     };
 
-    const commit = (index: number, key: string, min: number, max: number) => {
-        const draftKey = `${index}:${key}`;
-        const raw = drafts[draftKey];
-        setDrafts((current) => {
-            const next = { ...current };
-            delete next[draftKey];
-            return next;
-        });
-        if (raw == null || raw.trim() === '') return;
+    /**
+     * Applies a parameter the moment the typed text is usable, so the chart never waits for a blur
+     * that may not arrive (closing the panel by clicking away unmounts the input). A half-typed
+     * "1" therefore keeps its draft and applies nothing until it reads as a number.
+     */
+    const apply = (index: number, key: string, min: number, max: number, raw: string) => {
+        setDrafts((current) => ({ ...current, [`${index}:${key}`]: raw }));
+        if (raw.trim() === '') return;
         const value = Number(raw);
         if (!Number.isFinite(value)) return;
         const clamped = Math.min(max, Math.max(min, value));
@@ -79,6 +83,21 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
             ),
         );
     };
+
+    /** Drops the draft so the box shows the value that was actually applied. */
+    const settle = (index: number, key: string) => {
+        setDrafts((current) => {
+            const next = { ...current };
+            delete next[`${index}:${key}`];
+            return next;
+        });
+    };
+
+    const close = () => {
+        setOpen(false);
+        setDrafts({});
+    };
+
 
     const filtered = useMemo(() => {
         const needle = query.trim().toLowerCase();
@@ -93,7 +112,7 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
         <div ref={box} className={cn('relative', className)}>
             <button
                 type="button"
-                onClick={() => setOpen((value) => !value)}
+                onClick={() => (open ? close() : setOpen(true))}
                 aria-expanded={open}
                 aria-haspopup="dialog"
                 className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', studies.length > 0 && 'is-up')}
@@ -159,9 +178,9 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                             step={param.step}
                                                             value={drafts[draftKey] ?? String(studiesParam(study, param.key))}
                                                             onChange={(event) =>
-                                                                setDrafts((current) => ({ ...current, [draftKey]: event.target.value }))
+                                                                apply(index, param.key, param.min, param.max, event.target.value)
                                                             }
-                                                            onBlur={() => commit(index, param.key, param.min, param.max)}
+                                                            onBlur={() => settle(index, param.key)}
                                                             onKeyDown={(event) => {
                                                                 if (event.key === 'Enter') event.currentTarget.blur();
                                                             }}
@@ -211,7 +230,7 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
 
                     {studies.length >= MAX_STUDIES && (
                         <p className="px-1 pt-1 text-[10.5px] text-warn">
-                            {t('study.full').replace('{n}', String(MAX_STUDIES))}
+                            {t('study.full').replace('{n}', arDigits(MAX_STUDIES, lang))}
                         </p>
                     )}
                 </div>

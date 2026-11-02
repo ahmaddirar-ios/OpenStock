@@ -187,6 +187,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         setStudies(readStudies(window.localStorage));
     }, []);
+    // The chart is built once per symbol/interval; the study list arrives and changes later, so it
+    // is read through a ref. Putting it in the creation deps would rebuild the chart — and throw
+    // away the zoom and the replay position — on every keystroke in a parameter box.
+    const studiesRef = useRef<StudyConfig[]>(studies);
+    studiesRef.current = studies;
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
     const [tool, setTool] = useState<ActiveTool | null>(null);
@@ -478,7 +483,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         const host = createCandleHost(el, {
             timeVisible: intervalId !== '1d' && intervalId !== '1wk',
             data: current,
-            studies,
+            studies: studiesRef.current,
             extend,
             onRangeChange: () => setFrame((frame) => frame + 1),
         });
@@ -506,7 +511,12 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             markersApiRef.current = null;
             host.destroy();
         };
-    }, [hasDisplay, studies, intervalId, compareList, compareData, symbol, compareFrom]);
+    }, [hasDisplay, intervalId, compareList, compareData, symbol, compareFrom]);
+
+    // Studies are redrawn in place: the bars, the zoom and the replay never move.
+    useEffect(() => {
+        candleHostRef.current?.setStudies(studies);
+    }, [studies]);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
