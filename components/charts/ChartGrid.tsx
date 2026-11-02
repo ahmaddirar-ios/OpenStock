@@ -5,9 +5,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import ChartPane, { type CrosshairSync, type RangeSync } from '@/components/charts/ChartPane';
 import LayoutPicker from '@/components/charts/LayoutPicker';
+import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
 import {
     CHART_LAYOUTS,
-    INDICATOR_BUTTONS,
     INTERVAL_LABEL_KEYS,
     paneSymbols,
     parseGridState,
@@ -22,7 +22,7 @@ import {
     type GridState,
 } from '@/lib/chart-grid';
 import { CANDLE_INTERVALS, type Candle } from '@/lib/yahoo-candles';
-import { defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
+import type { StudyConfig } from '@/lib/chart-studies';
 import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
 import { REPLAY_SPEEDS, type ReplaySpeed } from '@/lib/replay';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
@@ -65,10 +65,6 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     const updateStudies = (next: StudyConfig[]) => {
         setStudies(next);
         writeStudies(window.localStorage, next);
-    };
-    const toggleStudy = (id: StudyId) => {
-        const at = studies.findIndex((study) => study.id === id);
-        updateStudies(at >= 0 ? studies.filter((_, index) => index !== at) : [...studies, defaultStudy(id)]);
     };
     // The list belongs to the browser, not the page: read it after mount so the server and the
     // first client render agree on an empty chart, then the trader's own studies.
@@ -298,19 +294,7 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                     </button>
                 ))}
                 <span className="mx-1 h-4 w-px bg-line" />
-                {INDICATOR_BUTTONS.map((indicator) => (
-                    <button
-                        key={indicator.id}
-                        type="button"
-                        onClick={() =>
-                            toggleStudy(indicator.id)
-                        }
-                        className={cn('pill h-7 px-2.5 text-[12px]', studies.some((study) => study.id === indicator.id) && 'is-up')}
-                        aria-pressed={studies.some((study) => study.id === indicator.id)}
-                    >
-                        {t(indicator.label)}
-                    </button>
-                ))}
+                <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
                 <button
                     type="button"
                     onClick={toggleReplay}

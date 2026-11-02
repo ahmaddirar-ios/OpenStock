@@ -87,11 +87,12 @@ import {
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
-import { defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
+import type { StudyConfig } from '@/lib/chart-studies';
 import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
 import ChartLegend from '@/components/stocks/ChartLegend';
 import type { BarReadout } from '@/lib/chart-readout';
-import { INDICATOR_BUTTONS, INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
+import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
+import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
@@ -186,10 +187,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         setStudies(readStudies(window.localStorage));
     }, []);
-    const toggleStudy = (id: StudyId) => {
-        const at = studies.findIndex((study) => study.id === id);
-        updateStudies(at >= 0 ? studies.filter((_, index) => index !== at) : [...studies, defaultStudy(id)]);
-    };
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
     const [tool, setTool] = useState<ActiveTool | null>(null);
@@ -986,17 +983,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     </button>
                 ))}
                 <span className="mx-1 h-4 w-px bg-line" />
-                {INDICATOR_BUTTONS.map((indicator) => (
-                    <button
-                        key={indicator.id}
-                        type="button"
-                        onClick={() => toggleStudy(indicator.id)}
-                        className={cn('pill h-7 px-2.5 text-[12px]', studies.some((study) => study.id === indicator.id) && 'is-up')}
-                        aria-pressed={studies.some((study) => study.id === indicator.id)}
-                    >
-                        {t(indicator.label)}
-                    </button>
-                ))}
+                <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
                 <button
                     type="button"
                     onClick={() => (replay ? exitReplay() : startReplay())}

@@ -52,14 +52,6 @@ export const INTERVAL_LABEL_KEYS: Record<string, StringKey> = {
     '1mo': 'chart.tf.1mo',
 };
 
-/** The indicator toggles both toolbars show, in the order a trader turns them on. */
-export const INDICATOR_BUTTONS: { id: 'sma' | 'ema' | 'rsi' | 'macd'; label: StringKey }[] = [
-    { id: 'sma', label: 'chart.ind.sma' },
-    { id: 'ema', label: 'chart.ind.ema' },
-    { id: 'rsi', label: 'chart.ind.rsi' },
-    { id: 'macd', label: 'chart.ind.macd' },
-];
-
 export function isGridLayoutId(value: unknown): value is GridLayoutId {
     return value === 1 || value === 2 || value === 3 || value === 4;
 }

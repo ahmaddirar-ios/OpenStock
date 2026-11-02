@@ -1,0 +1,221 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Plus, Search, X } from 'lucide-react';
+import {
+    MAX_STUDIES,
+    STUDIES,
+    STUDY_IDS,
+    defaultStudy,
+    describeStudy,
+    studiesParam,
+    type StudyConfig,
+    type StudyId,
+} from '@/lib/chart-studies';
+import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
+
+// The indicators menu: search a study, add it, tune its parameters, remove it. It owns no state of
+// its own beyond what is being typed — the list belongs to the page (and through it, the browser),
+// so the same menu on /charts and on the symbol page edits the same list.
+
+type Props = {
+    lang: Lang;
+    studies: StudyConfig[];
+    onChange: (next: StudyConfig[]) => void;
+    className?: string;
+};
+
+export default function ChartStudiesMenu({ lang, studies, onChange, className }: Props) {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    // Text being typed in a parameter box, kept per input until it is committed on blur: clamping on
+    // every keystroke would rewrite "1" to the minimum before the trader finishes "120".
+    const [drafts, setDrafts] = useState<Record<string, string>>({});
+    const box = useRef<HTMLDivElement>(null);
+    const t = (key: StringKey) => tx(lang, key);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (event: MouseEvent) => {
+            if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+        };
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
+    const add = (id: StudyId) => {
+        if (studies.length >= MAX_STUDIES) return;
+        onChange([...studies, defaultStudy(id)]);
+    };
+
+    const remove = (index: number) => {
+        setDrafts({});
+        onChange(studies.filter((_, i) => i !== index));
+    };
+
+    const commit = (index: number, key: string, min: number, max: number) => {
+        const draftKey = `${index}:${key}`;
+        const raw = drafts[draftKey];
+        setDrafts((current) => {
+            const next = { ...current };
+            delete next[draftKey];
+            return next;
+        });
+        if (raw == null || raw.trim() === '') return;
+        const value = Number(raw);
+        if (!Number.isFinite(value)) return;
+        const clamped = Math.min(max, Math.max(min, value));
+        onChange(
+            studies.map((study, i) =>
+                i === index ? { ...study, params: { ...study.params, [key]: clamped } } : study,
+            ),
+        );
+    };
+
+    const filtered = useMemo(() => {
+        const needle = query.trim().toLowerCase();
+        if (!needle) return STUDY_IDS;
+        return STUDY_IDS.filter((id) => {
+            const label = tx(lang, STUDIES[id].label).toLowerCase();
+            return label.includes(needle) || id.includes(needle);
+        });
+    }, [query, lang]);
+
+    return (
+        <div ref={box} className={cn('relative', className)}>
+            <button
+                type="button"
+                onClick={() => setOpen((value) => !value)}
+                aria-expanded={open}
+                aria-haspopup="dialog"
+                className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', studies.length > 0 && 'is-up')}
+            >
+                {t('chart.studies')}
+                {studies.length > 0 && <span className="num text-faint">{arDigits(studies.length, lang)}</span>}
+                <ChevronDown className="size-3" />
+            </button>
+
+            {open && (
+                <div
+                    role="dialog"
+                    aria-label={t('chart.studies')}
+                    className="absolute end-0 top-full z-50 mt-1 w-80 rounded-[12px] bg-card p-2 text-start shadow-[0_18px_50px_rgba(0,0,0,0.45)] ring-1 ring-line"
+                >
+                    <label className="flex items-center gap-1.5 rounded-[8px] bg-page px-2 py-1.5">
+                        <Search className="size-3.5 shrink-0 text-faint" />
+                        <input
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder={t('study.search')}
+                            aria-label={t('study.search')}
+                            className="w-full bg-transparent text-[12px] outline-none"
+                        />
+                    </label>
+
+                    <p className="mt-2 flex items-center justify-between px-1 text-[10.5px] font-semibold uppercase tracking-wide text-faint">
+                        <span>{t('study.active')}</span>
+                        <span className="num">{arDigits(studies.length, lang)}</span>
+                    </p>
+                    <div className="max-h-60 overflow-y-auto">
+                        {studies.length === 0 && (
+                            <p className="px-1 py-1.5 text-[11.5px] leading-snug text-faint">{t('study.empty')}</p>
+                        )}
+                        {studies.map((study, index) => {
+                            const def = STUDIES[study.id];
+                            const name = describeStudy(study, lang);
+                            return (
+                                <div key={`${index}:${study.id}`} className="rounded-[8px] px-1 py-1.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[11.5px] font-medium">{name}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => remove(index)}
+                                            aria-label={t('study.remove').replace('{name}', name)}
+                                            className="text-faint transition-colors hover:text-down"
+                                        >
+                                            <X className="size-3.5" />
+                                        </button>
+                                    </div>
+                                    {def.params.length > 0 && (
+                                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                            {def.params.map((param) => {
+                                                const draftKey = `${index}:${param.key}`;
+                                                return (
+                                                    <label key={param.key} className="flex items-center gap-1 text-[10.5px] text-faint">
+                                                        {t(param.label)}
+                                                        <input
+                                                            type="number"
+                                                            inputMode="numeric"
+                                                            min={param.min}
+                                                            max={param.max}
+                                                            step={param.step}
+                                                            value={drafts[draftKey] ?? String(studiesParam(study, param.key))}
+                                                            onChange={(event) =>
+                                                                setDrafts((current) => ({ ...current, [draftKey]: event.target.value }))
+                                                            }
+                                                            onBlur={() => commit(index, param.key, param.min, param.max)}
+                                                            onKeyDown={(event) => {
+                                                                if (event.key === 'Enter') event.currentTarget.blur();
+                                                            }}
+                                                            className="num w-14 rounded-[6px] bg-page px-1 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                        />
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <p className="mt-2 px-1 text-[10.5px] font-semibold uppercase tracking-wide text-faint">
+                        {t('study.add')}
+                    </p>
+                    <div className="max-h-52 overflow-y-auto">
+                        {filtered.length === 0 && (
+                            <p className="px-1 py-1.5 text-[11.5px] text-faint">
+                                {t('study.searchEmpty').replace('{q}', query.trim())}
+                            </p>
+                        )}
+                        {(['overlay', 'oscillator'] as const).map((group) => {
+                            const ids = filtered.filter((id) => STUDIES[id].group === group);
+                            if (ids.length === 0) return null;
+                            return (
+                                <div key={group} className="mt-1">
+                                    <p className="px-1 text-[10.5px] text-faint">{t(`study.group.${group}`)}</p>
+                                    {ids.map((id) => (
+                                        <button
+                                            key={id}
+                                            type="button"
+                                            onClick={() => add(id)}
+                                            disabled={studies.length >= MAX_STUDIES}
+                                            className="flex w-full items-center justify-between rounded-[8px] px-1 py-1 text-[11.5px] transition-colors hover:bg-hover/40 disabled:opacity-40"
+                                        >
+                                            <span>{tx(lang, STUDIES[id].label)}</span>
+                                            <Plus className="size-3.5 text-faint" />
+                                        </button>
+                                    ))}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {studies.length >= MAX_STUDIES && (
+                        <p className="px-1 pt-1 text-[10.5px] text-warn">
+                            {t('study.full').replace('{n}', String(MAX_STUDIES))}
+                        </p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
