@@ -618,3 +618,91 @@ export function vwma(
     }
     return out;
 }
+
+/** Momentum: how far the value has moved from `period` bars ago, in price units. */
+export function momentum(values: number[], period = 10): Series {
+    const out: Series = values.map(() => null);
+    for (let i = period; i < values.length; i += 1) out[i] = values[i] - values[i - period];
+    return out;
+}
+
+/** Rate of change: the same move as a percentage of the older value. */
+export function roc(values: number[], period = 9): Series {
+    const out: Series = values.map(() => null);
+    for (let i = period; i < values.length; i += 1) {
+        const base = values[i - period];
+        out[i] = base === 0 ? null : ((values[i] - base) / base) * 100;
+    }
+    return out;
+}
+
+export type Aroon = { up: Series; down: Series };
+
+/**
+ * Aroon: how recently the window's high and low happened. The newest bar reads 100, the oldest 0 —
+ * a trend is a high Aroon up, a range is both lines middling.
+ */
+export function aroon(candles: readonly RangeBar[], period = 14): Aroon {
+    const up: Series = candles.map(() => null);
+    const down: Series = candles.map(() => null);
+    for (let i = period; i < candles.length; i += 1) {
+        let highAt = i;
+        let lowAt = i;
+        for (let j = i - period; j <= i; j += 1) {
+            if (candles[j].high >= candles[highAt].high) highAt = j;
+            if (candles[j].low <= candles[lowAt].low) lowAt = j;
+        }
+        up[i] = ((period - (i - highAt)) / period) * 100;
+        down[i] = ((period - (i - lowAt)) / period) * 100;
+    }
+    return { up, down };
+}
+
+/**
+ * TRIX: the one-bar percentage change of a triple-smoothed EMA. Triple smoothing removes the noise
+ * an EMA still carries, and the change turns it into an oscillator around zero.
+ */
+/** An EMA over a series that already has warm-up nulls: smoothed after the first real value only. */
+const emaOn = (series: Series, period: number): Series => {
+    const start = series.findIndex((value) => value != null);
+    if (start < 0) return series.map(() => null);
+    const smoothed = ema(series.slice(start) as number[], period);
+    return series.map((_, i) => (i < start ? null : smoothed[i - start] ?? null));
+};
+
+export function trix(values: number[], period = 15): Series {
+    const first = ema(values, period);
+    const second = emaOn(first, period);
+    const third = emaOn(second, period);
+    const out: Series = values.map(() => null);
+    for (let i = 1; i < values.length; i += 1) {
+        const before = third[i - 1];
+        const now = third[i];
+        // All three EMAs have to be real before the change means anything.
+        if (before == null || now == null || before === 0) continue;
+        out[i] = ((now - before) / before) * 100;
+    }
+    return out;
+}
+
+/**
+ * Money Flow Index: RSI weighted by volume. Each bar's typical price is compared with the previous
+ * one, its money flow (typical price × volume) is booked as positive or negative, and the index is
+ * the share of positive flow in the window.
+ */
+export function mfi(candles: readonly { high: number; low: number; close: number; volume: number }[], period = 14): Series {
+    const out: Series = candles.map(() => null);
+    const typical = candles.map((bar) => (bar.high + bar.low + bar.close) / 3);
+    for (let i = period; i < candles.length; i += 1) {
+        let positive = 0;
+        let negative = 0;
+        for (let j = i - period + 1; j <= i; j += 1) {
+            const flow = typical[j] * candles[j].volume;
+            if (typical[j] > typical[j - 1]) positive += flow;
+            else if (typical[j] < typical[j - 1]) negative += flow;
+        }
+        if (negative === 0) out[i] = positive === 0 ? 50 : 100;
+        else out[i] = 100 - 100 / (1 + positive / negative);
+    }
+    return out;
+}

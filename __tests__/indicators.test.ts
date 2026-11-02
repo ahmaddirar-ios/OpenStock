@@ -13,6 +13,11 @@ import {
     parabolicSar,
     pivots,
     priceSeries,
+    momentum,
+    roc,
+    aroon,
+    trix,
+    mfi,
     rsi,
     sma,
     stochastic,
@@ -471,5 +476,71 @@ describe('source-aware averages', () => {
     it('vwma weights the given source by volume', () => {
         const byHigh = vwma(candles, 2, priceSeries(candles, 'high'));
         expect(byHigh[2]).toBeCloseTo((30 * 200 + 40 * 100) / 300);
+    });
+});
+
+describe('momentum and roc', () => {
+    const values = [10, 11, 13, 12, 15];
+
+    it('momentum is the difference from `period` bars back', () => {
+        const out = momentum(values, 2);
+        expect(out[0]).toBeNull();
+        expect(out[1]).toBeNull();
+        expect(out[2]).toBe(3);
+        expect(out[4]).toBe(2);
+    });
+
+    it('roc is the same move as a percentage, and refuses a zero base', () => {
+        const out = roc(values, 2);
+        expect(out[2]).toBeCloseTo(30);
+        expect(out[4]).toBeCloseTo((15 - 13) / 13 * 100);
+        expect(roc([0, 0, 5], 2)[2]).toBeNull();
+    });
+});
+
+describe('aroon', () => {
+    it('reads 100 when the extreme is the newest bar and 0 when it is the oldest', () => {
+        // Highest high at the end of the window, lowest low at its start.
+        const bars = [10, 11, 12, 13].map((x) => ({ high: x, low: x - 5, close: x - 1 }));
+        const up = aroon(bars, 3);
+        expect(up.up[3]).toBeCloseTo(100);
+        expect(up.down[3]).toBeCloseTo(0);
+        expect(up.up[2]).toBeNull();
+    });
+});
+
+describe('trix', () => {
+    it('is the percentage change of a triple EMA, and warms up for all three', () => {
+        const rising = Array.from({ length: 40 }, (_, i) => 100 + i);
+        const out = trix(rising, 5);
+        expect(out[10]).toBeNull();
+        expect(out[39]).not.toBeNull();
+        // A straight line has a constant triple EMA slope, so TRIX converges to a small positive value.
+        expect(out[39] as number).toBeGreaterThan(0);
+    });
+});
+
+describe('mfi', () => {
+    it('is 100 when every bar in the window moved up', () => {
+        const bars = Array.from({ length: 4 }, (_, i) => ({
+            high: 10 + i,
+            low: 8 + i,
+            close: 9 + i,
+            volume: 100,
+        }));
+        expect(mfi(bars, 3)[3]).toBeCloseTo(100);
+        expect(mfi(bars, 3)[2]).toBeNull();
+    });
+
+    it('splits the flows when the typical price turns down', () => {
+        const bars = [
+            { high: 10, low: 8, close: 9, volume: 100 },
+            { high: 12, low: 10, close: 11, volume: 100 },
+            { high: 11, low: 9, close: 10, volume: 100 },
+        ];
+        // A window of one: bar 1 is an up bar, bar 2 a down bar.
+        const out = mfi(bars, 1);
+        expect(out[1]).toBeCloseTo(100);
+        expect(out[2]).toBeCloseTo(0);
     });
 });

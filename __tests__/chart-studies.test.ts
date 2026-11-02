@@ -101,6 +101,11 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('wma'), 'en')).toBe('WMA 20 · Close');
         expect(describeStudy(defaultStudy('hma'), 'en')).toBe('HMA 9 · Close');
         expect(describeStudy(defaultStudy('vwma'), 'en')).toBe('VWMA 20 · Close');
+        expect(describeStudy(defaultStudy('momentum'), 'en')).toBe('Momentum 10 · Close');
+        expect(describeStudy(defaultStudy('roc'), 'en')).toBe('Rate of Change 9 · Close');
+        expect(describeStudy(defaultStudy('aroon'), 'en')).toBe('Aroon 14');
+        expect(describeStudy(defaultStudy('trix'), 'en')).toBe('TRIX 15 · Close');
+        expect(describeStudy(defaultStudy('mfi'), 'en')).toBe('Money Flow Index 14');
     });
 
     it('names a choice by its label, not by a number', () => {

@@ -13,8 +13,13 @@ import {
     ichimoku,
     keltner,
     macd,
+    mfi,
+    momentum,
     obv,
     parabolicSar,
+    roc,
+    aroon,
+    trix,
     pivots,
     priceSeries,
     rsi,
@@ -54,7 +59,12 @@ export type StudyId =
     | 'pivots'
     | 'wma'
     | 'hma'
-    | 'vwma';
+    | 'vwma'
+    | 'momentum'
+    | 'roc'
+    | 'aroon'
+    | 'trix'
+    | 'mfi';
 
 /** Theme tokens a study may paint with; the host resolves them, the legend maps them to classes. */
 export type ColorToken = 'brand' | 'warn' | 'up' | 'down' | 'faint' | 'muted';
@@ -429,6 +439,55 @@ const DEFINITIONS: StudyDef[] = [
         compute: (candles, param, pick) => ({
             value: vwma(candles, param('period'), priceSeries(candles, pick('source'))),
         }),
+    }),
+    define({
+        id: 'momentum',
+        label: 'study.momentum',
+        group: 'oscillator',
+        params: [period(1, 500, 10), source()],
+        lines: [valueLine('brand')],
+        compute: (candles, param, pick) => ({
+            value: momentum(priceSeries(candles, pick('source')), param('period')),
+        }),
+    }),
+    define({
+        id: 'roc',
+        label: 'study.roc',
+        group: 'oscillator',
+        params: [period(1, 500, 9), source()],
+        lines: [valueLine('warn')],
+        compute: (candles, param, pick) => ({
+            value: roc(priceSeries(candles, pick('source')), param('period')),
+        }),
+    }),
+    define({
+        id: 'aroon',
+        label: 'study.aroon',
+        group: 'oscillator',
+        params: [period(2, 500, 14)],
+        lines: [
+            { key: 'up', short: 'U', name: 'study.line.aroonUp', color: 'up', kind: 'line' },
+            { key: 'down', short: 'D', name: 'study.line.aroonDown', color: 'down', kind: 'line' },
+        ],
+        compute: (candles, param) => aroon(candles, param('period')),
+    }),
+    define({
+        id: 'trix',
+        label: 'study.trix',
+        group: 'oscillator',
+        params: [period(1, 200, 15), source()],
+        lines: [valueLine('muted')],
+        compute: (candles, param, pick) => ({
+            value: trix(priceSeries(candles, pick('source')), param('period')),
+        }),
+    }),
+    define({
+        id: 'mfi',
+        label: 'study.mfi',
+        group: 'oscillator',
+        params: [period(2, 200, 14)],
+        lines: [valueLine('brand')],
+        compute: (candles, param) => ({ value: mfi(candles, param('period')) }),
     }),
     define({
         id: 'pivots',
