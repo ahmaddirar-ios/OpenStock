@@ -21,6 +21,7 @@ import {
     History,
     Loader2,
     Lock,
+    Magnet,
     Redo2,
     Undo2,
     Unlock,
@@ -35,6 +36,7 @@ import {
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
+import { nearestBar, snapPoint } from '@/lib/chart-magnet';
 import {
     applyHistory,
     canRedo,
@@ -240,6 +242,10 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
     const [tool, setTool] = useState<ActiveTool | null>(null);
+    // Magnet is a working mode, not a preference: it starts off and is one click away.
+    const [magnet, setMagnet] = useState(false);
+    const magnetRef = useRef(false);
+    magnetRef.current = magnet;
     const [pendingLabels, setPendingLabels] = useState<string[] | null>(null);
     const [noteText, setNoteText] = useState('');
     // The drawing list is a timeline: every discrete edit is a step, a whole drag is one step.
@@ -692,6 +698,17 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         return { time: Number(time), price: Number(price) };
     }, []);
 
+    // Snap a point to the nearest bar's O/H/L/C when the magnet is on and a level is close on screen.
+    const snapDrawingPoint = useCallback((point: DrawPoint): DrawPoint => {
+        if (!magnetRef.current) return point;
+        const series = seriesRef.current;
+        const bars = displayRef.current?.candles ?? [];
+        if (!series || bars.length === 0) return point;
+        const bar = nearestBar(bars, point.time);
+        if (!bar) return point;
+        return snapPoint(point, bar, (price) => series.priceToCoordinate(price));
+    }, []);
+
     const startTool = (next: ActiveTool | null, labels: string[] | null = null) => {
         setMenu(null);
         setSelectedId(null);
@@ -1013,6 +1030,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     onMoveHandle={moveHandle}
                     onGestureStart={beginGesture}
                     onGestureEnd={endGesture}
+                    snapPoint={snapDrawingPoint}
                     onEditText={editText}
                     onToolConsumed={() => setTool(null)}
                     label={t}
@@ -1318,6 +1336,15 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     aria-pressed={tool === 'text'}
                 >
                     {t('chart.tool.text')}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setMagnet((value) => !value)}
+                    aria-pressed={magnet}
+                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', magnet && 'is-up')}
+                    title={t('chart.tool.magnet')}
+                >
+                    <Magnet className="size-3.5" /> {t('chart.tool.magnet')}
                 </button>
                 {tool === 'text' && (
                     <input

@@ -51,6 +51,8 @@ type Props = {
     onGestureStart: () => void;
     /** A drag ended: the page records that one step. */
     onGestureEnd: () => void;
+    /** Magnet rounding for a freshly placed or dragged point (identity when the magnet is off). */
+    snapPoint?: (point: DrawPoint) => DrawPoint;
     label: (key: StringKey) => string;
 };
 
@@ -75,6 +77,7 @@ export default function ChartDrawings({
     onMoveHandle,
     onGestureStart,
     onGestureEnd,
+    snapPoint,
     onEditText,
     onToolConsumed,
     label,
@@ -141,8 +144,9 @@ export default function ChartDrawings({
             return;
         }
 
-        const point = fromScreen(cursor.x, cursor.y);
-        if (!point) return;
+        const raw = fromScreen(cursor.x, cursor.y);
+        if (!raw) return;
+        const point = snapPoint ? snapPoint(raw) : raw;
         // One-point tools (a level, a note) commit straight away; the rest collect clicks.
         if (pointsNeeded(tool) === 1) {
             onCommit({
@@ -175,10 +179,13 @@ export default function ChartDrawings({
         const cursor = cursorOf(event);
         if (dragging) {
             const point = fromScreen(cursor.x, cursor.y);
-            if (point) onMoveHandle(dragging.id, dragging.index, point);
+            if (point) onMoveHandle(dragging.id, dragging.index, snapPoint ? snapPoint(point) : point);
             return;
         }
-        if (draft.length > 0) setPreview(fromScreen(cursor.x, cursor.y));
+        if (draft.length > 0) {
+            const raw = fromScreen(cursor.x, cursor.y);
+            setPreview(raw && snapPoint ? snapPoint(raw) : raw);
+        }
     };
 
     const onPointerUp = () => {
