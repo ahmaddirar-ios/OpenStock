@@ -7,6 +7,7 @@ import {
     heikinAshi,
     renko,
     parseChartType,
+    parseRenkoBox,
     parseScaleMode,
     readChartType,
     readScaleMode,
@@ -106,7 +107,7 @@ describe('chart type storage', () => {
 });
 
 describe('scale mode', () => {
-    it('accepts the three modes and defaults to linear', () => {
+    it('accepts the four modes and defaults to linear', () => {
         for (const mode of SCALE_MODES) expect(parseScaleMode(mode)).toBe(mode);
         expect(parseScaleMode('magic')).toBe('linear');
         expect(parseScaleMode(null)).toBe('linear');
@@ -170,5 +171,17 @@ describe('renko', () => {
 
     it('answers nothing for no candles', () => {
         expect(renko([], 1)).toEqual([]);
+    });
+});
+
+describe('renko box', () => {
+    it('accepts a positive number and rejects everything else', () => {
+        expect(parseRenkoBox('0.25')).toBe(0.25);
+        expect(parseRenkoBox(2)).toBe(2);
+        expect(parseRenkoBox('')).toBeUndefined();
+        expect(parseRenkoBox('0')).toBeUndefined();
+        expect(parseRenkoBox(-1)).toBeUndefined();
+        expect(parseRenkoBox('abc')).toBeUndefined();
+        expect(parseRenkoBox(null)).toBeUndefined();
     });
 });

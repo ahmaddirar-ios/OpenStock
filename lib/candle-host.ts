@@ -58,6 +58,10 @@ export type CandleHost = {
     setScaleMode: (mode: ScaleMode) => void;
     /** Labels the time axis in this zone. */
     setTimeZone: (zone: TimeZoneId) => void;
+    /** Flips the price axis top to bottom. */
+    setInvertScale: (on: boolean) => void;
+    /** The absolute Renko box; undefined means half a percent of the first close. */
+    setRenkoBox: (box: number | undefined) => void;
     /** Collapses closed-market gaps by inserting empty slots. */
     setSessionBreaks: (on: boolean) => void;
     setTimeVisible: (visible: boolean) => void;
@@ -91,6 +95,10 @@ export type CandleHostOptions = {
     timeZone?: TimeZoneId;
     /** Whether closed-market gaps are shown as empty space. */
     sessionBreaks?: boolean;
+    /** Mirror the price axis. */
+    invertScale?: boolean;
+    /** The Renko box to open with; undefined keeps the half-percent default. */
+    renkoBox?: number;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -192,6 +200,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         linear: PriceScaleMode.Normal,
         log: PriceScaleMode.Logarithmic,
         percent: PriceScaleMode.Percentage,
+        indexed: PriceScaleMode.IndexedTo100,
     };
     const LINE_STYLE: Record<StudyLineDash, LineStyle> = {
         solid: LineStyle.Solid,
@@ -208,6 +217,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
     let timeZone: TimeZoneId = options.timeZone ?? 'local';
     let sessionBreaks = options.sessionBreaks ?? false;
+    let renkoBox = options.renkoBox;
     const tickFormatter = () => (time: Time, type: TickMarkType) =>
         tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone);
 
@@ -216,6 +226,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         chart.priceScale('right').applyOptions({ mode: PRICE_SCALE_MODE[mode] });
     };
     applyScaleMode(options.scaleMode ?? 'linear');
+    if (options.invertScale) chart.priceScale('right').applyOptions({ invertScale: true });
 
     // A series' type is fixed at creation in lightweight-charts, so changing the chart type means
     // replacing this one series. The volume series is on its own scale at the bottom, so it can stay.
@@ -321,7 +332,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
      */
     const bars = () => {
         const candles = data?.candles ?? [];
-        if (chartType === 'renko') return renko(candles);
+        if (chartType === 'renko') return renko(candles, renkoBox);
         return chartType === 'heikin' ? heikinAshi(candles) : candles;
     };
 
@@ -470,6 +481,15 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             emitReadout();
         },
         setScaleMode: (mode) => applyScaleMode(mode),
+        setInvertScale: (on) => chart.priceScale('right').applyOptions({ invertScale: on }),
+        setRenkoBox: (box) => {
+            renkoBox = box;
+            if (chartType === 'renko') {
+                applyCandles();
+                buildStudies();
+                emitReadout();
+            }
+        },
         setTimeZone: (zone) => {
             timeZone = zone;
             // The formatters are closures over `timeZone`, so they are replaced to take effect.

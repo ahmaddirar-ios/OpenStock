@@ -132,6 +132,11 @@ import {
     CHART_TYPES,
     CHART_TYPE_KEYS,
     SCALE_MODES,
+    parseRenkoBox,
+    readInvert,
+    readRenkoBox,
+    writeInvert,
+    writeRenkoBox,
     SCALE_MODE_KEYS,
     readChartType,
     readScaleMode,
@@ -240,10 +245,18 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [sessionBreaks, setSessionBreaks] = useState(false);
     const sessionBreaksRef = useRef(false);
     sessionBreaksRef.current = sessionBreaks;
+    const [invertScale, setInvertScale] = useState(false);
+    const invertScaleRef = useRef(false);
+    invertScaleRef.current = invertScale;
+    const [renkoBox, setRenkoBox] = useState<number | undefined>(undefined);
+    const renkoBoxRef = useRef<number | undefined>(undefined);
+    renkoBoxRef.current = renkoBox;
     useEffect(() => {
         setChartType(readChartType(window.localStorage));
         setScaleMode(readScaleMode(window.localStorage));
         setTimeZone(readTimeZone(window.localStorage));
+        setInvertScale(readInvert(window.localStorage));
+        setRenkoBox(readRenkoBox(window.localStorage));
     }, []);
     useEffect(() => {
         writeChartType(window.localStorage, chartType);
@@ -254,6 +267,12 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         writeTimeZone(window.localStorage, timeZone);
     }, [timeZone]);
+    useEffect(() => {
+        writeInvert(window.localStorage, invertScale);
+    }, [invertScale]);
+    useEffect(() => {
+        writeRenkoBox(window.localStorage, renkoBox);
+    }, [renkoBox]);
     const [data, setData] = useState<CandleSet | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     // The study list is this browser's, shared with every pane on /charts: read after mount, saved
@@ -634,6 +653,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             scaleMode: scaleModeRef.current,
             timeZone: timeZoneRef.current,
             sessionBreaks: sessionBreaksRef.current,
+            invertScale: invertScaleRef.current,
+            renkoBox: renkoBoxRef.current,
             onPriceSeries: (series) => {
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
@@ -686,6 +707,12 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         candleHostRef.current?.setTimeZone(timeZone);
     }, [timeZone]);
+    useEffect(() => {
+        candleHostRef.current?.setInvertScale(invertScale);
+    }, [invertScale]);
+    useEffect(() => {
+        candleHostRef.current?.setRenkoBox(renkoBox);
+    }, [renkoBox]);
     useEffect(() => {
         candleHostRef.current?.setSessionBreaks(sessionBreaks);
     }, [sessionBreaks]);
@@ -1263,6 +1290,22 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 ))}
                 <span className="mx-1 h-4 w-px bg-line" />
                 <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
+                {chartType === 'renko' && (
+                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                        {t('chart.renkoBox')}
+                        <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0.01}
+                            step={0.01}
+                            value={renkoBox ?? ''}
+                            placeholder="0.5%"
+                            aria-label={t('chart.renkoBox')}
+                            onChange={(event) => setRenkoBox(parseRenkoBox(event.target.value))}
+                            className="num w-16 rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                    </label>
+                )}
                 {dropdown(
                     'type',
                     t('chart.type'),
@@ -1289,6 +1332,15 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         active: timeZone === zone.id,
                     })),
                 )}
+                <button
+                    type="button"
+                    onClick={() => setInvertScale((value) => !value)}
+                    aria-pressed={invertScale}
+                    className={cn('pill h-7 px-2.5 text-[12px]', invertScale && 'is-up')}
+                    title={t('chart.scale.invert')}
+                >
+                    {t('chart.scale.invert')}
+                </button>
                 <button
                     type="button"
                     onClick={() => setSessionBreaks((value) => !value)}

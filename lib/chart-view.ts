@@ -32,14 +32,15 @@ export function parseChartType(value: unknown): ChartType {
 export const CHART_TYPE_KEY = 'openstock:chart-type';
 
 /** How the price axis spaces its labels: arithmetic, multiplicative, or percent from the base bar. */
-export type ScaleMode = 'linear' | 'log' | 'percent';
+export type ScaleMode = 'linear' | 'log' | 'percent' | 'indexed';
 
-export const SCALE_MODES: readonly ScaleMode[] = ['linear', 'log', 'percent'];
+export const SCALE_MODES: readonly ScaleMode[] = ['linear', 'log', 'percent', 'indexed'];
 
 export const SCALE_MODE_KEYS: Record<ScaleMode, StringKey> = {
     linear: 'chart.scale.linear',
     log: 'chart.scale.log',
     percent: 'chart.scale.percent',
+    indexed: 'chart.scale.indexed',
 };
 
 export function parseScaleMode(value: unknown): ScaleMode {
@@ -49,6 +50,53 @@ export function parseScaleMode(value: unknown): ScaleMode {
 }
 
 export const SCALE_MODE_KEY = 'openstock:chart-scale';
+
+/** The Renko box is an absolute price step, so it is stored and edited as a number. */
+export function parseRenkoBox(value: unknown): number | undefined {
+    const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+    return typeof number === 'number' && Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
+export const RENKO_BOX_KEY = 'openstock:chart-renko-box';
+
+export const INVERT_KEY = 'openstock:chart-invert';
+
+export function parseInvert(value: unknown): boolean {
+    return value === '1' || value === 'true' || value === true;
+}
+
+export function readInvert(storage: Readable): boolean {
+    try {
+        return parseInvert(storage.getItem(INVERT_KEY));
+    } catch {
+        return false;
+    }
+}
+
+export function writeInvert(storage: Writable, on: boolean): void {
+    try {
+        storage.setItem(INVERT_KEY, on ? '1' : '0');
+    } catch {
+        /* private mode: the flip still applies for this visit */
+    }
+}
+
+export function readRenkoBox(storage: Readable): number | undefined {
+    try {
+        return parseRenkoBox(storage.getItem(RENKO_BOX_KEY));
+    } catch {
+        return undefined;
+    }
+}
+
+export function writeRenkoBox(storage: Pick<Storage, 'setItem' | 'removeItem'>, box: number | undefined): void {
+    try {
+        if (box == null) storage.removeItem(RENKO_BOX_KEY);
+        else storage.setItem(RENKO_BOX_KEY, String(box));
+    } catch {
+        /* private mode: the box still applies for this visit */
+    }
+}
 
 export function readScaleMode(storage: Readable): ScaleMode {
     try {
