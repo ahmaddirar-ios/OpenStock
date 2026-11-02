@@ -407,6 +407,27 @@ const en = {
     'replay.order.insufficientFunds': 'Not enough cash for that order.',
     'replay.order.noPosition': 'No position to sell.',
     'replay.order.notEnoughShares': 'That is more than you hold.',
+    'replay.order.wrongSideOfMarket': 'A limit has to sit below the price and a stop above it.',
+    // Order types and the bracket on the open position.
+    'replay.type': 'Order',
+    'replay.type.market': 'Market',
+    'replay.type.limit': 'Limit',
+    'replay.type.stop': 'Stop',
+    'replay.typePrice': 'Order price',
+    'replay.pending': 'Armed: {t} at {p} for {q}',
+    'replay.cancelOrder': 'Cancel order',
+    'replay.bracket': 'Protect the position',
+    'replay.bracket.stop': 'Stop',
+    'replay.bracket.target': 'Target',
+    'replay.bracket.set': 'Set bracket',
+    'replay.bracket.clear': 'Clear bracket',
+    'replay.bracket.needsPosition': 'Open a position before protecting it.',
+    'replay.filledBuy': 'Bought {s} at {p} ({w})',
+    'replay.filledSell': 'Sold {s} at {p} ({w})',
+    'replay.reason.market': 'market',
+    'replay.reason.limit': 'limit',
+    'replay.reason.stop': 'stop',
+    'replay.reason.target': 'target',
     // The chart grid: several symbols on one screen, sharing the interval, indicators and view.
     'chart.grid.title': 'Charts',
     'chart.grid.sub': 'Several symbols on one screen. The panes share the interval, the indicators, the crosshair and the zoom.',
@@ -1152,6 +1173,27 @@ const ar: Record<StringKey, string> = {
     'replay.order.insufficientFunds': 'النقد لا يكفي لهذا الأمر.',
     'replay.order.noPosition': 'لا يوجد مركز لبيعه.',
     'replay.order.notEnoughShares': 'الكمية أكبر من ما تملك.',
+    'replay.order.wrongSideOfMarket': 'الأمر المحدد يجب أن يكون تحت السعر، والوقف فوقه.',
+    // أنواع الأوامر والبراكيت على المركز المفتوح.
+    'replay.type': 'الأمر',
+    'replay.type.market': 'سوقي',
+    'replay.type.limit': 'محدد',
+    'replay.type.stop': 'وقف',
+    'replay.typePrice': 'سعر الأمر',
+    'replay.pending': 'مُسلَّح: {t} عند {p} لـ{q}',
+    'replay.cancelOrder': 'إلغاء الأمر',
+    'replay.bracket': 'احمِ المركز',
+    'replay.bracket.stop': 'وقف',
+    'replay.bracket.target': 'هدف',
+    'replay.bracket.set': 'اضبط البراكيت',
+    'replay.bracket.clear': 'أزل البراكيت',
+    'replay.bracket.needsPosition': 'افتح مركزًا قبل حمايته.',
+    'replay.filledBuy': 'شُرِي {s} عند {p} ({w})',
+    'replay.filledSell': 'بِيع {s} عند {p} ({w})',
+    'replay.reason.market': 'سوقي',
+    'replay.reason.limit': 'محدد',
+    'replay.reason.stop': 'وقف',
+    'replay.reason.target': 'هدف',
     'chart.grid.title': 'الشاشة',
     'chart.grid.sub': 'عدة رموز على شاشة واحدة. اللوحات تشترك في الفاصل والمؤشرات وخط التصالب والتقريب.',
     'chart.grid.layout': 'التخطيط',
@@ -1508,6 +1550,17 @@ const FEED_KEYS: Record<string, StringKey> = { Live: 'feed.live', Delayed: 'feed
 
 export const marketName = (lang: Lang, id: string): string => tx(lang, MARKET_KEYS[id] ?? 'market.us');
 export const feedLabel = (lang: Lang, feed: string): string => tx(lang, FEED_KEYS[feed] ?? 'feed.live');
+
+// Why a paper-trade fill happened: a market order, a limit that came to the trader, a stop or a
+// target that took the position out. Data, not prose, so callers stay free of an i18n lookup.
+const FILL_REASON_KEYS: Record<string, StringKey> = {
+    market: 'replay.reason.market',
+    limit: 'replay.reason.limit',
+    stop: 'replay.reason.stop',
+    target: 'replay.reason.target',
+};
+
+export const fillReasonLabel = (lang: Lang, reason: string): string => tx(lang, FILL_REASON_KEYS[reason] ?? 'replay.reason.market');
 
 // The bare adjective, for sentences like "Live quotes via TradingView".
 const FEED_WORDS: Record<string, { en: string; ar: string }> = {

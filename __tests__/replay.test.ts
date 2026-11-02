@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    DEFAULT_STARTING_CASH,
     MIN_WARMUP_BARS,
     buy,
     clampCursor,
@@ -14,11 +15,16 @@ import {
     sell,
     serializeSession,
     sessionKey,
+    settleBar,
     stepCursor,
     summarize,
     toCsv,
+    validateBracket,
+    validateOrder,
     visibleCandles,
     type Fill,
+    type PendingOrder,
+    type ReplayIntent,
 } from '@/lib/replay';
 import type { Candle } from '@/lib/yahoo-candles';
 
@@ -205,15 +211,15 @@ describe('paper account', () => {
 
 describe('trade log', () => {
     const fills: Fill[] = [
-        { id: 'a', time: 1_600_000_000, side: 'buy', quantity: 10, price: 100.5, realized: 0 },
-        { id: 'b', time: 1_600_086_400, side: 'sell', quantity: 10, price: 110.25, realized: 97.5 },
+        { id: 'a', time: 1_600_000_000, side: 'buy', quantity: 10, price: 100.5, realized: 0, reason: 'market' },
+        { id: 'b', time: 1_600_086_400, side: 'sell', quantity: 10, price: 110.25, realized: 97.5, reason: 'target' },
     ];
 
     it('writes a BOM and an English header', () => {
         const csv = toCsv(fills, 'en');
         expect(csv.startsWith('\uFEFF')).toBe(true);
-        expect(csv.split('\n')[0]).toBe('\uFEFFDate,Side,Quantity,Price,Realized P&L');
-        expect(csv.split('\n')[1]).toContain('buy,10,100.5000,0.00');
+        expect(csv.split('\n')[0]).toBe('\uFEFFDate,Side,Quantity,Price,Realized P&L,Reason');
+        expect(csv.split('\n')[1]).toContain('buy,10,100.5000,0.00,market');
     });
 
     it('writes Arabic headers a spreadsheet keeps', () => {
@@ -248,5 +254,218 @@ describe('remembered session', () => {
     it('keys the session by symbol, case-insensitively', () => {
         expect(sessionKey(' 2222.sr ')).toBe('openstock:replay:2222.SR');
         expect(sessionKey('aapl')).toBe(sessionKey('AAPL'));
+    });
+});
+
+// --- order types and brackets ---------------------------------------------------------------
+
+const bar = (time: number, open: number, high: number, low: number, close: number): Candle => ({
+    time,
+    open,
+    high,
+    low,
+    close,
+    volume: 1_000,
+});
+
+const order = (over: Partial<PendingOrder> = {}): PendingOrder => ({
+    id: 'o1',
+    type: 'limit',
+    side: 'buy',
+    price: 95,
+    quantity: 10,
+    placedAt: 1_000,
+    ...over,
+});
+
+const held = (price = 100, quantity = 10) => {
+    const opened = buy(openAccount(), { price, quantity, time: 900 });
+    if (!opened.ok) throw new Error('fixture failed');
+    return opened.account;
+};
+
+describe('validateOrder', () => {
+    const mark = 100;
+
+    it('accepts a market order and a limit on the right side of the mark', () => {
+        expect(validateOrder('market', 0, 10, mark)).toBeNull();
+        expect(validateOrder('limit', 95, 10, mark)).toBeNull();
+        expect(validateOrder('stop', 105, 10, mark)).toBeNull();
+    });
+
+    it('refuses an order the market would fill instantly', () => {
+        expect(validateOrder('limit', 101, 10, mark)).toBe('wrongSideOfMarket');
+        expect(validateOrder('limit', 100, 10, mark)).toBe('wrongSideOfMarket');
+        expect(validateOrder('stop', 99, 10, mark)).toBe('wrongSideOfMarket');
+        expect(validateOrder('stop', 100, 10, mark)).toBe('wrongSideOfMarket');
+    });
+
+    it('refuses a price or a quantity that is not a price or a quantity', () => {
+        expect(validateOrder('limit', 0, 10, mark)).toBe('badPrice');
+        expect(validateOrder('limit', Number.NaN, 10, mark)).toBe('badPrice');
+        expect(validateOrder('limit', 95, 0, mark)).toBe('badQuantity');
+    });
+});
+
+describe('validateBracket', () => {
+    const mark = 100;
+
+    it('wants a stop below the mark and a target above it', () => {
+        expect(validateBracket({ stopLoss: 95, takeProfit: 110 }, mark)).toBeNull();
+        expect(validateBracket({ stopLoss: 95 }, mark)).toBeNull();
+        expect(validateBracket({ takeProfit: 110 }, mark)).toBeNull();
+    });
+
+    it('refuses an empty bracket, a silly price, and the wrong side', () => {
+        expect(validateBracket({}, mark)).toBe('badPrice');
+        expect(validateBracket({ stopLoss: 0 }, mark)).toBe('badPrice');
+        expect(validateBracket({ takeProfit: Number.NaN }, mark)).toBe('badPrice');
+        expect(validateBracket({ stopLoss: 100 }, mark)).toBe('wrongSideOfMarket');
+        expect(validateBracket({ takeProfit: 100 }, mark)).toBe('wrongSideOfMarket');
+    });
+});
+
+describe('settleBar — a pending order', () => {
+    it('waits while the bar misses it and fills at the level when the bar reaches it', () => {
+        const missed = settleBar({ account: openAccount(), intent: { order: order() }, bar: bar(2_000, 100, 101, 96, 100) });
+        expect(missed.account.position).toBeNull();
+        expect(missed.intent.order?.id).toBe('o1'); // still armed
+        expect(missed.fills).toHaveLength(0);
+
+        const hit = settleBar({ account: openAccount(), intent: { order: order() }, bar: bar(3_000, 100, 101, 95, 99) });
+        expect(hit.account.position).toMatchObject({ quantity: 10 });
+        expect(hit.account.fills).toHaveLength(1);
+        expect(hit.account.fills[0]).toMatchObject({ side: 'buy', reason: 'limit', quantity: 10 });
+        expect(hit.account.fills[0].price).toBeCloseTo(fillPrice(95, 'buy'), 6);
+        expect(hit.intent.order).toBeNull(); // spent
+    });
+
+    it('fills at the open when the bar gapped through the level', () => {
+        const gapped = settleBar({ account: openAccount(), intent: { order: order({ price: 95 }) }, bar: bar(3_000, 90, 92, 88, 91) });
+        expect(gapped.account.fills[0].price).toBeCloseTo(fillPrice(90, 'buy'), 6);
+        expect(gapped.account.fills[0].reason).toBe('limit');
+    });
+
+    it('triggers a stop when the bar trades up to it', () => {
+        const pending = order({ type: 'stop', price: 105 });
+        const missed = settleBar({ account: openAccount(), intent: { order: pending }, bar: bar(2_000, 100, 104, 99, 103) });
+        expect(missed.intent.order).not.toBeNull();
+        const hit = settleBar({ account: openAccount(), intent: { order: pending }, bar: bar(3_000, 100, 105, 99, 104) });
+        expect(hit.account.fills[0]).toMatchObject({ reason: 'stop' });
+        expect(hit.account.fills[0].price).toBeCloseTo(fillPrice(105, 'buy'), 6);
+    });
+
+    it('ignores a bar at or before the bar the order was placed on', () => {
+        const same = settleBar({ account: openAccount(), intent: { order: order({ placedAt: 2_000 }) }, bar: bar(2_000, 100, 101, 90, 95) });
+        expect(same.account.position).toBeNull();
+        expect(same.intent.order).not.toBeNull();
+    });
+
+    it('cannot be placed twice: a bar only fills it once', () => {
+        const first = settleBar({ account: openAccount(), intent: { order: order() }, bar: bar(3_000, 100, 101, 90, 95) });
+        const second = settleBar({ account: first.account, intent: first.intent, bar: bar(4_000, 100, 101, 90, 95) });
+        expect(second.account.fills).toHaveLength(1);
+        expect(second.fills).toHaveLength(0);
+    });
+
+    it('clears an order it cannot afford, with a reason, instead of firing it forever', () => {
+        const poor = { ...openAccount(500), cash: 100 };
+        const result = settleBar({ account: poor, intent: { order: order({ quantity: 10 }) }, bar: bar(3_000, 100, 101, 90, 95) });
+        expect(result.account.position).toBeNull();
+        expect(result.intent.order).toBeNull();
+        expect(result.rejected).toBe('insufficientFunds');
+        expect(result.fills).toHaveLength(0);
+    });
+});
+
+describe('settleBar — a bracket on the open position', () => {
+    const bracket = (stopLoss?: number, takeProfit?: number): ReplayIntent => ({ bracket: { stopLoss, takeProfit, placedAt: 1_000 } });
+
+    it('does nothing while the bar stays between the stop and the target', () => {
+        const result = settleBar({ account: held(), intent: bracket(95, 110), bar: bar(2_000, 100, 105, 97, 104) });
+        expect(result.account.position).toMatchObject({ quantity: 10 });
+        expect(result.fills).toHaveLength(0);
+    });
+
+    it('sells the whole position at the stop when the bar trades down to it', () => {
+        const result = settleBar({ account: held(), intent: bracket(95, 110), bar: bar(2_000, 100, 101, 95, 96) });
+        expect(result.account.position).toBeNull();
+        expect(result.fills[0]).toMatchObject({ side: 'sell', reason: 'stop', quantity: 10 });
+        expect(result.fills[0].price).toBeCloseTo(fillPrice(95, 'sell'), 6);
+        expect(result.intent.bracket).toBeNull(); // spent with the position
+    });
+
+    it('sells at the target when the bar trades up to it', () => {
+        const result = settleBar({ account: held(), intent: bracket(95, 110), bar: bar(2_000, 100, 110, 99, 109) });
+        expect(result.account.position).toBeNull();
+        expect(result.fills[0]).toMatchObject({ reason: 'target' });
+        expect(result.fills[0].price).toBeCloseTo(fillPrice(110, 'sell'), 6);
+    });
+
+    it('reports the stop when one bar touches both, the way the strategy lab does', () => {
+        const result = settleBar({ account: held(), intent: bracket(95, 110), bar: bar(2_000, 100, 112, 94, 105) });
+        expect(result.fills[0].reason).toBe('stop');
+    });
+
+    it('fills at the open when the bar gapped past the stop', () => {
+        const result = settleBar({ account: held(), intent: bracket(95, 110), bar: bar(2_000, 90, 92, 88, 91) });
+        expect(result.fills[0].reason).toBe('stop');
+        expect(result.fills[0].price).toBeCloseTo(fillPrice(90, 'sell'), 6);
+    });
+
+    it('ignores a bracket set on this very bar, and acts from the next one', () => {
+        const same = settleBar({ account: held(), intent: bracket(95, 110), bar: bar(1_000, 100, 112, 94, 105) });
+        expect(same.account.position).toMatchObject({ quantity: 10 });
+        expect(same.intent.bracket).not.toBeNull();
+    });
+
+    it('does nothing at all while the account is flat', () => {
+        const result = settleBar({ account: openAccount(), intent: bracket(95, 110), bar: bar(2_000, 100, 112, 94, 105) });
+        expect(result.fills).toHaveLength(0);
+        expect(result.account.cash).toBe(DEFAULT_STARTING_CASH);
+    });
+});
+
+describe('the session carries the intent', () => {
+    it('round-trips a pending order and a bracket', () => {
+        const session = { cursorTime: 1_700_000_000, account: held(), intent: { order: order(), bracket: { stopLoss: 95, takeProfit: 110, placedAt: 1_000 } } };
+        const parsed = parseSession(serializeSession(session));
+        expect(parsed?.intent?.order).toMatchObject({ id: 'o1', type: 'limit', price: 95, quantity: 10 });
+        expect(parsed?.intent?.bracket).toMatchObject({ stopLoss: 95, takeProfit: 110 });
+    });
+
+    it('still reads a session stored before orders existed', () => {
+        const legacy = JSON.stringify({ cursorTime: 1_700_000_000, account: openAccount() });
+        const parsed = parseSession(legacy);
+        expect(parsed?.account.cash).toBe(DEFAULT_STARTING_CASH);
+        expect(parsed?.intent?.order ?? null).toBeNull();
+        expect(parsed?.intent?.bracket ?? null).toBeNull();
+    });
+
+    it('drops a malformed intent rather than the whole session', () => {
+        const junk = JSON.stringify({
+            cursorTime: 1_700_000_000,
+            account: openAccount(),
+            intent: { order: { type: 'sideways', price: 'free' }, bracket: { stopLoss: 'soon' } },
+        });
+        const parsed = parseSession(junk);
+        expect(parsed?.account.cash).toBe(DEFAULT_STARTING_CASH);
+        expect(parsed?.intent?.order ?? null).toBeNull();
+        expect(parsed?.intent?.bracket ?? null).toBeNull();
+    });
+});
+
+describe('the trade log says why', () => {
+    it('carries the reason into the CSV in both languages', () => {
+        const fills: Fill[] = [
+            { id: 'f1', time: 1_700_000_000, side: 'buy', quantity: 10, price: 100, realized: 0, reason: 'limit' },
+            { id: 'f2', time: 1_700_086_400, side: 'sell', quantity: 10, price: 95, realized: -50, reason: 'stop' },
+        ];
+        const [en, ar] = [toCsv(fills, 'en'), toCsv(fills, 'ar')];
+        expect(en.split('\n')[0]).toContain('Reason');
+        expect(ar.split('\n')[0]).toContain('السبب');
+        expect(en).toContain('limit');
+        expect(en).toContain('stop');
+        expect(ar).toContain('وقف');
     });
 });

@@ -46,11 +46,20 @@ import {
     sell as paperSell,
     serializeSession,
     sessionKey,
+    settleBar,
+    validateBracket,
+    validateOrder,
     visibleCandles,
+    type Bracket,
+    type Fill,
     type OrderFailure,
+    type OrderType,
     type PaperAccount,
+    type PendingOrder,
+    type ReplayIntent,
     type ReplaySpeed,
 } from '@/lib/replay';
+import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
 import {
     COUNT_GLYPHS,
@@ -80,7 +89,7 @@ import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-
 import { createCandleHost, token, type CandleHost, type IndicatorFlags } from '@/lib/candle-host';
 import { INDICATOR_BUTTONS, INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
-import { tx, type Lang, type StringKey } from '@/lib/i18n';
+import { fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
 type Indicator = keyof IndicatorFlags;
 type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer';
@@ -200,6 +209,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [playing, setPlaying] = useState(false);
     const [speed, setSpeed] = useState<ReplaySpeed>(2);
     const [account, setAccount] = useState<PaperAccount>(() => openAccount());
+    // What the trader has armed but not executed: a limit/stop entry, or a bracket on the position.
+    const [intent, setIntent] = useState<ReplayIntent>({});
     const [orderError, setOrderError] = useState<OrderFailure | null>(null);
     const [resumedFrom, setResumedFrom] = useState<number | null>(null);
 
@@ -330,6 +341,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             if (stored) {
                 setCursorTime(stored.cursorTime);
                 setAccount(stored.account);
+                setIntent(stored.intent ?? {});
                 setResumedFrom(stored.cursorTime);
             } else {
                 setCursorTime(deep.candles[minStartIndex(deep.candles.length)].time);
@@ -347,23 +359,24 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         if (!replay || replayStatus !== 'ready' || cursorTime == null) return;
         try {
-            window.localStorage.setItem(sessionKey(symbol), serializeSession({ cursorTime, account }));
+            window.localStorage.setItem(sessionKey(symbol), serializeSession({ cursorTime, account, intent }));
         } catch {
             /* private mode: the session simply is not remembered */
         }
-    }, [replay, replayStatus, cursorTime, account, symbol]);
+    }, [replay, replayStatus, cursorTime, account, intent, symbol]);
 
     // Autoplay steps on a wall-clock timer, not on a render, so the speed means bars per second.
+    // It goes through the same advance as the transport, so a pending order or a bracket is settled
+    // on every bar it plays through — no path may skip it.
     useEffect(() => {
         if (!playing || replayCandles.length === 0) return;
         const id = window.setInterval(() => {
-            setCursorTime((current) => {
-                const index = current == null
-                    ? minStartIndex(replayCandles.length)
-                    : clampCursor(cursorForTime(replayCandles, current), replayCandles.length);
-                const next = Math.min(replayCandles.length - 1, index + 1);
-                return replayCandles[next].time;
-            });
+            const current = paperRef.current.cursor;
+            const index = current == null
+                ? minStartIndex(replayCandles.length)
+                : clampCursor(cursorForTime(replayCandles, current), replayCandles.length);
+            const next = Math.min(replayCandles.length - 1, index + 1);
+            advanceRef.current(replayCandles[next].time, false);
         }, Math.max(60, Math.round(1000 / speed)));
         return () => window.clearInterval(id);
     }, [playing, replayCandles, speed]);
@@ -606,11 +619,120 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     // quote in the page header — that is the difference between practising and watching.
     const replayBar = displayData?.candles[cursor] ?? null;
 
-    const moveCursor = (time: number) => {
-        setPlaying(false);
-        setCursorTime(time);
+    // The advancing path needs the latest paper state without re-creating the autoplay timer, and
+    // the timer needs the latest advance function without one of its own.
+    const paperRef = useRef({ account, intent, cursor });
+    paperRef.current = { account, intent, cursor };
+    const advanceRef = useRef<(time: number, stop: boolean) => void>(() => {});
+
+    /**
+     * The one way the replay moves: every bar between where the trader stood and where they are
+     * going is settled — a pending limit/stop may fill, a bracket may take the position out —
+     * and the fills this step produced are announced. Moving backwards never un-fills anything;
+     * a practising trader cannot take a fill back.
+     */
+    const advanceCursor = useCallback((time: number, stop: boolean) => {
+        if (stop) setPlaying(false);
+        setOrderError(null);
+        if (replayCandles.length === 0) {
+            setCursorTime(time);
+            return;
+        }
+
+        const { account: currentAccount, intent: currentIntent, cursor: from } = paperRef.current;
+        const to = clampCursor(cursorForTime(replayCandles, time), replayCandles.length);
+
+        if (to > from) {
+            let walking = { account: currentAccount, intent: currentIntent };
+            const fills: Fill[] = [];
+            let rejected: OrderFailure | undefined;
+            for (let i = from + 1; i <= to; i += 1) {
+                const settled = settleBar({ account: walking.account, intent: walking.intent, bar: replayCandles[i] });
+                walking = { account: settled.account, intent: settled.intent };
+                if (settled.fills.length > 0) fills.push(...settled.fills);
+                if (settled.rejected) rejected = settled.rejected;
+            }
+            setAccount(walking.account);
+            setIntent(walking.intent);
+            if (rejected) setOrderError(rejected);
+            if (fills.length > 0) {
+                const last = fills[fills.length - 1];
+                const label = last.side === 'buy' ? tx(lang, 'replay.filledBuy') : tx(lang, 'replay.filledSell');
+                toast.success(
+                    label
+                        .replace('{s}', String(Math.round(last.quantity * 1e6) / 1e6))
+                        .replace('{p}', last.price.toFixed(2))
+                        .replace('{w}', fillReasonLabel(lang, last.reason)),
+                );
+            }
+        }
+
+        setCursorTime(replayCandles[to].time);
+    }, [lang, replayCandles]);
+
+    advanceRef.current = advanceCursor;
+
+    const moveCursor = useCallback((time: number) => advanceCursor(time, true), [advanceCursor]);
+
+    /** A market order, at the cursor bar's close — the behaviour the account started with. */
+    const placePaperOrder = (side: 'buy' | 'sell', quantity: number) => {
+        if (!replayBar) {
+            setOrderError('badPrice');
+            return;
+        }
+        const order = { price: replayBar.close, quantity, time: replayBar.time };
+        const result = side === 'buy' ? paperBuy(account, order) : paperSell(account, order);
+        if (result.ok) {
+            setAccount(result.account);
+            setOrderError(null);
+            // A position just opened with no bracket is unprotected; the panel asks for one.
+            if (side === 'sell') setIntent((current) => ({ ...current, bracket: null }));
+        } else {
+            setOrderError(result.reason);
+        }
+    };
+
+    /** Arms a limit or a stop entry; it fills on a bar *after* this one, never on this bar. */
+    const placePendingOrder = (type: OrderType, price: number, quantity: number) => {
+        if (!replayBar) {
+            setOrderError('badPrice');
+            return;
+        }
+        const refusal = validateOrder(type, price, quantity, replayBar.close);
+        if (refusal) {
+            setOrderError(refusal);
+            return;
+        }
+        const order: PendingOrder = {
+            id: `o-${replayBar.time}-${type}`,
+            type,
+            side: 'buy',
+            price,
+            quantity,
+            placedAt: replayBar.time,
+        };
+        setIntent((current) => ({ ...current, order }));
         setOrderError(null);
     };
+
+    const cancelPendingOrder = () => setIntent((current) => ({ ...current, order: null }));
+
+    /** A stop under the mark and a target above it; both optional, either alone is enough. */
+    const setBracket = (bracket: Bracket) => {
+        if (!replayBar) {
+            setOrderError('badPrice');
+            return;
+        }
+        const refusal = validateBracket(bracket, replayBar.close);
+        if (refusal) {
+            setOrderError(refusal);
+            return;
+        }
+        setIntent((current) => ({ ...current, bracket: { ...bracket, placedAt: replayBar.time } }));
+        setOrderError(null);
+    };
+
+    const clearBracket = () => setIntent((current) => ({ ...current, bracket: null }));
 
     const startReplay = () => {
         setPlaying(false);
@@ -624,24 +746,10 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         setReplay(false);
     };
 
-    const placePaperOrder = (side: 'buy' | 'sell', quantity: number) => {
-        if (!replayBar) {
-            setOrderError('badPrice');
-            return;
-        }
-        const order = { price: replayBar.close, quantity, time: replayBar.time };
-        const result = side === 'buy' ? paperBuy(account, order) : paperSell(account, order);
-        if (result.ok) {
-            setAccount(result.account);
-            setOrderError(null);
-        } else {
-            setOrderError(result.reason);
-        }
-    };
-
     /** A new practice account, back at a bar with warm-up behind it — never at the live edge. */
     const resetPaperAccount = () => {
         setAccount(openAccount());
+        setIntent({});
         setOrderError(null);
         setPlaying(false);
         if (replayCandles.length > 0) setCursorTime(replayCandles[minStartIndex(replayCandles.length)].time);
@@ -1159,6 +1267,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     onExit={exitReplay}
                     onBuy={(quantity) => placePaperOrder('buy', quantity)}
                     onSell={(quantity) => placePaperOrder('sell', quantity)}
+                    intent={intent}
+                    onPlacePending={placePendingOrder}
+                    onCancelOrder={cancelPendingOrder}
+                    onSetBracket={setBracket}
+                    onClearBracket={clearBracket}
                     onReset={resetPaperAccount}
                 />
             )}

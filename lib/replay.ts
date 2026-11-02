@@ -93,6 +93,9 @@ export function randomCursor(length: number, random: () => number = Math.random)
 
 export type Position = { quantity: number; averageCost: number };
 
+/** Why a fill happened. The log and the CSV say so, so a stop is never read as a decision. */
+export type FillReason = 'market' | 'limit' | 'stop' | 'target';
+
 export type Fill = {
     /** Stable enough for a React key and a CSV row. */
     id: string;
@@ -104,6 +107,7 @@ export type Fill = {
     price: number;
     /** Profit or loss booked by this fill; zero for a buy. */
     realized: number;
+    reason: FillReason;
 };
 
 export type PaperAccount = {
@@ -114,7 +118,7 @@ export type PaperAccount = {
     fills: Fill[];
 };
 
-export type OrderFailure = 'badQuantity' | 'badPrice' | 'insufficientFunds' | 'noPosition' | 'notEnoughShares';
+export type OrderFailure = 'badQuantity' | 'badPrice' | 'insufficientFunds' | 'noPosition' | 'notEnoughShares' | 'wrongSideOfMarket';
 export type OrderResult = { ok: true; account: PaperAccount } | { ok: false; reason: OrderFailure };
 
 export const openAccount = (cash: number = DEFAULT_STARTING_CASH): PaperAccount => ({
@@ -153,7 +157,7 @@ const validPrice = (price: number): boolean => Number.isFinite(price) && price >
  */
 export function buy(
     account: PaperAccount,
-    order: { price: number; quantity: number; time: number; id?: string },
+    order: { price: number; quantity: number; time: number; id?: string; reason?: FillReason },
     costs: Costs = DEFAULT_COSTS,
 ): OrderResult {
     if (!validPrice(order.price)) return { ok: false, reason: 'badPrice' };
@@ -185,6 +189,7 @@ export function buy(
                     quantity,
                     price,
                     realized: 0,
+                    reason: order.reason ?? 'market',
                 },
             ],
         },
@@ -194,7 +199,7 @@ export function buy(
 /** Sells part or all of the position. Shorting is not a paper-trading v1 feature. */
 export function sell(
     account: PaperAccount,
-    order: { price: number; quantity: number; time: number; id?: string },
+    order: { price: number; quantity: number; time: number; id?: string; reason?: FillReason },
     costs: Costs = DEFAULT_COSTS,
 ): OrderResult {
     if (!validPrice(order.price)) return { ok: false, reason: 'badPrice' };
@@ -224,10 +229,146 @@ export function sell(
                     quantity,
                     price,
                     realized: roundPrice((price - position.averageCost) * quantity),
+                    reason: order.reason ?? 'market',
                 },
             ],
         },
     };
+}
+
+// -- Order types and brackets -------------------------------------------------
+
+export type OrderType = 'market' | 'limit' | 'stop';
+
+/**
+ * An order that has been armed but not filled: a limit waiting for a dip, or a stop waiting for
+ * a break. `placedAt` is the bar it was placed on, and no bar at or before it may ever fill it.
+ */
+export type PendingOrder = {
+    id: string;
+    type: OrderType;
+    side: 'buy' | 'sell';
+    price: number;
+    quantity: number;
+    placedAt: number;
+};
+
+/** A stop-loss and a take-profit on the open position. Both are optional; both are prices. */
+export type Bracket = { stopLoss?: number; takeProfit?: number; placedAt?: number };
+
+/** Everything the trader has armed but not yet executed. Stored with the session. */
+export type ReplayIntent = { order?: PendingOrder | null; bracket?: Bracket | null };
+
+export type Refusal = 'badPrice' | 'badQuantity' | 'wrongSideOfMarket';
+
+/**
+ * Whether a market would accept this entry order, or why it would not. A buy limit at or above
+ * the mark and a buy stop at or below it would fill the instant they were placed, which is not
+ * an order — it is a market order pretending to be one.
+ */
+export function validateOrder(type: OrderType, price: number, quantity: number, mark: number): Refusal | null {
+    if (type !== 'market' && !validPrice(price)) return 'badPrice';
+    if (parseQuantity(quantity) == null) return 'badQuantity';
+    if (type === 'limit' && !(price < mark)) return 'wrongSideOfMarket';
+    if (type === 'stop' && !(price > mark)) return 'wrongSideOfMarket';
+    return null;
+}
+
+/** A stop has to sit under the mark and a target above it, or it is not protecting anything. */
+export function validateBracket(bracket: Bracket, mark: number): Refusal | null {
+    const { stopLoss, takeProfit } = bracket;
+    if (stopLoss == null && takeProfit == null) return 'badPrice';
+    if (stopLoss != null && !validPrice(stopLoss)) return 'badPrice';
+    if (takeProfit != null && !validPrice(takeProfit)) return 'badPrice';
+    if (stopLoss != null && stopLoss >= mark) return 'wrongSideOfMarket';
+    if (takeProfit != null && takeProfit <= mark) return 'wrongSideOfMarket';
+    return null;
+}
+
+/** Whether a bar is late enough to act on an intent placed at `placedAt`. */
+const barAfter = (time: number, placedAt?: number | null): boolean => placedAt == null || time > placedAt;
+
+/**
+ * Where a touched level really fills. A bar that gapped past the level opens the fill at its own
+ * open — the honest, pessimistic price — and a bar that merely reached it fills at the level.
+ */
+function limitFill(order: PendingOrder, bar: Candle): number | null {
+    if (order.type === 'limit') {
+        if (order.side === 'buy') return bar.low <= order.price ? Math.min(order.price, bar.open) : null;
+        return bar.high >= order.price ? Math.max(order.price, bar.open) : null;
+    }
+    if (order.side === 'buy') return bar.high >= order.price ? Math.max(order.price, bar.open) : null;
+    return bar.low <= order.price ? Math.min(order.price, bar.open) : null;
+}
+
+/** Which side of the bracket this bar took, the stop first when a single bar took both. */
+function bracketExit(bracket: Bracket, bar: Candle): { price: number; reason: FillReason } | null {
+    if (bracket.stopLoss != null && bar.low <= bracket.stopLoss) {
+        return { price: Math.min(bracket.stopLoss, bar.open), reason: 'stop' };
+    }
+    if (bracket.takeProfit != null && bar.high >= bracket.takeProfit) {
+        return { price: Math.max(bracket.takeProfit, bar.open), reason: 'target' };
+    }
+    return null;
+}
+
+export type SettleResult = {
+    account: PaperAccount;
+    intent: ReplayIntent;
+    /** What this bar filled, and nothing else. */
+    fills: Fill[];
+    /** Why an armed order was dropped without filling (never silent, never retried forever). */
+    rejected?: OrderFailure;
+};
+
+/**
+ * What one revealed bar does to the account and what is still armed. This is the whole decision:
+ * a bracket protects a position before any pending order is considered, the stop beats the target
+ * on a bar that touches both, and an intent placed on this very bar waits for the next one.
+ */
+export function settleBar({
+    account,
+    intent,
+    bar,
+    costs = DEFAULT_COSTS,
+}: {
+    account: PaperAccount;
+    intent: ReplayIntent;
+    bar: Candle;
+    costs?: Costs;
+}): SettleResult {
+    const order = intent.order ?? null;
+    const bracket = intent.bracket ?? null;
+
+    if (account.position && bracket && barAfter(bar.time, bracket.placedAt)) {
+        const exit = bracketExit(bracket, bar);
+        if (exit) {
+            const closed = sell(
+                account,
+                { price: exit.price, quantity: account.position.quantity, time: bar.time, id: `x-${bar.time}-${exit.reason}`, reason: exit.reason },
+                costs,
+            );
+            if (closed.ok) {
+                return { account: closed.account, intent: { order, bracket: null }, fills: closed.account.fills.slice(-1) };
+            }
+        }
+        // A bracket that could not close (it cannot happen) stays armed rather than vanishing.
+        return { account, intent: { order, bracket }, fills: [] };
+    }
+
+    if (!order || account.position || !barAfter(bar.time, order.placedAt)) {
+        return { account, intent: { order, bracket }, fills: [] };
+    }
+
+    const price = limitFill(order, bar);
+    if (price == null) return { account, intent: { order, bracket }, fills: [] };
+
+    const filled = buy(account, { price, quantity: order.quantity, time: bar.time, id: `f-${bar.time}`, reason: order.type }, costs);
+    if (!filled.ok) {
+        // The cash was not there when the level was: drop the order so it cannot fire every bar.
+        return { account, intent: { order: null, bracket }, fills: [], rejected: filled.reason };
+    }
+    return { account: filled.account, intent: { order: null, bracket }, fills: filled.account.fills.slice(-1) };
 }
 
 export type AccountSummary = {
@@ -267,13 +408,18 @@ export function summarize(account: PaperAccount, price: number | null): AccountS
 // -- The trade log ------------------------------------------------------------
 
 const CSV_HEADERS = {
-    en: ['Date', 'Side', 'Quantity', 'Price', 'Realized P&L'],
-    ar: ['التاريخ', 'العملية', 'الكمية', 'السعر', 'الربح المحقق'],
+    en: ['Date', 'Side', 'Quantity', 'Price', 'Realized P&L', 'Reason'],
+    ar: ['التاريخ', 'العملية', 'الكمية', 'السعر', 'الربح المحقق', 'السبب'],
 };
 
 const SIDES = {
     en: { buy: 'buy', sell: 'sell' },
     ar: { buy: 'شراء', sell: 'بيع' },
+};
+
+const REASONS: Record<'en' | 'ar', Record<FillReason, string>> = {
+    en: { market: 'market', limit: 'limit', stop: 'stop', target: 'target' },
+    ar: { market: 'سوقي', limit: 'محدد', stop: 'وقف', target: 'هدف' },
 };
 
 const cell = (value: string): string => (/[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
@@ -289,6 +435,7 @@ export function toCsv(fills: readonly Fill[], lang: 'en' | 'ar'): string {
             String(fill.quantity),
             fill.price.toFixed(4),
             fill.realized.toFixed(2),
+            REASONS[lang][fill.reason] ?? REASONS[lang].market,
         ]
             .map((value) => cell(value))
             .join(','),
@@ -298,7 +445,7 @@ export function toCsv(fills: readonly Fill[], lang: 'en' | 'ar'): string {
 
 // -- The remembered session ---------------------------------------------------
 
-export type ReplaySession = { cursorTime: number; account: PaperAccount };
+export type ReplaySession = { cursorTime: number; account: PaperAccount; intent?: ReplayIntent };
 
 export const sessionKey = (symbol: string): string => `openstock:replay:${symbol.trim().toUpperCase()}`;
 
@@ -308,6 +455,7 @@ export function serializeSession(session: ReplaySession): string {
     return JSON.stringify({
         cursorTime: session.cursorTime,
         account: { ...session.account, fills: session.account.fills.slice(-MAX_REMEMBERED_FILLS) },
+        intent: parseIntent(session.intent),
     });
 }
 
@@ -325,6 +473,41 @@ const isFill = (value: unknown): value is Fill => {
         Number.isFinite(fill.realized)
     );
 };
+
+const isOrder = (value: unknown): value is PendingOrder => {
+    const order = value as PendingOrder;
+    return (
+        !!order &&
+        typeof order.id === 'string' &&
+        (order.type === 'limit' || order.type === 'stop') &&
+        (order.side === 'buy' || order.side === 'sell') &&
+        validPrice(order.price) &&
+        parseQuantity(order.quantity) != null &&
+        Number.isFinite(order.placedAt)
+    );
+};
+
+const isBracket = (value: unknown): value is Bracket => {
+    const bracket = value as Bracket;
+    if (!bracket || typeof bracket !== 'object') return false;
+    const stop = bracket.stopLoss;
+    const target = bracket.takeProfit;
+    if (stop == null && target == null) return false;
+    if (stop != null && !validPrice(stop)) return false;
+    if (target != null && !validPrice(target)) return false;
+    if (bracket.placedAt != null && !Number.isFinite(bracket.placedAt)) return false;
+    return true;
+};
+
+/** Untrusted input from storage: a malformed intent is dropped, never thrown. */
+function parseIntent(value: unknown): ReplayIntent {
+    if (!value || typeof value !== 'object') return {};
+    const candidate = value as ReplayIntent;
+    return {
+        order: isOrder(candidate.order) ? candidate.order : null,
+        bracket: isBracket(candidate.bracket) ? candidate.bracket : null,
+    };
+}
 
 const isAccount = (value: unknown): value is PaperAccount => {
     const account = value as PaperAccount;
@@ -346,7 +529,7 @@ export function parseSession(raw: string | null): ReplaySession | null {
         const parsed = JSON.parse(raw) as ReplaySession;
         if (!parsed || !Number.isFinite(parsed.cursorTime)) return null;
         if (!isAccount(parsed.account)) return null;
-        return { cursorTime: parsed.cursorTime, account: parsed.account };
+        return { cursorTime: parsed.cursorTime, account: parsed.account, intent: parseIntent(parsed.intent) };
     } catch {
         return null;
     }
