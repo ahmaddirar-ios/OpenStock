@@ -114,7 +114,21 @@ export type StudyLine = {
  * colour to tell their lines apart, so their palette belongs to the definition. `width` is shared by
  * every line of the study.
  */
-export type StudyConfig = { id: StudyId; params: StudyParams; color?: ColorToken; width?: StudyWidth };
+/** A plot's own look: both fields optional, and the definition's colour is the fallback. */
+export type StudyLineStyle = { color?: ColorToken; dash?: StudyLineDash };
+
+export type StudyLineDash = 'solid' | 'dashed' | 'dotted';
+export const STUDY_LINE_DASHES: readonly StudyLineDash[] = ['solid', 'dashed', 'dotted'];
+
+export type StudyConfig = {
+    id: StudyId;
+    params: StudyParams;
+    /** Legacy shortcut for a single-line study; a per-line style is the general form. */
+    color?: ColorToken;
+    width?: StudyWidth;
+    /** Per-plot overrides, keyed by the line key the definition declares. */
+    lines?: Record<string, StudyLineStyle>;
+};
 
 export type StudyDef = {
     id: StudyId;
@@ -464,11 +478,24 @@ export function studyWidth(study: StudyConfig): StudyWidth {
     return isWidth(study.width) ? study.width : 1;
 }
 
-/** The colour a line is drawn with, after the study-level override (single-line studies only). */
-export function studyColor(study: StudyConfig, line: StudyLine): ColorToken {
+const isDash = (value: unknown): value is StudyLineDash =>
+    typeof value === 'string' && (STUDY_LINE_DASHES as readonly string[]).includes(value);
+
+/**
+ * The style a line is drawn with. A per-line override wins; on a single-line study the legacy
+ * `color` still means that one line, so payloads written before per-line styles keep working.
+ */
+export function studyLineStyle(study: StudyConfig, line: StudyLine): { color: ColorToken; dash: StudyLineDash } {
     const def = STUDIES[study.id];
-    if (!def || def.lines.length !== 1) return line.color;
-    return isColorToken(study.color) ? study.color : line.color;
+    const own = study.lines?.[line.key];
+    const legacy = def && def.lines.length === 1 && isColorToken(study.color) ? study.color : undefined;
+    const color = isColorToken(own?.color) ? own.color : legacy ?? line.color;
+    return { color, dash: isDash(own?.dash) ? own.dash : 'solid' };
+}
+
+/** The colour a line is drawn with; kept for callers that only need the colour. */
+export function studyColor(study: StudyConfig, line: StudyLine): ColorToken {
+    return studyLineStyle(study, line).color;
 }
 
 /** The numeric value actually used by a computation: the stored one, or the default. */
@@ -521,7 +548,13 @@ export function parseStudies(value: unknown): StudyConfig[] {
     for (const entry of payload.studies) {
         if (out.length >= MAX_STUDIES) break;
         if (!entry || typeof entry !== 'object') continue;
-        const candidate = entry as { id?: unknown; params?: unknown; color?: unknown; width?: unknown };
+        const candidate = entry as {
+            id?: unknown;
+            params?: unknown;
+            color?: unknown;
+            width?: unknown;
+            lines?: unknown;
+        };
         if (typeof candidate.id !== 'string' || !(candidate.id in STUDIES)) continue;
         const def = STUDIES[candidate.id as StudyId];
         const stored = candidate.params && typeof candidate.params === 'object' ? (candidate.params as Record<string, unknown>) : {};
@@ -539,6 +572,20 @@ export function parseStudies(value: unknown): StudyConfig[] {
             params[param.key] = clamp(number, param);
         }
         const entryOut: StudyConfig = { id: def.id, params };
+        const storedLines = candidate.lines && typeof candidate.lines === 'object' && !Array.isArray(candidate.lines)
+            ? (candidate.lines as Record<string, unknown>)
+            : {};
+        const lines: Record<string, StudyLineStyle> = {};
+        for (const spec of def.lines) {
+            const raw = storedLines[spec.key];
+            if (!raw || typeof raw !== 'object') continue;
+            const style = raw as { color?: unknown; dash?: unknown };
+            const entry: StudyLineStyle = {};
+            if (isColorToken(style.color)) entry.color = style.color;
+            if (isDash(style.dash)) entry.dash = style.dash;
+            if (entry.color || entry.dash) lines[spec.key] = entry;
+        }
+        if (Object.keys(lines).length > 0) entryOut.lines = lines;
         if (isColorToken(candidate.color) && def.lines.length === 1) entryOut.color = candidate.color;
         if (isWidth(candidate.width)) entryOut.width = candidate.width;
         out.push(entryOut);

@@ -8,8 +8,10 @@ import {
     describeStudy,
     studiesChoice,
     studyColor,
+    studyLineStyle,
     studyWidth,
     STUDY_COLOR_TOKENS,
+    STUDY_LINE_DASHES,
     STUDY_WIDTHS,
     parseStudies,
     studiesParam,
@@ -139,6 +141,10 @@ describe('the dictionary', () => {
                     const key: StringKey = `study.colour.${token}`;
                     expect(tx(lang, key), `${lang} ${token}`).not.toBe('');
                 }
+                for (const dash of STUDY_LINE_DASHES) {
+                    const key: StringKey = `study.dash.${dash}`;
+                    expect(tx(lang, key), `${lang} ${dash}`).not.toBe('');
+                }
             }
         }
     });
@@ -202,6 +208,44 @@ describe('parseStudies', () => {
     it('caps the list at the pane budget', () => {
         const many = Array.from({ length: MAX_STUDIES + 5 }, () => ({ id: 'sma', params: {} }));
         expect(parseStudies(stored(many))).toHaveLength(MAX_STUDIES);
+    });
+});
+
+describe('line styles', () => {
+    it('falls back to the definition, solid', () => {
+        const style = studyLineStyle(defaultStudy('bb'), STUDIES.bb.lines[2]);
+        expect(style).toEqual({ color: 'faint', dash: 'solid' });
+    });
+
+    it('lets each line of a multi-line study be styled on its own', () => {
+        const study = {
+            ...defaultStudy('bb'),
+            lines: {
+                middle: { color: 'up' as const, dash: 'dashed' as const },
+                lower: { color: 'down' as const },
+            },
+        };
+        expect(studyLineStyle(study, STUDIES.bb.lines[0])).toEqual({ color: 'faint', dash: 'solid' });
+        expect(studyLineStyle(study, STUDIES.bb.lines[1])).toEqual({ color: 'up', dash: 'dashed' });
+        expect(studyLineStyle(study, STUDIES.bb.lines[2])).toEqual({ color: 'down', dash: 'solid' });
+    });
+
+    it('still honours the legacy single-line colour', () => {
+        expect(studyColor({ ...defaultStudy('sma'), color: 'down' }, STUDIES.sma.lines[0])).toBe('down');
+        // The per-line form wins when both are present.
+        const both = { ...defaultStudy('sma'), color: 'down' as const, lines: { value: { color: 'warn' as const } } };
+        expect(studyColor(both, STUDIES.sma.lines[0])).toBe('warn');
+    });
+
+    it('carries per-line styles through storage, dropping what it cannot draw', () => {
+        const stored = (studies: unknown) => ({ v: 1, studies });
+        const [kept] = parseStudies(stored([{ id: 'bb', params: {}, lines: { upper: { color: 'up', dash: 'dotted' }, middle: { color: 'pink', dash: 'wavy' } } }]));
+        // The unusable middle entry leaves nothing behind, so it is not stored at all.
+        expect(kept.lines).toEqual({ upper: { color: 'up', dash: 'dotted' } });
+        const [unknown] = parseStudies(stored([{ id: 'bb', params: {}, lines: { nonsense: { color: 'up' } } }]));
+        expect(unknown.lines).toBeUndefined();
+        const [empty] = parseStudies(stored([{ id: 'bb', params: {}, lines: { upper: {} } }]));
+        expect(empty.lines).toBeUndefined();
     });
 });
 

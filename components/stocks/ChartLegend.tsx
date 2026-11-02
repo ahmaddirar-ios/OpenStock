@@ -6,6 +6,7 @@ import {
     STUDIES,
     describeStudy,
     studyColor,
+    studyLineStyle,
     type ColorToken,
     type StudyConfig,
     type StudyId,
@@ -121,7 +122,7 @@ export default function ChartLegend({ lang, readout, studies, className }: Props
                                         title={t(line.name)}
                                     >
                                         {def.lines.length > 1 && (
-                                            <span aria-hidden="true" className="text-faint">
+                                            <span aria-hidden="true" className={LABEL_TONE[studyLineStyle(study, line).color]}>
                                                 {line.short}
                                             </span>
                                         )}

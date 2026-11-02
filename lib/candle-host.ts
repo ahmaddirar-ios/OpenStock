@@ -9,6 +9,7 @@ import {
     CandlestickSeries,
     HistogramSeries,
     LineSeries,
+    LineStyle,
     createChart,
     type IChartApi,
     type ISeriesApi,
@@ -21,7 +22,8 @@ import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-read
 import {
     STUDIES,
     STUDY_COLOR_SOURCES,
-    studyColor,
+    type StudyLineDash,
+    studyLineStyle,
     studyWidth,
     type ColorToken,
     type StudyConfig,
@@ -120,9 +122,16 @@ const overlay = (
     points: { time: UTCTimestamp; value: number }[],
     color: string,
     lineWidth: StudyWidth,
+    style: LineStyle,
 ) => {
     if (points.length === 0) return null;
-    const series = chart.addSeries(LineSeries, { color, lineWidth, priceLineVisible: false, lastValueVisible: false });
+    const series = chart.addSeries(LineSeries, {
+        color,
+        lineWidth,
+        lineStyle: style,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
     series.setData(points);
     return series;
 };
@@ -161,6 +170,12 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         log: PriceScaleMode.Logarithmic,
         percent: PriceScaleMode.Percentage,
     };
+    const LINE_STYLE: Record<StudyLineDash, LineStyle> = {
+        solid: LineStyle.Solid,
+        dashed: LineStyle.Dashed,
+        dotted: LineStyle.Dotted,
+    };
+
     const applyScaleMode = (mode: ScaleMode) => {
         // The right axis only: the volume scale keeps its own units either way.
         chart.priceScale('right').applyOptions({ mode: PRICE_SCALE_MODE[mode] });
@@ -334,6 +349,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
 
             for (const spec of drawn) {
                 const values = computed[spec.key];
+                const style = studyLineStyle(study, spec);
                 // Keyed by list position, not study id: two SMAs must stay distinguishable.
                 readoutSeries[`${index}:${spec.key}`] = values;
 
@@ -357,8 +373,9 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                         .addSeries(
                             LineSeries,
                             {
-                                color: resolveColor(studyColor(study, spec)),
+                                color: resolveColor(style.color),
                                 lineWidth: width,
+                                lineStyle: LINE_STYLE[style.dash],
                                 priceLineVisible: false,
                                 lastValueVisible: false,
                             },
@@ -366,7 +383,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                         )
                         .setData(points);
                 } else {
-                    const series = overlay(chart, points, resolveColor(studyColor(study, spec)), width);
+                    const series = overlay(chart, points, resolveColor(style.color), width, LINE_STYLE[style.dash]);
                     if (series) overlays.push(series);
                 }
             }

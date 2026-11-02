@@ -8,15 +8,17 @@ import {
     STUDY_COLOR_SOURCES,
     STUDY_COLOR_TOKENS,
     STUDY_IDS,
+    STUDY_LINE_DASHES,
     STUDY_WIDTHS,
     defaultStudy,
     describeStudy,
     studiesChoice,
     studiesParam,
-    studyColor,
+    studyLineStyle,
     studyWidth,
     type StudyConfig,
     type StudyId,
+    type StudyLineStyle,
 } from '@/lib/chart-studies';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -95,6 +97,17 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
         onChange(
             studies.map((study, i) =>
                 i === index ? { ...study, params: { ...study.params, [key]: value } } : study,
+            ),
+        );
+    };
+
+    /** Styles one plot of a study: colour and dash are per line, so a band keeps its meaning. */
+    const styleLine = (index: number, key: string, patch: StudyLineStyle) => {
+        onChange(
+            studies.map((study, i) =>
+                i === index
+                    ? { ...study, lines: { ...study.lines, [key]: { ...study.lines?.[key], ...patch } } }
+                    : study,
             ),
         );
     };
@@ -211,37 +224,78 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                 );
                                             })}
                                         </div>
-                                        {/* Colour is offered only where it cannot erase a meaning: on a
-                                            single-line study. Multi-line studies keep their palette. */}
-                                        {def.lines.length === 1 && (
-                                            <div
-                                                role="group"
-                                                aria-label={t('study.colour')}
-                                                className="ms-auto flex items-center gap-1"
-                                            >
-                                                {STUDY_COLOR_TOKENS.map((token) => {
-                                                    const active = studyColor(study, def.lines[0]) === token;
-                                                    const name = t(`study.colour.${token}`);
-                                                    return (
-                                                        <button
-                                                            key={token}
-                                                            type="button"
-                                                            onClick={() => restyle(index, { color: token })}
-                                                            aria-pressed={active}
-                                                            aria-label={name}
-                                                            title={name}
-                                                            style={{
-                                                                background: `var(${STUDY_COLOR_SOURCES[token].token})`,
-                                                            }}
-                                                            className={cn(
-                                                                'size-3 rounded-full ring-1 ring-line transition-shadow',
-                                                                active && 'ring-2 ring-foreground',
-                                                            )}
-                                                        />
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
+                                    </div>
+                                    <div className="mt-1 flex flex-col gap-0.5">
+                                        {def.lines.map((line) => {
+                                            const style = studyLineStyle(study, line);
+                                            return (
+                                                <div key={line.key} className="flex items-center gap-1.5 text-[10.5px] text-faint">
+                                                    <span aria-hidden="true" className="w-6 shrink-0 text-faint">
+                                                        {def.lines.length > 1 ? line.short : t(line.name)}
+                                                    </span>
+                                                    <div
+                                                        role="group"
+                                                        aria-label={`${t('study.colour')} ${t(line.name)}`}
+                                                        className="flex items-center gap-1"
+                                                    >
+                                                        {STUDY_COLOR_TOKENS.map((token) => {
+                                                            const name = t(`study.colour.${token}`);
+                                                            const active = style.color === token;
+                                                            return (
+                                                                <button
+                                                                    key={token}
+                                                                    type="button"
+                                                                    onClick={() => styleLine(index, line.key, { color: token })}
+                                                                    aria-pressed={active}
+                                                                    aria-label={`${name} — ${t(line.name)}`}
+                                                                    title={name}
+                                                                    style={{
+                                                                        background: `var(${STUDY_COLOR_SOURCES[token].token})`,
+                                                                    }}
+                                                                    className={cn(
+                                                                        'size-3 rounded-full ring-1 ring-line transition-shadow',
+                                                                        active && 'ring-2 ring-foreground',
+                                                                    )}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <div
+                                                        role="group"
+                                                        aria-label={`${t('study.dash')} ${t(line.name)}`}
+                                                        className="ms-auto flex items-center gap-0.5"
+                                                    >
+                                                        {STUDY_LINE_DASHES.map((dash) => {
+                                                            const active = style.dash === dash;
+                                                            return (
+                                                                <button
+                                                                    key={dash}
+                                                                    type="button"
+                                                                    onClick={() => styleLine(index, line.key, { dash })}
+                                                                    aria-pressed={active}
+                                                                    aria-label={`${t(`study.dash.${dash}`)} — ${t(line.name)}`}
+                                                                    title={t(`study.dash.${dash}`)}
+                                                                    className={cn(
+                                                                        'rounded-[5px] px-1 py-px transition-colors',
+                                                                        active ? 'bg-hover/60 text-foreground' : 'hover:bg-hover/30',
+                                                                    )}
+                                                                >
+                                                                    <span
+                                                                        aria-hidden="true"
+                                                                        className="block w-4"
+                                                                        style={{
+                                                                            borderTop: `2px ${
+                                                                                dash === 'dotted' ? 'dotted' : dash === 'dashed' ? 'dashed' : 'solid'
+                                                                            } currentColor`,
+                                                                        }}
+                                                                    />
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                     {def.params.length > 0 && (
                                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
