@@ -47,6 +47,10 @@ type Props = {
     onEditText: (id: string, text: string) => void;
     /** Called once a drawing is finished, so the toolbar can drop the tool. */
     onToolConsumed: () => void;
+    /** A drag started: the page snapshots the list so the whole drag is one undo step. */
+    onGestureStart: () => void;
+    /** A drag ended: the page records that one step. */
+    onGestureEnd: () => void;
     label: (key: StringKey) => string;
 };
 
@@ -69,6 +73,8 @@ export default function ChartDrawings({
     onCommit,
     onSelect,
     onMoveHandle,
+    onGestureStart,
+    onGestureEnd,
     onEditText,
     onToolConsumed,
     label,
@@ -122,9 +128,10 @@ export default function ChartDrawings({
 
         if (tool === 'select') {
             const selectedIndex = drawings.findIndex((drawing) => drawing.id === selectedId);
-            if (selectedIndex !== -1) {
+            if (selectedIndex !== -1 && !drawings[selectedIndex].locked) {
                 const grabbed = handleIndex(drawn[selectedIndex], cursor, GRAB);
                 if (grabbed !== null) {
+                    onGestureStart();
                     setDragging({ id: drawings[selectedIndex].id, index: grabbed });
                     return;
                 }
@@ -174,7 +181,10 @@ export default function ChartDrawings({
         if (draft.length > 0) setPreview(fromScreen(cursor.x, cursor.y));
     };
 
-    const onPointerUp = () => setDragging(null);
+    const onPointerUp = () => {
+        if (dragging) onGestureEnd();
+        setDragging(null);
+    };
     // Rewriting a note is a double click: a single click on its dot has to stay free for dragging it.
     const onDoubleClick = (event: React.MouseEvent) => {
         if (tool !== 'select') return;
@@ -216,6 +226,7 @@ export default function ChartDrawings({
         const previewing = drawing.id === 'draft';
         const opacity = previewing ? 0.65 : 1;
         const selected = drawing.id === selectedId;
+        const locked = drawing.locked === true;
         const width = selected ? 2.4 : 1.6;
         const glyphs = labelsFor(drawing);
 
@@ -335,7 +346,7 @@ export default function ChartDrawings({
                         strokeWidth={width}
                         opacity={opacity}
                     />
-                    {selected && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                    {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
                 </g>
             );
         }
@@ -382,7 +393,7 @@ export default function ChartDrawings({
                             )}
                         </g>
                     ))}
-                    {selected && screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                    {selected && !locked && screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
                 </g>
             );
         }
@@ -391,7 +402,7 @@ export default function ChartDrawings({
         return (
             <g key={drawing.id}>
                 <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
-                {selected &&
+                {selected && !locked &&
                     screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
             </g>
         );

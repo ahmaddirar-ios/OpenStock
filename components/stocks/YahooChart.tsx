@@ -20,6 +20,10 @@ import {
     GitCompare,
     History,
     Loader2,
+    Lock,
+    Redo2,
+    Undo2,
+    Unlock,
     Maximize2,
     Minimize2,
     MousePointer2,
@@ -31,6 +35,16 @@ import {
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
+import {
+    applyHistory,
+    canRedo,
+    canUndo,
+    checkpointHistory,
+    createHistory,
+    redoHistory,
+    undoHistory,
+    type History as DrawingHistory,
+} from '@/lib/chart-history';
 import StrategyMenu from '@/components/stocks/StrategyMenu';
 import ReplayPanel from '@/components/stocks/ReplayPanel';
 import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
@@ -228,7 +242,42 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [tool, setTool] = useState<ActiveTool | null>(null);
     const [pendingLabels, setPendingLabels] = useState<string[] | null>(null);
     const [noteText, setNoteText] = useState('');
-    const [drawings, setDrawings] = useState<Drawing[]>([]);
+    // The drawing list is a timeline: every discrete edit is a step, a whole drag is one step.
+    const [timeline, setTimeline] = useState<DrawingHistory<Drawing[]>>(() => createHistory<Drawing[]>([]));
+    const drawings = timeline.present;
+    /** A discrete edit: add, delete, recolour, import, clear. */
+    const setDrawings = useCallback((updater: Drawing[] | ((list: Drawing[]) => Drawing[])) => {
+        setTimeline((history) =>
+            applyHistory(history, typeof updater === 'function' ? updater(history.present) : updater),
+        );
+    }, []);
+    /** Opens a symbol's stored set: it is the starting point, not an edit, so undo cannot erase it. */
+    const resetDrawings = useCallback((list: Drawing[]) => {
+        setTimeline(createHistory(list));
+        setSelectedId(null);
+    }, []);
+    // The snapshot a drag started from, so pointermove never floods the timeline.
+    const gestureStart = useRef<Drawing[] | null>(null);
+    const beginGesture = useCallback(() => {
+        setTimeline((history) => {
+            gestureStart.current = history.present;
+            return history;
+        });
+    }, []);
+    const endGesture = useCallback(() => {
+        const before = gestureStart.current;
+        gestureStart.current = null;
+        if (!before) return;
+        setTimeline((history) => checkpointHistory(history, before));
+    }, []);
+    const undo = useCallback(() => {
+        setTimeline((history) => undoHistory(history));
+        setSelectedId(null);
+    }, []);
+    const redo = useCallback(() => {
+        setTimeline((history) => redoHistory(history));
+        setSelectedId(null);
+    }, []);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [expanded, setExpanded] = useState(false);
@@ -447,13 +496,12 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
     // Drawings belong to the symbol, not to the session: switching symbols starts from that symbol's set.
     useEffect(() => {
-        setDrawings(loadDrawings(symbol));
-        setSelectedId(null);
+        resetDrawings(loadDrawings(symbol));
         setTool(null);
         setPendingLabels(null);
         setEditRequest(null);
         setTransfer(null);
-    }, [symbol]);
+    }, [symbol, resetDrawings]);
 
     const saved = useRef(false);
     useEffect(() => {
@@ -565,6 +613,26 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         candleHostRef.current?.setScaleMode(scaleMode);
     }, [scaleMode]);
 
+    // Undo/redo on the drawings, the shortcut every editor shares. Typing in a field keeps its own
+    // undo, so the handler steps aside there.
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if (!(event.metaKey || event.ctrlKey)) return;
+            const target = event.target as HTMLElement | null;
+            if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+            const key = event.key.toLowerCase();
+            if (key === 'z' && !event.shiftKey) {
+                event.preventDefault();
+                undo();
+            } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+                event.preventDefault();
+                redo();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [undo, redo]);
+
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
         if (displayData) candleHostRef.current?.setData(displayData);
@@ -662,14 +730,20 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         setMenu(null);
     };
 
+    // Pointermove writes the present directly: the drag's single step is taken when it ends.
     const moveHandle = (id: string, index: number, point: DrawPoint) =>
-        setDrawings((list) => list.map((d) => (d.id === id ? withPoint(d, index, point) : d)));
+        setTimeline((history) => ({
+            ...history,
+            present: history.present.map((d) => (d.id === id ? withPoint(d, index, point) : d)),
+        }));
     const editText = (id: string, text: string) =>
         setDrawings((list) => list.map((d) => (d.id === id ? withText(d, text) : d)));
     const cycleColor = (id: string) =>
         setDrawings((list) =>
             list.map((d) => (d.id === id ? { ...d, color: nextColor(isColorKey(d.color) ? d.color : toolDef(d.tool).defaultColor) } : d)),
         );
+    const toggleLock = (id: string) =>
+        setDrawings((list) => list.map((d) => (d.id === id ? { ...d, locked: !d.locked } : d)));
     const removeDrawing = (id: string) => {
         setDrawings((list) => list.filter((d) => d.id !== id));
         setSelectedId((current) => (current === id ? null : current));
@@ -937,6 +1011,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     onCommit={commit}
                     onSelect={setSelectedId}
                     onMoveHandle={moveHandle}
+                    onGestureStart={beginGesture}
+                    onGestureEnd={endGesture}
                     onEditText={editText}
                     onToolConsumed={() => setTool(null)}
                     label={t}
@@ -988,6 +1064,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         )}`;
 
     const hasCandles = (data?.candles.length ?? 0) > 0;
+    const selectedDrawing = selectedId ? drawings.find((drawing) => drawing.id === selectedId) ?? null : null;
 
     const compareLegend = [
         ...(data ? [{ symbol, change: latestChange(data.candles, compareFrom) }] : []),
@@ -1255,6 +1332,37 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 <span className="mx-1 h-4 w-px bg-line" />
                 <button
                     type="button"
+                    onClick={undo}
+                    disabled={!canUndo(timeline)}
+                    className="icon-btn"
+                    title={t('chart.tool.undo')}
+                    aria-label={t('chart.tool.undo')}
+                >
+                    <Undo2 />
+                </button>
+                <button
+                    type="button"
+                    onClick={redo}
+                    disabled={!canRedo(timeline)}
+                    className="icon-btn"
+                    title={t('chart.tool.redo')}
+                    aria-label={t('chart.tool.redo')}
+                >
+                    <Redo2 />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => selectedId && toggleLock(selectedId)}
+                    disabled={!selectedId}
+                    aria-pressed={!!selectedDrawing?.locked}
+                    className="icon-btn"
+                    title={t(selectedDrawing?.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
+                    aria-label={t(selectedDrawing?.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
+                >
+                    {selectedDrawing?.locked ? <Lock /> : <Unlock />}
+                </button>
+                <button
+                    type="button"
                     onClick={() => removeDrawing(selectedId ?? '')}
                     disabled={!selectedId}
                     className="icon-btn is-danger"
@@ -1410,6 +1518,16 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                             <button type="button" onClick={() => setSelectedId(drawing.id)} className="flex flex-1 items-center gap-2 text-start">
                                 <span className="font-semibold">{toolLabel(drawing)}</span>
                                 <span className="mono num truncate text-[11.5px] text-faint">{summary(drawing)}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => toggleLock(drawing.id)}
+                                aria-pressed={!!drawing.locked}
+                                title={t(drawing.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
+                                aria-label={t(drawing.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
+                                className={cn('icon-btn', drawing.locked && 'text-warn')}
+                            >
+                                {drawing.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
                             </button>
                             {drawing.tool === 'text' && (
                                 <button

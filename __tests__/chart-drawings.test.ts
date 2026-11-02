@@ -290,6 +290,16 @@ describe('parseDrawings', () => {
         expect(parseDrawings(JSON.stringify([{ id: 'd', tool: 'trend', points: [{ time: 0, price: 1 }] }]))).toEqual([]);
     });
 
+    it('keeps a lock, and treats anything but true as unlocked', () => {
+        const locked: Drawing = { id: 'g', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], locked: true };
+        expect(parseDrawings(serializeDrawings([locked]))[0].locked).toBe(true);
+        const loose = { ...locked, locked: 'yes' };
+        expect(parseDrawings(JSON.stringify([loose]))[0].locked).toBeUndefined();
+        const plain: Drawing = { ...locked };
+        delete plain.locked;
+        expect(parseDrawings(serializeDrawings([plain]))[0].locked).toBeUndefined();
+    });
+
     it('keeps a label with its text', () => {
         const label: Drawing = { id: 'e', tool: 'text', points: [{ time: 1, price: 2 }], text: 'strike' };
         expect(parseDrawings(serializeDrawings([label]))[0].text).toBe('strike');

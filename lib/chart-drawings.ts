@@ -34,6 +34,8 @@ export type Drawing = {
     text?: string;
     /** Palette key, not a raw colour, so the stored value cannot drift from the theme. */
     color?: ColorKey;
+    /** Locked drawings still render and still select, but their points cannot be dragged. */
+    locked?: boolean;
 };
 
 // --- colours ---------------------------------------------------------------
@@ -375,6 +377,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
             : undefined;
     const text = candidate.tool === 'text' ? (cleanText(candidate.text) ?? '—') : undefined;
     const color = isColorKey(candidate.color) ? candidate.color : undefined;
+    const locked = candidate.locked === true ? true : undefined;
 
     return {
         id: candidate.id,
@@ -383,6 +386,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(labels ? { labels } : {}),
         ...(text ? { text } : {}),
         ...(color ? { color } : {}),
+        ...(locked ? { locked } : {}),
     };
 };
 
