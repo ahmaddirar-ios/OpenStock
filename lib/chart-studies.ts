@@ -2,14 +2,40 @@
 // parameters it takes, which lines it draws and how those lines are computed — so the menu, the
 // chart host, the legend and the stored settings all read the same definition.
 
-import { atr, bollinger, ema, macd, rsi, sma, vwap, type Series } from '@/lib/indicators';
+import {
+    adx,
+    atr,
+    bollinger,
+    cci,
+    ema,
+    macd,
+    obv,
+    rsi,
+    sma,
+    stochastic,
+    vwap,
+    williamsR,
+    type Series,
+} from '@/lib/indicators';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 
 /** The list is capped at the pane budget: every oscillator study opens its own pane. */
 export const MAX_STUDIES = 12;
 
-export type StudyId = 'sma' | 'ema' | 'bb' | 'vwap' | 'rsi' | 'macd' | 'atr';
+export type StudyId =
+    | 'sma'
+    | 'ema'
+    | 'bb'
+    | 'vwap'
+    | 'rsi'
+    | 'macd'
+    | 'atr'
+    | 'stoch'
+    | 'adx'
+    | 'wr'
+    | 'cci'
+    | 'obv';
 
 /** Theme tokens a study may paint with; the host resolves them, the legend maps them to classes. */
 export type ColorToken = 'brand' | 'warn' | 'up' | 'down' | 'faint' | 'muted';
@@ -150,6 +176,57 @@ const DEFINITIONS: StudyDef[] = [
         params: [period(1, 200, 14)],
         lines: [valueLine('warn')],
         compute: (candles, param) => ({ value: atr(candles, param('period')) }),
+    }),
+    define({
+        id: 'stoch',
+        label: 'study.stoch',
+        group: 'oscillator',
+        params: [
+            { key: 'kPeriod', label: 'study.param.kPeriod', min: 1, max: 100, step: 1, default: 14 },
+            { key: 'smooth', label: 'study.param.smooth', min: 1, max: 50, step: 1, default: 3 },
+            { key: 'dPeriod', label: 'study.param.dPeriod', min: 1, max: 50, step: 1, default: 3 },
+        ],
+        lines: [
+            { key: 'k', short: 'K', name: 'study.line.k', color: 'brand', kind: 'line' },
+            { key: 'd', short: 'D', name: 'study.line.d', color: 'warn', kind: 'line' },
+        ],
+        compute: (candles, param) => stochastic(candles, param('kPeriod'), param('smooth'), param('dPeriod')),
+    }),
+    define({
+        id: 'adx',
+        label: 'study.adx',
+        group: 'oscillator',
+        params: [period(1, 200, 14)],
+        lines: [
+            { key: 'adx', short: 'ADX', name: 'study.line.adx', color: 'brand', kind: 'line' },
+            { key: 'plusDi', short: '+DI', name: 'study.line.plusDi', color: 'up', kind: 'line' },
+            { key: 'minusDi', short: '−DI', name: 'study.line.minusDi', color: 'down', kind: 'line' },
+        ],
+        compute: (candles, param) => adx(candles, param('period')),
+    }),
+    define({
+        id: 'wr',
+        label: 'study.wr',
+        group: 'oscillator',
+        params: [period(1, 200, 14)],
+        lines: [valueLine('muted')],
+        compute: (candles, param) => ({ value: williamsR(candles, param('period')) }),
+    }),
+    define({
+        id: 'cci',
+        label: 'study.cci',
+        group: 'oscillator',
+        params: [period(2, 200, 20)],
+        lines: [valueLine('warn')],
+        compute: (candles, param) => ({ value: cci(candles, param('period')) }),
+    }),
+    define({
+        id: 'obv',
+        label: 'study.obv',
+        group: 'oscillator',
+        params: [],
+        lines: [valueLine('brand')],
+        compute: (candles) => ({ value: obv(candles) }),
     }),
 ];
 

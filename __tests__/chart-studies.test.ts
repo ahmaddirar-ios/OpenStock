@@ -8,6 +8,7 @@ import {
     parseStudies,
     studiesParam,
 } from '@/lib/chart-studies';
+import { tx } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 
 const candles: Candle[] = Array.from({ length: 80 }, (_, i) => ({
@@ -68,6 +69,11 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('bb'), 'en')).toBe('Bollinger Bands 20 · 2');
         expect(describeStudy(defaultStudy('macd'), 'en')).toBe('MACD 12 · 26 · 9');
         expect(describeStudy(defaultStudy('vwap'), 'en')).toBe('VWAP');
+        expect(describeStudy(defaultStudy('stoch'), 'en')).toBe('Stochastic 14 · 3 · 3');
+        expect(describeStudy(defaultStudy('adx'), 'en')).toBe('ADX / DMI 14');
+        expect(describeStudy(defaultStudy('wr'), 'en')).toBe('Williams %R 14');
+        expect(describeStudy(defaultStudy('cci'), 'en')).toBe('CCI 20');
+        expect(describeStudy(defaultStudy('obv'), 'en')).toBe('OBV');
     });
 
     it('follows the parameters the trader actually set', () => {
@@ -78,6 +84,20 @@ describe('describeStudy', () => {
         const text = describeStudy(defaultStudy('sma'), 'ar');
         expect(text).toContain('SMA');
         expect(text).toContain('٢٠');
+    });
+});
+
+describe('the dictionary', () => {
+    it('names every study, parameter and line in both languages', () => {
+        for (const id of STUDY_IDS) {
+            const def = STUDIES[id];
+            for (const lang of ['en', 'ar'] as const) {
+                expect(tx(lang, def.label), `${lang} ${id}`).not.toBe('');
+                for (const param of def.params) expect(tx(lang, param.label)).not.toBe('');
+                for (const line of def.lines) expect(tx(lang, line.name)).not.toBe('');
+                expect(describeStudy(defaultStudy(id), lang)).toContain(tx(lang, def.label));
+            }
+        }
     });
 });
 

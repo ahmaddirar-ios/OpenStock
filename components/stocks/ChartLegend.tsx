@@ -21,9 +21,13 @@ const LABEL_TONE: Record<ColorToken, string> = {
 
 const price = (value: number, lang: Lang) => arDigits(value.toFixed(2), lang);
 
-/** RSI reads as one decimal, MACD needs three until it grows past one, prices keep two. */
+/** The oscillators that read as a bare score, so one decimal is all that means anything. */
+const ONE_DECIMAL: readonly StudyId[] = ['rsi', 'stoch', 'wr', 'adx', 'cci'];
+
+/** OBV is a running volume total, so it reads like the volume above it. */
 const measure = (study: StudyId, line: StudyLine, value: number, lang: Lang) => {
-    if (study === 'rsi') return arDigits(value.toFixed(1), lang);
+    if (study === 'obv') return arDigits(compactVolume(value), lang);
+    if (ONE_DECIMAL.includes(study)) return arDigits(value.toFixed(1), lang);
     if (line.key === 'macd' || line.key === 'signal' || line.key === 'histogram') {
         return arDigits(value.toFixed(Math.abs(value) < 1 ? 3 : 2), lang);
     }
