@@ -10,7 +10,7 @@ import PriceFlash from "@/components/PriceFlash";
 import { useLiveQuotes } from "@/hooks/useLiveQuotes";
 import { SearchButton } from "@/components/SearchCommand";
 import { formatNumber } from "@/lib/utils";
-import { hasFinnhubQuotes } from "@/lib/markets";
+import { alertSource } from "@/lib/alerts";
 import { tx, type Lang } from "@/lib/i18n";
 import { arDigits } from "@/lib/i18n";
 import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
@@ -88,14 +88,14 @@ export default function WatchlistTable({ initialRows, lang }: { initialRows: Row
                             <td className="is-num text-muted-foreground">{row.marketCap ? formatNumber(row.marketCap, lang) : '—'}</td>
                             <td>
                                 <div className="flex items-center justify-end gap-1">
-                                    {hasFinnhubQuotes(row.symbol) ? (
+                                    {alertSource(row.symbol) ? (
                                         <CreateAlertModal symbol={row.symbol} currentPrice={row.price} currency={row.currency} lang={lang}>
                                             <button type="button" className="icon-btn" title={`Set a price alert for ${row.symbol}`} aria-label={`Set a price alert for ${row.symbol}`}>
                                                 <Bell />
                                             </button>
                                         </CreateAlertModal>
                                     ) : (
-                                        <span className="icon-btn opacity-40" title={tx(lang, 'alert.tooltipUsOnly')}><Bell /></span>
+                                        <span className="icon-btn opacity-40" title={tx(lang, 'alert.tooltipUnpriced')}><Bell /></span>
                                     )}
                                     <WatchlistButton
                                         symbol={row.symbol}

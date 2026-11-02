@@ -6,15 +6,16 @@ import { useRouter } from "next/navigation";
 import { BellRing, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteAlert } from "@/lib/actions/alert.actions";
-import { formatPrice } from "@/lib/utils";
+import { type AlertCondition } from "@/lib/alerts";
 import { tx, type Lang } from "@/lib/i18n";
 import { arNumberDigits } from '@/lib/i18n';
+import { alertConditionLabel, alertTargetLabel } from "@/components/alerts/labels";
 
 type AlertRow = {
     _id: string;
     symbol: string;
     targetPrice: number;
-    condition: 'ABOVE' | 'BELOW';
+    condition: AlertCondition;
     triggered?: boolean;
     active?: boolean;
     expiresAt?: string;
@@ -64,7 +65,7 @@ export default function AlertsPanel({ alerts, lang }: { alerts: AlertRow[]; lang
                             <div className="min-w-0 flex-1">
                                 <p className="mono font-semibold text-foreground">{alert.symbol}</p>
                                 <p className="num truncate text-[12.5px] text-faint">
-                                    {alert.condition === 'ABOVE' ? tx(lang, 'alert.above') : tx(lang, 'alert.below')} {formatPrice(alert.targetPrice)}
+                                    {alertConditionLabel(lang, alert.condition)} {alertTargetLabel(lang, alert.condition, alert.targetPrice)}
                                     {alert.expiresAt && !alert.triggered && ` · ${tx(lang, 'alert.until').replace('{d}', arNumberDigits(new Date(alert.expiresAt).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-nu-latn' : 'en-US', { month: 'short', day: 'numeric' }), lang))}`}
                                 </p>
                             </div>

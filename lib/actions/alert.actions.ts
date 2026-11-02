@@ -39,6 +39,8 @@ export type FiredAlert = {
 export type CheckResult = {
     /** Rules the checker could evaluate (a symbol whose quote failed is not counted). */
     checked: number;
+    /** Rules it could not price at all; they kept their state and must be reported, not hidden. */
+    skipped: number;
     /** Rules that fired on this check. */
     fired: FiredAlert[];
     /** Price per symbol, so the centre can show what it just saw. */
@@ -203,18 +205,22 @@ export async function checkAlerts(): Promise<CheckResult> {
 
     const now = new Date();
     const alerts = await Alert.find({ userId, active: true, triggered: false, expiresAt: { $gt: now } }).lean();
-    if (alerts.length === 0) return { checked: 0, fired: [], quotes: {} };
+    if (alerts.length === 0) return { checked: 0, skipped: 0, fired: [], quotes: {} };
 
     const symbols = [...new Set(alerts.map((alert) => alert.symbol))];
     const quotes = await priceSymbols(symbols);
 
     const fired: FiredAlert[] = [];
     let checked = 0;
+    let skipped = 0;
 
     await Promise.all(
         alerts.map(async (alert) => {
             const snapshot = quotes[alert.symbol];
-            if (!snapshot) return; // no quote: skip, leave the rule exactly as it was
+            if (!snapshot) {
+                skipped += 1; // no quote: skip, leave the rule exactly as it was
+                return;
+            }
             checked += 1;
 
             const rule = {
@@ -259,5 +265,5 @@ export async function checkAlerts(): Promise<CheckResult> {
     );
 
     revalidatePath('/alerts');
-    return { checked: Number(checked), fired, quotes };
+    return { checked: Number(checked), skipped: Number(skipped), fired, quotes };
 }

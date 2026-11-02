@@ -235,4 +235,18 @@ describe('checkAlerts', () => {
         expect(result.fired).toHaveLength(0);
         expect(updateOne).toHaveBeenCalledWith({ _id: 'a1', triggered: false }, { $set: { lastPrice: 150 } });
     });
+
+    it('counts rules it could not price as not checked, and still prices the rest', async () => {
+        lean.mockResolvedValue([
+            { _id: 'a1', userId: 'user-123', symbol: 'AAPL', condition: 'ABOVE', targetPrice: 300, lastPrice: null },
+            { _id: 'a2', userId: 'user-123', symbol: '2222.SR', condition: 'ABOVE', targetPrice: 25, lastPrice: null },
+        ]);
+        getLiveQuotes.mockResolvedValue({ AAPL: null }); // Finnhub answered nothing for AAPL
+        getYahooDailyQuotes.mockResolvedValue({ '2222.SR': { price: 26, changePercent: 1 } });
+
+        const result = await checkAlerts();
+        expect(result.checked).toBe(1);
+        expect(result.skipped).toBe(1);
+        expect(result.fired.map((alert) => alert.symbol)).toEqual(['2222.SR']);
+    });
 });

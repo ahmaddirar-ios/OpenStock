@@ -8,6 +8,7 @@ import { checkAlerts, createAlert, deleteAlert, markAlertsSeen, rearmAlert, upda
 import { alertSource, type AlertCondition } from '@/lib/alerts';
 import { cn } from '@/lib/utils';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
+import { ALERT_CONDITIONS, alertConditionLabel, alertTargetLabel, isPercentAlert } from '@/components/alerts/labels';
 
 export type AlertRow = {
     _id: string;
@@ -26,17 +27,6 @@ export type AlertRow = {
 
 type Filter = 'all' | 'active' | 'fired';
 
-const CONDITION_KEYS: Record<AlertCondition, StringKey> = {
-    ABOVE: 'alerts.cond.above',
-    BELOW: 'alerts.cond.below',
-    CROSS_UP: 'alerts.cond.crossUp',
-    CROSS_DOWN: 'alerts.cond.crossDown',
-    CHANGE_UP: 'alerts.cond.changeUp',
-    CHANGE_DOWN: 'alerts.cond.changeDown',
-};
-
-const CONDITIONS: AlertCondition[] = ['ABOVE', 'BELOW', 'CROSS_UP', 'CROSS_DOWN', 'CHANGE_UP', 'CHANGE_DOWN'];
-
 /** The action throws a code as the message; anything unknown is the generic failure. */
 const errorKey = (error: unknown): StringKey => {
     const code = error instanceof Error ? error.message : '';
@@ -51,19 +41,12 @@ const errorKey = (error: unknown): StringKey => {
     return known.find((key) => key.endsWith(code)) ?? 'alerts.err.failed';
 };
 
-const isPercent = (condition: AlertCondition) => condition === 'CHANGE_UP' || condition === 'CHANGE_DOWN';
-
 const statusOf = (alert: AlertRow) => {
     if (alert.triggered) return { key: 'alerts.status.fired' as StringKey, className: 'pill is-brand' };
     if (alert.active === false) return { key: 'alerts.status.paused' as StringKey, className: 'pill' };
     if (alert.expiresAt && new Date(alert.expiresAt) < new Date()) return { key: 'alerts.status.expired' as StringKey, className: 'pill' };
     return { key: 'alerts.status.watching' as StringKey, className: 'pill is-up' };
 };
-
-const targetLabel = (alert: AlertRow, lang: Lang) =>
-    isPercent(alert.condition)
-        ? `${arDigits(alert.targetPrice, lang)}%`
-        : arDigits(alert.targetPrice.toFixed(2), lang);
 
 const priceLabel = (value: number | null | undefined, lang: Lang) =>
     value == null || !Number.isFinite(value) ? '—' : arDigits(Number(value).toFixed(2), lang);
@@ -93,6 +76,15 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                               .replace('{s}', result.fired[0].symbol)
                               .replace('{p}', arDigits(result.fired[0].price.toFixed(2), lang))
                         : t('alerts.firedMany').replace('{n}', arDigits(result.fired.length, lang)),
+                );
+            } else if (result.checked === 0 && result.skipped > 0) {
+                // Every quote failed: say so instead of returning silently, and change nothing.
+                toast.error(t('alerts.checkedAllSkipped').replace('{s}', arDigits(result.skipped, lang)));
+            } else if (result.checked > 0 && result.skipped > 0) {
+                toast.message(
+                    t('alerts.checkedSomeSkipped')
+                        .replace('{n}', arDigits(result.checked, lang))
+                        .replace('{s}', arDigits(result.skipped, lang)),
                 );
             } else if (result.checked > 0) {
                 toast.message(t('alerts.checkedNone').replace('{n}', arDigits(result.checked, lang)));
@@ -189,8 +181,8 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                         aria-label={t('alerts.condition')}
                         className="h-9 rounded-[9px] bg-page px-2 text-[12.5px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                        {CONDITIONS.map((value) => (
-                            <option key={value} value={value}>{t(CONDITION_KEYS[value])}</option>
+                        {ALERT_CONDITIONS.map((value) => (
+                            <option key={value} value={value}>{alertConditionLabel(lang, value)}</option>
                         ))}
                     </select>
                     <div className="flex h-9 items-center rounded-[9px] bg-page ps-2.5 shadow-[inset_0_0_0_1px_var(--line)] focus-within:ring-2 focus-within:ring-ring">
@@ -198,11 +190,11 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                             value={target}
                             onChange={(event) => setTarget(event.target.value)}
                             inputMode="decimal"
-                            placeholder={isPercent(condition) ? t('alerts.targetPercent') : t('alerts.targetPrice')}
+                            placeholder={isPercentAlert(condition) ? t('alerts.targetPercent') : t('alerts.targetPrice')}
                             aria-label={t('alerts.target')}
                             className="num h-full w-20 bg-transparent text-[12.5px] outline-none placeholder:text-faint"
                         />
-                        <span className="pe-2 text-[12px] text-faint">{isPercent(condition) ? '%' : ''}</span>
+                        <span className="pe-2 text-[12px] text-faint">{isPercentAlert(condition) ? '%' : ''}</span>
                     </div>
                     <button type="submit" disabled={creating || !symbol.trim() || !target} className={cn('btn btn-primary h-9', (creating || !symbol.trim() || !target) && 'opacity-50')}>
                         {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} {t('alerts.create')}
@@ -247,7 +239,7 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                                         {source && <span className="text-[10.5px] text-faint">{t(source === 'yahoo' ? 'alerts.source.yahoo' : 'alerts.source.finnhub')}</span>}
                                     </p>
                                     <p className="num truncate text-[12.5px] text-faint">
-                                        {t(CONDITION_KEYS[alert.condition])} {targetLabel(alert, lang)}
+                                        {alertConditionLabel(lang, alert.condition)} {alertTargetLabel(lang, alert.condition, alert.targetPrice)}
                                         {alert.lastPrice != null && ` · ${t('alerts.last').replace('{p}', priceLabel(alert.lastPrice, lang))}`}
                                         {alert.triggered && alert.triggeredPrice != null && ` · ${t('alerts.status.fired')} ${priceLabel(alert.triggeredPrice, lang)}`}
                                     </p>
