@@ -6,6 +6,7 @@ import { compareYahooSymbol } from '@/lib/compare';
 import { DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, type Candle } from '@/lib/yahoo-candles';
 import { SCREENER_UNIVERSE, type UniverseEntry } from '@/lib/screener-universe';
 import { normalizeArabic } from '@/lib/saudi-symbols';
+import { cursorForTime, minStartIndex, randomCursor, visibleCandles } from '@/lib/replay';
 import type { StringKey } from '@/lib/i18n';
 
 export type GridLayoutId = 1 | 2 | 3 | 4;
@@ -229,4 +230,66 @@ export function universeName(symbol: string, lang: 'en' | 'ar'): string | null {
     const entry = SCREENER_UNIVERSE.find((row) => row.symbol.toUpperCase() === upper);
     if (!entry) return null;
     return (lang === 'ar' && entry.nameAr) || entry.name;
+}
+
+// -- Replay across the panes -------------------------------------------------------------------
+// One cursor for the whole screen. The rules are here, not in the component: which pane defines a
+// "bar", where a shared replay may start, and how far a pane may be clipped.
+
+/** The pane whose series defines a shared step: the longest one, so every pane can keep up. */
+export function replayAnchor(series: readonly (readonly Candle[])[]): readonly Candle[] | null {
+    let anchor: readonly Candle[] | null = null;
+    for (const bars of series) {
+        if (bars.length > 0 && (anchor === null || bars.length > anchor.length)) anchor = bars;
+    }
+    return anchor;
+}
+
+/** The first legal shared cursor: the latest warm-up bar among the panes, so none starts blind. */
+export function replayStartTime(series: readonly (readonly Candle[])[]): number | null {
+    let time = -Infinity;
+    for (const bars of series) {
+        if (bars.length === 0) continue;
+        time = Math.max(time, bars[Math.min(minStartIndex(bars.length), bars.length - 1)].time);
+    }
+    return Number.isFinite(time) ? time : null;
+}
+
+/** The last shared cursor: the anchor's final bar. */
+export function replayEndTime(series: readonly (readonly Candle[])[]): number | null {
+    const anchor = replayAnchor(series);
+    return anchor ? anchor[anchor.length - 1].time : null;
+}
+
+/**
+ * The bars a pane may show for this shared cursor. A cursor older than the pane's own data is not
+ * a one-bar chart: the pane shows its warm-up window, the earliest honest view it has.
+ */
+export function clipToCursor(candles: readonly Candle[], cursorTime: number | null): Candle[] {
+    if (candles.length === 0) return [];
+    if (cursorTime == null) return [...candles];
+    const index = Math.max(minStartIndex(candles.length), cursorForTime(candles, cursorTime));
+    return visibleCandles(candles, index);
+}
+
+/** Moves the shared cursor by whole bars on the anchor's scale, clamped to the series' span. */
+export function stepReplayTime(
+    series: readonly (readonly Candle[])[],
+    cursorTime: number | null,
+    delta: number,
+): number | null {
+    const anchor = replayAnchor(series);
+    if (!anchor) return null;
+    const start = replayStartTime(series) ?? anchor[0].time;
+    const current = cursorTime == null ? cursorForTime(anchor, start) : cursorForTime(anchor, cursorTime);
+    const from = current < 0 ? cursorForTime(anchor, start) : current;
+    const next = Math.max(0, Math.min(anchor.length - 1, from + Math.trunc(delta)));
+    return anchor[next].time;
+}
+
+/** A random start that is never inside the warm-up and never on the last bar. */
+export function randomReplayTime(series: readonly (readonly Candle[])[], random: () => number = Math.random): number | null {
+    const anchor = replayAnchor(series);
+    if (!anchor) return null;
+    return anchor[randomCursor(anchor.length, random)].time;
 }

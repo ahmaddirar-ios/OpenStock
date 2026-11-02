@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowUpRight,
     ChevronDown,
@@ -15,12 +15,13 @@ import {
 } from 'lightweight-charts';
 import { createCandleHost, type CandleHost, type IndicatorFlags } from '@/lib/candle-host';
 import { sessionChange, universeName } from '@/lib/chart-grid';
-import { getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
-import type { CandleSet } from '@/lib/yahoo-candles';
+import { getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
+import type { Candle, CandleSet } from '@/lib/yahoo-candles';
 import Price from '@/components/Price';
 import PaneSearch from '@/components/charts/PaneSearch';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { clipToCursor } from '@/lib/chart-grid';
 
 export type CrosshairSync = { time: number; price: number };
 export type RangeSync = { from: number; to: number };
@@ -43,6 +44,11 @@ type Props = {
     onRange: (value: RangeSync) => void;
     onSymbol: (symbol: string) => void;
     onClear: () => void;
+    /** Grid replay: every pane shows only the bars up to one shared cursor time. */
+    replay: boolean;
+    cursorTime: number | null;
+    /** Reports this pane's deep series, so the grid can size the shared cursor around all panes. */
+    onReplaySeries: (symbol: string, candles: readonly Candle[]) => void;
     className?: string;
 };
 
@@ -69,6 +75,9 @@ export default function ChartPane({
     onRange,
     onSymbol,
     onClear,
+    replay,
+    cursorTime,
+    onReplaySeries,
     className,
 }: Props) {
     const elRef = useRef<HTMLDivElement>(null);
@@ -85,6 +94,8 @@ export default function ChartPane({
     /** True once this pane holds bars. A view is never published or accepted before that, because a
      *  logical range means different things on an empty chart and would poison the other panes. */
     const ready = useRef(false);
+    // Replay reads the lab's deep history instead of the chart's light payload, and clips it.
+    const [deepSet, setDeepSet] = useState<CandleSet | null>(null);
     /** Set while this pane applies someone else's view, so it does not publish the echo back. */
     const ignoreUntil = useRef(0);
 
@@ -162,6 +173,7 @@ export default function ChartPane({
     useEffect(() => {
         if (!symbol) {
             setSet(null);
+            setDeepSet(null);
             setStatus('idle');
             loadedSymbol.current = '';
             ready.current = false;
@@ -171,27 +183,48 @@ export default function ChartPane({
         if (loadedSymbol.current !== symbol) setSet(null);
         setStatus('loading');
         void (async () => {
-            const result = await getSymbolCandles(symbol, intervalId);
+            // In replay a pane needs the deep history (ten years daily, cached an hour): the chart's
+            // own six months would not reach back far enough to replay, and the shared cursor has to
+            // mean the same thing on every pane.
+            const result = replay
+                ? await getStrategyCandles(symbol, intervalId)
+                : await getSymbolCandles(symbol, intervalId);
             if (cancelled) return;
             if (!result || result.candles.length === 0) {
                 setSet(null);
+                setDeepSet(null);
                 setStatus('error');
                 ready.current = false;
                 return;
             }
+            if (replay) {
+                setDeepSet(result);
+                onReplaySeries(symbol, result.candles);
+            } else {
+                setSet(result);
+                setDeepSet(null);
+            }
             loadedSymbol.current = symbol;
             ready.current = true;
-            setSet(result);
             setStatus('ready');
         })();
         return () => {
             cancelled = true;
         };
-    }, [symbol, intervalId, refreshNonce, nonce]);
+    }, [symbol, intervalId, refreshNonce, nonce, replay, onReplaySeries]);
+
+    // What the host draws: the light payload, or the deep one clipped to the shared cursor.
+    const view = useMemo(() => {
+        if (!replay) return set;
+        // Until the deep series lands the pane keeps the bars it already had, rather than blinking
+        // empty: the same rule as an interval change, where the old bars wait behind a progress line.
+        if (!deepSet) return set;
+        return { candles: clipToCursor(deepSet.candles, cursorTime), currency: deepSet.currency };
+    }, [replay, set, deepSet, cursorTime]);
 
     useEffect(() => {
-        hostRef.current?.setData(set);
-    }, [set]);
+        hostRef.current?.setData(view);
+    }, [view]);
 
     // The header pill is a day change, so it is read from daily bars even when the pane charts weeks
     // or months — otherwise a weekly bar would quietly redefine "today". The daily set is the same

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
+import { Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import ChartPane, { type CrosshairSync, type RangeSync } from '@/components/charts/ChartPane';
 import LayoutPicker from '@/components/charts/LayoutPicker';
 import { NO_INDICATORS, type IndicatorFlags } from '@/lib/candle-host';
@@ -13,12 +13,18 @@ import {
     paneSymbols,
     parseGridState,
     serializeGridState,
+    randomReplayTime,
+    replayAnchor,
+    replayEndTime,
+    replayStartTime,
     serializeGridSymbols,
+    stepReplayTime,
     type GridLayoutId,
     type GridState,
 } from '@/lib/chart-grid';
-import { CANDLE_INTERVALS } from '@/lib/yahoo-candles';
-import { tx, type Lang } from '@/lib/i18n';
+import { CANDLE_INTERVALS, type Candle } from '@/lib/yahoo-candles';
+import { REPLAY_SPEEDS, type ReplaySpeed } from '@/lib/replay';
+import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 /** The last workspace this browser opened, used only when the URL carries no state of its own. */
@@ -57,6 +63,22 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     const [refreshNonce, setRefreshNonce] = useState(0);
     const [crosshair, setCrosshair] = useState<{ from: number; value: CrosshairSync | null } | null>(null);
     const [range, setRange] = useState<{ from: number; value: RangeSync } | null>(null);
+    // Replay across the panes: one cursor time for the whole screen, stepped on the longest pane's
+    // scale. The paper account stays on the symbol page — the grid is for watching, not for trading
+    // four symbols out of one account.
+    const [replay, setReplay] = useState(false);
+    const [cursorTime, setCursorTime] = useState<number | null>(null);
+    const [playing, setPlaying] = useState(false);
+    const [speed, setSpeed] = useState<ReplaySpeed>(2);
+    const seriesRef = useRef<Map<string, readonly Candle[]>>(new Map());
+    // The cursor lives in a ref as well as in state: playback ticks faster than React can re-render
+    // two TradingView panes, so the next tick must start from the bar the last tick reached, not
+    // from the last painted state.
+    const cursorTimeRef = useRef<number | null>(null);
+    // Until the trader touches the transport the start may still move: a pane that reports late can
+    // carry a later warm-up bar, and the untouched replay should begin where every pane is warm.
+    const cursorTouched = useRef(false);
+    const [seriesVersion, setSeriesVersion] = useState(0);
 
     const t = useCallback((key: Parameters<typeof tx>[1]) => tx(lang, key), [lang]);
 
@@ -148,6 +170,86 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
         setSymbols((current) => paneSymbols(current, CHART_LAYOUTS[id].panes));
     };
 
+    const seriesList = useCallback(() => [...seriesRef.current.values()], []);
+
+    const onReplaySeries = useCallback((paneSymbol: string, candles: readonly Candle[]) => {
+        seriesRef.current.set(paneSymbol, candles);
+        // The version is what the "start the shared cursor" effect watches: the map itself lives in
+        // a ref, so without it the effect would never see the panes arrive.
+        setSeriesVersion((value) => value + 1);
+    }, []);
+
+    /** The one way the cursor moves: the ref is the truth, the state is only what got painted. */
+    const moveCursor = useCallback((at: number | null) => {
+        cursorTimeRef.current = at;
+        setCursorTime(at);
+    }, []);
+
+    const toggleReplay = () => {
+        setPlaying(false);
+        setReplay((value) => !value);
+        moveCursor(null);
+        cursorTouched.current = false;
+        seriesRef.current.clear();
+    };
+
+    // The shared cursor starts once the panes have reported their series: the latest warm-up bar,
+    // so every pane has something to draw behind it.
+    useEffect(() => {
+        if (!replay) return;
+        const start = replayStartTime(seriesList());
+        if (start == null) return;
+        if (cursorTimeRef.current == null) {
+            moveCursor(start);
+        } else if (!cursorTouched.current && start > cursorTimeRef.current) {
+            moveCursor(start);
+        }
+    }, [replay, seriesVersion, seriesList, moveCursor]);
+
+    const step = useCallback(
+        (delta: number) => {
+            const next = stepReplayTime(seriesList(), cursorTimeRef.current, delta);
+            if (next == null) return;
+            cursorTouched.current = true;
+            moveCursor(next);
+        },
+        [seriesList, moveCursor],
+    );
+
+    // A step is a bar on the anchor's scale, so the speed means bars per second on every pane.
+    useEffect(() => {
+        if (!replay || !playing) return;
+        cursorTouched.current = true;
+        const id = window.setInterval(() => {
+            const next = stepReplayTime(seriesList(), cursorTimeRef.current, 1);
+            if (next == null) return;
+            if (next === cursorTimeRef.current) {
+                setPlaying(false);
+                return;
+            }
+            moveCursor(next);
+        }, Math.max(80, Math.round(1000 / speed)));
+        return () => window.clearInterval(id);
+    }, [replay, playing, speed, seriesList, moveCursor]);
+
+    /** A direct jump (random, last bar) is a decision too: the start stops re-anchoring. */
+    const jumpTo = (at: number | null) => {
+        if (at == null) return;
+        cursorTouched.current = true;
+        moveCursor(at);
+    };
+
+    /** Where the shared cursor stands on the anchor: bar i of n, and its day. */
+    const replayCursors = () => {
+        const anchor = replayAnchor(seriesList());
+        if (!anchor || cursorTime == null) return t('chart.grid.replayWaiting');
+        const index = anchor.findIndex((bar) => bar.time >= cursorTime);
+        return t('chart.grid.replayAt')
+            .replace('{i}', arDigits(Math.max(1, index + 1), lang))
+            .replace('{n}', arDigits(anchor.length, lang))
+            .replace('{d}', new Date(cursorTime * 1000).toISOString().slice(0, 10));
+    };
+
     const setPaneSymbol = (index: number, symbol: string) => {
         setSymbols((current) => {
             const next = paneSymbols(current, panes);
@@ -196,6 +298,14 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                 ))}
                 <button
                     type="button"
+                    onClick={toggleReplay}
+                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', replay && 'is-up')}
+                    aria-pressed={replay}
+                >
+                    <Play className="size-3.5" /> {t('chart.grid.replay')}
+                </button>
+                <button
+                    type="button"
                     onClick={() => setRefreshNonce((value) => value + 1)}
                     className="icon-btn ms-auto"
                     aria-label={t('chart.grid.refresh')}
@@ -204,6 +314,75 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                     <RefreshCw />
                 </button>
             </div>
+
+            {replay && (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-[10px] bg-page/60 px-2.5 py-1.5" dir="ltr">
+                    <button
+                        type="button"
+                        onClick={() => step(-1)}
+                        className="icon-btn"
+                        aria-label={t('replay.stepBack')}
+                        title={t('replay.stepBack')}
+                    >
+                        <SkipBack className="size-3.5" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPlaying((value) => !value)}
+                        className={cn('icon-btn', playing && 'is-up')}
+                        aria-label={t(playing ? 'replay.pause' : 'replay.play')}
+                        title={t(playing ? 'replay.pause' : 'replay.play')}
+                    >
+                        {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => step(1)}
+                        className="icon-btn"
+                        aria-label={t('replay.stepForward')}
+                        title={t('replay.stepForward')}
+                    >
+                        <SkipForward className="size-3.5" />
+                    </button>
+                    <span className="mx-1 h-4 w-px bg-line" />
+                    {REPLAY_SPEEDS.map((value) => (
+                        <button
+                            key={value}
+                            type="button"
+                            onClick={() => setSpeed(value)}
+                            className={cn('pill h-6 px-2 text-[11px]', speed === value && 'is-up')}
+                            aria-pressed={speed === value}
+                        >
+                            {t('replay.speedValue').replace('{n}', String(value))}
+                        </button>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            jumpTo(randomReplayTime(seriesList()));
+                        }}
+                        className="pill h-6 gap-1 px-2 text-[11px]"
+                    >
+                        <Shuffle className="size-3" /> {t('replay.random')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setPlaying(false);
+                            jumpTo(replayEndTime(seriesList()));
+                        }}
+                        className="pill h-6 px-2 text-[11px]"
+                    >
+                        {t('replay.last')}
+                    </button>
+                    <span className="num text-[11px] text-faint">
+                        {replayCursors()} <span className="text-faint">{t('chart.grid.replayHint')}</span>
+                    </span>
+                    <button type="button" onClick={toggleReplay} className="pill ms-auto h-6 gap-1 px-2 text-[11px]">
+                        <X className="size-3" /> {t('replay.jumpLive')}
+                    </button>
+                </div>
+            )}
 
             <div className={cn('grid gap-2.5', CHART_LAYOUTS[layout].className)}>
                 {slots.map((symbol, index) => (
@@ -223,6 +402,9 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                         onRange={publishRange(index)}
                         onSymbol={(picked) => setPaneSymbol(index, picked)}
                         onClear={() => clearPane(index)}
+                        replay={replay}
+                        cursorTime={cursorTime}
+                        onReplaySeries={onReplaySeries}
                         className={index === 0 ? CHART_LAYOUTS[layout].firstClassName : undefined}
                     />
                 ))}
