@@ -4,11 +4,11 @@ import {
     alertSource,
     alertStoredSymbol,
     alertYahooSymbol,
-    distanceToTarget,
     evaluateAlert,
     isAlertCondition,
     isPercentCondition,
     nextLastPrice,
+    planCheck,
     validateAlertTarget,
     type AlertCondition,
 } from '@/lib/alerts';
@@ -111,15 +111,54 @@ describe('evaluateAlert', () => {
         expect(evaluateAlert(rule('BELOW', 30), snap(Number.NaN))).toBe(false);
     });
 
+    it('does not fire a cross that only touches the level', () => {
+        expect(evaluateAlert(rule('CROSS_UP', 30, 30), snap(30))).toBe(false);
+        expect(evaluateAlert(rule('CROSS_DOWN', 30, 30), snap(30))).toBe(false);
+    });
+
     it('moves the remembered price forward on every check', () => {
         expect(nextLastPrice(snap(31.5))).toBe(31.5);
         expect(evaluateAlert(rule('CROSS_UP', 30, nextLastPrice(snap(29))), snap(30))).toBe(true);
     });
+});
 
-    it('measures the distance to the target in the right unit', () => {
-        expect(distanceToTarget(rule('ABOVE', 30), snap(28))).toBe(-2);
-        expect(distanceToTarget(rule('CHANGE_UP', 5), snap(100, 2))).toBe(-3);
-        expect(distanceToTarget(rule('CHANGE_UP', 5), snap(100, -2))).toBeNull();
-        expect(distanceToTarget(rule('CHANGE_DOWN', 5), snap(100, -2))).toBe(-3);
+describe('planCheck', () => {
+    const row = (over: Partial<Parameters<typeof planCheck>[0][number]> = {}) => ({
+        id: 'a1',
+        symbol: '2222.SR',
+        condition: 'ABOVE' as AlertCondition,
+        targetPrice: 30,
+        lastPrice: null,
+        ...over,
+    });
+
+    it('skips a rule whose quote never came back and counts the rest as checked', () => {
+        const plan = planCheck(
+            [row(), row({ id: 'a2', symbol: 'AAPL' })],
+            { '2222.SR': { price: 31, changePercent: 1 } },
+        );
+        expect(plan.checked).toBe(1);
+        expect(plan.skipped).toBe(1);
+        expect(plan.fires.map((fire) => fire.id)).toEqual(['a1']);
+        expect(plan.misses).toEqual([]);
+    });
+
+    it('never reads a zero-price or missing quote as a price', () => {
+        expect(planCheck([row()], { '2222.SR': { price: 0, changePercent: 4 } })).toMatchObject({ checked: 0, skipped: 1, fires: [] });
+        expect(planCheck([row()], {})).toMatchObject({ checked: 0, skipped: 1, fires: [] });
+    });
+
+    it('remembers a miss and reports the price that fired a rule', () => {
+        const plan = planCheck(
+            [
+                row({ id: 'miss', condition: 'CROSS_UP', targetPrice: 40 }),
+                row({ id: 'hit', targetPrice: 30 }),
+            ],
+            { '2222.SR': { price: 31, changePercent: 2 } },
+        );
+        expect(plan.misses).toEqual([{ id: 'miss', lastPrice: 31 }]);
+        expect(plan.fires).toEqual([
+            { id: 'hit', symbol: '2222.SR', condition: 'ABOVE', targetPrice: 30, price: 31, changePercent: 2 },
+        ]);
     });
 });

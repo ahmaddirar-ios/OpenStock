@@ -30,6 +30,8 @@ type Filter = 'all' | 'active' | 'fired';
 /** The action throws a code as the message; anything unknown is the generic failure. */
 const errorKey = (error: unknown): StringKey => {
     const code = error instanceof Error ? error.message : '';
+    // Every string ends with '', so an empty code must not settle on the first key.
+    if (code === '') return 'alerts.err.failed';
     const known: StringKey[] = [
         'alerts.err.unsupportedSymbol',
         'alerts.err.invalidTarget',

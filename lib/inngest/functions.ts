@@ -249,53 +249,51 @@ export const checkStockAlerts = inngest.createFunction(
                 const quotes = await getYahooDailyQuotes(yahoo.map((symbol) => alertYahooSymbol(symbol) ?? symbol));
                 for (const symbol of yahoo) {
                     const quote = quotes[alertYahooSymbol(symbol) ?? symbol];
-                    if (quote) snapshots[symbol] = { price: quote.price, changePercent: quote.changePercent };
+                    // The same liveness test the on-visit check uses, so the two agree on a 0 quote.
+                    if (quote && Number.isFinite(quote.price)) snapshots[symbol] = { price: quote.price, changePercent: quote.changePercent };
                 }
             }
             if (finnhub.length > 0) {
                 const quotes = await getLiveQuotes(finnhub);
                 for (const symbol of finnhub) {
                     const quote = quotes[symbol];
-                    if (quote?.c) snapshots[symbol] = { price: quote.c, changePercent: Number(quote.dp ?? 0) };
+                    if (quote && Number.isFinite(quote.c)) snapshots[symbol] = { price: quote.c as number, changePercent: Number(quote.dp ?? 0) };
                 }
             }
             return snapshots;
         });
 
-        // Step 4: Evaluate every rule with the shared engine, exactly as the alert centre does.
-        const { evaluateAlert } = await import("@/lib/alerts");
+        // Step 4: the same decision the alert centre makes, from the same pure function, so the
+        // two paths cannot disagree about what fired or what the next cross compares against.
+        const { planCheck } = await import("@/lib/alerts");
         type Snapshot = { price: number; changePercent: number };
-        const triggeredAlerts: { alert: StoredAlert; snapshot: Snapshot }[] = [];
-        const watching: { id: unknown; price: number }[] = [];
-
-        for (const alert of alerts) {
-            const snapshot = (prices as Record<string, Snapshot>)[alert.symbol];
-            if (!snapshot) continue; // a quote that failed is skipped, never read as zero
-
-            const hit = evaluateAlert(
-                { condition: alert.condition, targetPrice: alert.targetPrice, lastPrice: alert.lastPrice ?? null },
-                snapshot,
-            );
-            if (hit) triggeredAlerts.push({ alert, snapshot });
-            else watching.push({ id: alert._id, price: snapshot.price });
-        }
+        const plan = planCheck(
+            alerts.map((alert) => ({
+                id: String(alert._id),
+                symbol: alert.symbol,
+                condition: alert.condition,
+                targetPrice: alert.targetPrice,
+                lastPrice: alert.lastPrice ?? null,
+            })),
+            prices as Record<string, Snapshot>,
+        );
 
         // Remember this check's price, so a cross rule has a previous price next time.
-        if (watching.length > 0) {
+        if (plan.misses.length > 0) {
             await step.run('remember-prices', async () => {
                 const { connectToDatabase } = await import("@/database/mongoose");
                 const { Alert } = await import("@/database/models/alert.model");
                 await connectToDatabase();
                 await Alert.bulkWrite(
-                    watching.map(({ id, price }) => ({
-                        updateOne: { filter: { _id: id, triggered: false }, update: { $set: { lastPrice: price } } },
+                    plan.misses.map(({ id, lastPrice }) => ({
+                        updateOne: { filter: { _id: id, triggered: false }, update: { $set: { lastPrice } } },
                     })),
                 );
             });
         }
 
         // Step 5: Claim what fired, email the price rules, and keep the rest in-app.
-        if (triggeredAlerts.length > 0) {
+        if (plan.fires.length > 0) {
             await step.run('process-triggered-alerts', async () => {
                 const { connectToDatabase } = await import("@/database/mongoose");
                 const { Alert } = await import("@/database/models/alert.model");
@@ -303,7 +301,11 @@ export const checkStockAlerts = inngest.createFunction(
                 const db = mongoose.connection.db;
                 if (!db) throw new Error("No DB Connection");
 
-                for (const { alert, snapshot } of triggeredAlerts) {
+                const byId = new Map(alerts.map((alert) => [String(alert._id), alert]));
+
+                for (const fire of plan.fires) {
+                    const alert = byId.get(fire.id);
+                    if (!alert) continue;
                     // Claim the alert atomically before emailing. Inngest's concurrency limits steps, not
                     // whole runs, so two overlapping runs can hold the same alert; only one wins this update.
                     const claimed = await Alert.findOneAndUpdate(
@@ -313,8 +315,8 @@ export const checkStockAlerts = inngest.createFunction(
                                 triggered: true,
                                 active: false,
                                 triggeredAt: new Date(),
-                                triggeredPrice: snapshot.price,
-                                lastPrice: snapshot.price,
+                                triggeredPrice: fire.price,
+                                lastPrice: fire.price,
                                 seen: false,
                             },
                         },
@@ -327,7 +329,7 @@ export const checkStockAlerts = inngest.createFunction(
                         triggeredPrice: null,
                     }).catch(() => {});
 
-                    console.log(`🚀 ALERT FIRED: ${alert.symbol} is ${snapshot.price} (${alert.condition} ${alert.targetPrice})`);
+                    console.log(`🚀 ALERT FIRED: ${alert.symbol} is ${fire.price} (${alert.condition} ${alert.targetPrice})`);
 
                     // The mail templates speak in prices; the four newer rules are announced in the
                     // alert centre only, so an e-mail never quotes a percentage as a price.
@@ -347,7 +349,7 @@ export const checkStockAlerts = inngest.createFunction(
                             const result = await sendStockAlertEmail({
                                 email: user.email,
                                 symbol: alert.symbol,
-                                currentPrice: snapshot.price,
+                                currentPrice: fire.price,
                                 targetPrice: alert.targetPrice,
                                 condition: alert.condition,
                             });
@@ -366,7 +368,7 @@ export const checkStockAlerts = inngest.createFunction(
 
         return {
             processed: activeAlerts.length,
-            triggered: triggeredAlerts.length
+            triggered: plan.fires.length
         };
     }
 );

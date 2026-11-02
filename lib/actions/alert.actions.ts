@@ -10,9 +10,8 @@ import {
     alertSource,
     alertStoredSymbol,
     alertYahooSymbol,
-    evaluateAlert,
     isAlertCondition,
-    nextLastPrice,
+    planCheck,
     validateAlertTarget,
     type AlertCondition,
     type AlertSnapshot,
@@ -100,18 +99,22 @@ export async function updateAlert(
     const targetPrice = patch.targetPrice == null ? existing.targetPrice : Number(patch.targetPrice);
     if (!validateAlertTarget(condition, targetPrice)) fail('invalidTarget');
 
-    const reset = condition !== existing.condition || patch.active === true;
     const update: Record<string, unknown> = { condition, targetPrice };
     if (typeof patch.active === 'boolean') update.active = patch.active;
-    if (reset) {
+
+    // Only a change of condition invalidates the remembered price. Pausing and resuming must
+    // not: a cross rule would need two more checks after every pause, and the spec only asks
+    // for the stale-cross case.
+    if (condition !== existing.condition) update.lastPrice = null;
+
+    // Reactivating a fired rule means "watch again", so clear the firing exactly as the
+    // re-arm button does (the same rule reachable from an API caller).
+    if (patch.active === true && existing.triggered) {
+        update.triggered = false;
+        update.triggeredAt = null;
+        update.triggeredPrice = null;
+        update.seen = false;
         update.lastPrice = null;
-        // Re-activating a fired rule re-arms it; the trader asked for it to watch again.
-        if (patch.active === true && existing.triggered) {
-            update.triggered = false;
-            update.triggeredAt = null;
-            update.triggeredPrice = null;
-            update.seen = false;
-        }
     }
 
     const saved = await Alert.findOneAndUpdate({ _id: alertId, userId }, update, { new: true });
@@ -195,9 +198,9 @@ async function priceSymbols(symbols: string[]): Promise<Record<string, AlertSnap
 }
 
 /**
- * The on-visit check. Every live rule is priced once, evaluated with the same engine the
- * cron uses, and the ones that fire are claimed atomically so two tabs cannot both report
- * the same firing. Quotes that fail to load are skipped, never read as zero.
+ * The on-visit check. Every live rule is priced once and handed to `planCheck`, the same
+ * decision the Inngest cron runs; the rules it says fired are claimed atomically so two
+ * tabs cannot both report one. Quotes that fail to load are skipped, never read as zero.
  */
 export async function checkAlerts(): Promise<CheckResult> {
     const userId = await requireUserId();
@@ -210,60 +213,57 @@ export async function checkAlerts(): Promise<CheckResult> {
     const symbols = [...new Set(alerts.map((alert) => alert.symbol))];
     const quotes = await priceSymbols(symbols);
 
-    const fired: FiredAlert[] = [];
-    let checked = 0;
-    let skipped = 0;
+    const plan = planCheck(
+        alerts.map((alert) => ({
+            id: String(alert._id),
+            symbol: alert.symbol,
+            condition: alert.condition as AlertCondition,
+            targetPrice: alert.targetPrice,
+            lastPrice: alert.lastPrice ?? null,
+        })),
+        quotes,
+    );
 
+    // Remember this check's price on every rule that did not fire, so a cross has a
+    // previous price next time.
     await Promise.all(
-        alerts.map(async (alert) => {
-            const snapshot = quotes[alert.symbol];
-            if (!snapshot) {
-                skipped += 1; // no quote: skip, leave the rule exactly as it was
-                return;
-            }
-            checked += 1;
+        plan.misses.map(({ id, lastPrice }) =>
+            Alert.updateOne({ _id: id, triggered: false }, { $set: { lastPrice } }),
+        ),
+    );
 
-            const rule = {
-                condition: alert.condition as AlertCondition,
-                targetPrice: alert.targetPrice,
-                lastPrice: alert.lastPrice ?? null,
-            };
-            const hit = evaluateAlert(rule, snapshot);
-
-            if (hit) {
-                const claimed = await Alert.findOneAndUpdate(
-                    { _id: alert._id, triggered: false, active: true },
-                    {
-                        $set: {
-                            triggered: true,
-                            triggeredAt: new Date(),
-                            triggeredPrice: snapshot.price,
-                            lastPrice: snapshot.price,
-                            seen: false,
-                        },
+    const fired: FiredAlert[] = [];
+    await Promise.all(
+        plan.fires.map(async (fire) => {
+            const claimed = await Alert.findOneAndUpdate(
+                { _id: fire.id, triggered: false, active: true },
+                {
+                    $set: {
+                        triggered: true,
+                        // A fired rule is finished watching, exactly as the cron leaves it:
+                        // it stops counting toward the active-alert cap until it is re-armed.
+                        active: false,
+                        triggeredAt: new Date(),
+                        triggeredPrice: fire.price,
+                        lastPrice: fire.price,
+                        seen: false,
                     },
-                    { new: true },
-                );
-                if (claimed) {
-                    fired.push({
-                        id: String(alert._id),
-                        symbol: alert.symbol,
-                        condition: rule.condition,
-                        targetPrice: alert.targetPrice,
-                        price: snapshot.price,
-                        changePercent: snapshot.changePercent,
-                    });
-                }
-                return;
-            }
-
-            await Alert.updateOne(
-                { _id: alert._id, triggered: false },
-                { $set: { lastPrice: nextLastPrice(snapshot) } },
+                },
+                { new: true },
             );
+            if (claimed) {
+                fired.push({
+                    id: fire.id,
+                    symbol: fire.symbol,
+                    condition: fire.condition,
+                    targetPrice: fire.targetPrice,
+                    price: fire.price,
+                    changePercent: fire.changePercent,
+                });
+            }
         }),
     );
 
     revalidatePath('/alerts');
-    return { checked: Number(checked), skipped: Number(skipped), fired, quotes };
+    return { checked: plan.checked, skipped: plan.skipped, fired, quotes };
 }

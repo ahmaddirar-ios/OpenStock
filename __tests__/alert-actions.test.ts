@@ -191,6 +191,62 @@ describe('createAlert validates untrusted input', () => {
     });
 });
 
+describe('pause, resume and re-arm keep the cross baseline honest', () => {
+    const stored = (over: Record<string, unknown> = {}) => ({
+        _id: 'alert-1',
+        userId: 'user-123',
+        condition: 'CROSS_UP',
+        targetPrice: 200,
+        active: true,
+        triggered: false,
+        lastPrice: 190,
+        ...over,
+    });
+
+    it('pausing and resuming a watching rule does not wipe the price a cross compares against', async () => {
+        findOne.mockResolvedValue(stored());
+        await updateAlert('alert-1', { active: false });
+        expect(findOneAndUpdate).toHaveBeenLastCalledWith(
+            { _id: 'alert-1', userId: 'user-123' },
+            expect.objectContaining({ active: false }),
+            { new: true },
+        );
+        expect(findOneAndUpdate.mock.calls.at(-1)?.[1]).not.toHaveProperty('lastPrice');
+
+        await updateAlert('alert-1', { active: true });
+        expect(findOneAndUpdate.mock.calls.at(-1)?.[1]).not.toHaveProperty('lastPrice');
+    });
+
+    it('reactivating a fired rule re-arms it, exactly as the re-arm button does', async () => {
+        findOne.mockResolvedValue(stored({ condition: 'ABOVE', triggered: true, active: false }));
+        await updateAlert('alert-1', { active: true });
+        expect(findOneAndUpdate.mock.calls.at(-1)?.[1]).toEqual(
+            expect.objectContaining({
+                active: true,
+                triggered: false,
+                triggeredAt: null,
+                triggeredPrice: null,
+                seen: false,
+                lastPrice: null,
+            }),
+        );
+    });
+
+    it('re-arm clears the whole firing, not only the flag', async () => {
+        await rearmAlert('alert-1');
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { _id: 'alert-1', userId: 'user-123' },
+            { triggered: false, triggeredAt: null, triggeredPrice: null, seen: false, lastPrice: null, active: true },
+            { new: true },
+        );
+    });
+
+    it('refuses a re-arm that matches nothing (another user’s id)', async () => {
+        findOneAndUpdate.mockResolvedValue(null);
+        await expect(rearmAlert('alert-of-someone-else')).rejects.toThrow('notFound');
+    });
+});
+
 describe('checkAlerts', () => {
     it('never reads a failed quote as zero: the rule is skipped and keeps its state', async () => {
         lean.mockResolvedValue([
@@ -205,7 +261,7 @@ describe('checkAlerts', () => {
         expect(updateOne).not.toHaveBeenCalled();
     });
 
-    it('claims a firing atomically and records the price; a losing tab learns nothing', async () => {
+    it('claims a firing atomically, closes the rule and records the price; a losing tab learns nothing', async () => {
         lean.mockResolvedValue([
             { _id: 'a1', userId: 'user-123', symbol: 'AAPL', condition: 'ABOVE', targetPrice: 100, lastPrice: null },
         ]);
@@ -215,7 +271,15 @@ describe('checkAlerts', () => {
         const result = await checkAlerts();
         expect(findOneAndUpdate).toHaveBeenCalledWith(
             { _id: 'a1', triggered: false, active: true },
-            { $set: expect.objectContaining({ triggered: true, triggeredPrice: 101 }) },
+            {
+                $set: expect.objectContaining({
+                    triggered: true,
+                    active: false,
+                    triggeredPrice: 101,
+                    lastPrice: 101,
+                    seen: false,
+                }),
+            },
             { new: true },
         );
         expect(result.fired).toHaveLength(1);

@@ -104,20 +104,68 @@ export function evaluateAlert(rule: AlertRule, snapshot: AlertSnapshot): boolean
 /** What the next check compares against: today's price, whatever happened this time. */
 export const nextLastPrice = (snapshot: AlertSnapshot): number => snapshot.price;
 
-/** A target the rule can actually use: positive, and a sane percent for the change rules. */
+/** The target a rule can actually use: positive, and a sane percent for the change rules. */
 export function validateAlertTarget(condition: AlertCondition, target: number): boolean {
     if (!Number.isFinite(target) || target <= 0) return false;
     if (isPercentCondition(condition)) return target <= 100;
     return true;
 }
 
-/** How far the price is from the target, for the "already met" hint in the UI. */
-export function distanceToTarget(rule: AlertRule, snapshot: AlertSnapshot): number | null {
-    if (isPercentCondition(rule.condition)) {
-        const reached = Math.abs(snapshot.changePercent) - Math.abs(rule.targetPrice);
-        const sameDirection = rule.condition === 'CHANGE_UP' ? snapshot.changePercent >= 0 : snapshot.changePercent <= 0;
-        return sameDirection ? reached : null;
+/** One stored rule, as a checker sees it: an id, its symbol and what the last check saw. */
+export type CheckRuleRow = {
+    id: string;
+    symbol: string;
+    condition: AlertCondition;
+    targetPrice: number;
+    lastPrice?: number | null;
+};
+
+export type CheckPlan = {
+    /** Rules that could be priced and evaluated. */
+    checked: number;
+    /** Rules whose quote never came back: skipped, and left exactly as they were. */
+    skipped: number;
+    /** Rules that fired, with the price that fired them. */
+    fires: { id: string; symbol: string; condition: AlertCondition; targetPrice: number; price: number; changePercent: number }[];
+    /** Rules that did not fire, with the price the next check must compare against. */
+    misses: { id: string; lastPrice: number }[];
+};
+
+/**
+ * Decides what a check does, and nothing else: no IO, no dates, no database.
+ *
+ * Both checkers (the on-visit action and the Inngest cron) run this, so they cannot
+ * disagree about which rule fired, which rule was skipped for want of a quote, or what
+ * the next cross compares against. Persisting the answer is each caller's own business.
+ */
+export function planCheck(rules: CheckRuleRow[], quotes: Record<string, AlertSnapshot>): CheckPlan {
+    const plan: CheckPlan = { checked: 0, skipped: 0, fires: [], misses: [] };
+
+    for (const rule of rules) {
+        const snapshot = quotes[rule.symbol];
+        if (!snapshot || !Number.isFinite(snapshot.price) || snapshot.price <= 0) {
+            plan.skipped += 1; // no usable quote: the rule keeps its state and gets another day
+            continue;
+        }
+        plan.checked += 1;
+
+        const hit = evaluateAlert(
+            { condition: rule.condition, targetPrice: rule.targetPrice, lastPrice: rule.lastPrice ?? null },
+            snapshot,
+        );
+        if (hit) {
+            plan.fires.push({
+                id: rule.id,
+                symbol: rule.symbol,
+                condition: rule.condition,
+                targetPrice: rule.targetPrice,
+                price: snapshot.price,
+                changePercent: snapshot.changePercent,
+            });
+        } else {
+            plan.misses.push({ id: rule.id, lastPrice: nextLastPrice(snapshot) });
+        }
     }
-    if (!Number.isFinite(snapshot.price)) return null;
-    return snapshot.price - rule.targetPrice;
+
+    return plan;
 }

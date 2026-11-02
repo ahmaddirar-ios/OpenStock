@@ -42,7 +42,7 @@ const AlertSchema = new Schema<IAlert>(
     { timestamps: true }
 );
 
-// The checker's query: live, unfired, unexpired rules.
-AlertSchema.index({ active: 1, triggered: 1, expiresAt: 1 });
+// The checker's query: live, unfired, unexpired rules, always for one user.
+AlertSchema.index({ userId: 1, active: 1, triggered: 1, expiresAt: 1 });
 
 export const Alert: Model<IAlert> = (models?.Alert as Model<IAlert>) || model<IAlert>('Alert', AlertSchema);
