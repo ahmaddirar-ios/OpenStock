@@ -7,6 +7,7 @@ import {
     heikinAshi,
     renko,
     parseChartType,
+    parseKagiReversal,
     parseRenkoBox,
     parseScaleMode,
     readChartType,
@@ -17,6 +18,7 @@ import {
     type ChartType,
 } from '@/lib/chart-view';
 import type { Candle } from '@/lib/yahoo-candles';
+import { kagi } from '@/lib/chart-kagi';
 
 const bars: Candle[] = [
     { time: 1, open: 10, high: 14, low: 8, close: 12, volume: 100 },
@@ -183,5 +185,45 @@ describe('renko box', () => {
         expect(parseRenkoBox(-1)).toBeUndefined();
         expect(parseRenkoBox('abc')).toBeUndefined();
         expect(parseRenkoBox(null)).toBeUndefined();
+    });
+});
+
+describe('kagi', () => {
+    const closes = (values: number[]) => values.map((close, i) => ({ time: 100 + i, close }));
+
+    it('turns only after the set retracement', () => {
+        // A 4 % line: a 2 % dip keeps the yang line, an 8 % one turns it.
+        const small = kagi(closes([100, 110, 108]), 0.04);
+        expect(small).toHaveLength(1);
+        const big = kagi(closes([100, 110, 100]), 0.04);
+        expect(big.length).toBeGreaterThan(1);
+        expect(big[big.length - 1].yin).toBe(true);
+    });
+
+    it('keeps the line level at a corner and widens the yang line', () => {
+        const points = kagi(closes([100, 110, 100, 112]), 0.04);
+        expect(points[0]).toEqual({ time: 100, price: 100, yin: false });
+        // The corner happens at the yang high, then the line follows the falling price.
+        expect(points.some((point) => point.yin === true)).toBe(true);
+        expect(points[points.length - 1].yin).toBe(false);
+    });
+
+    it('keeps times strictly increasing even when one bar turns the line', () => {
+        const points = kagi(closes([100, 110, 100, 112]), 0.04);
+        for (let i = 1; i < points.length; i += 1) expect(points[i].time).toBeGreaterThan(points[i - 1].time);
+    });
+
+    it('answers nothing for no candles', () => {
+        expect(kagi([])).toEqual([]);
+    });
+});
+
+describe('kagi reversal parsing', () => {
+    it('accepts a fraction and refuses what is not one', () => {
+        expect(parseKagiReversal('0.05')).toBe(0.05);
+        expect(parseKagiReversal(0.02)).toBe(0.02);
+        expect(parseKagiReversal('0')).toBeUndefined();
+        expect(parseKagiReversal('1')).toBeUndefined();
+        expect(parseKagiReversal('x')).toBeUndefined();
     });
 });

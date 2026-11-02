@@ -23,6 +23,8 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import { heikinAshi, renko, type ChartType, type ScaleMode } from '@/lib/chart-view';
+import { kagi } from '@/lib/chart-kagi';
+import { KagiPaneView, type KagiDatum } from '@/lib/kagi-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
@@ -62,6 +64,8 @@ export type CandleHost = {
     setInvertScale: (on: boolean) => void;
     /** The absolute Renko box; undefined means half a percent of the first close. */
     setRenkoBox: (box: number | undefined) => void;
+    /** The Kagi retracement, as a fraction; undefined means four percent. */
+    setKagiReversal: (value: number | undefined) => void;
     /** Collapses closed-market gaps by inserting empty slots. */
     setSessionBreaks: (on: boolean) => void;
     setTimeVisible: (visible: boolean) => void;
@@ -99,6 +103,8 @@ export type CandleHostOptions = {
     invertScale?: boolean;
     /** The Renko box to open with; undefined keeps the half-percent default. */
     renkoBox?: number;
+    /** The Kagi retracement to open with, as a fraction. */
+    kagiReversal?: number;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -218,6 +224,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let timeZone: TimeZoneId = options.timeZone ?? 'local';
     let sessionBreaks = options.sessionBreaks ?? false;
     let renkoBox = options.renkoBox;
+    let kagiReversal = options.kagiReversal;
     const tickFormatter = () => (time: Time, type: TickMarkType) =>
         tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone);
 
@@ -251,6 +258,10 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 priceLineVisible: false,
                 lastValueVisible: false,
             });
+        }
+        if (chartType === 'kagi') {
+            // A custom series: the Kagi staircase has no built-in equivalent.
+            return chart.addCustomSeries(new KagiPaneView(), {}) as unknown as ISeriesApi<SeriesType>;
         }
         if (chartType === 'hollow') {
             // The up body is not filled: its outline and wick carry the colour instead.
@@ -349,6 +360,16 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
 
     const applyCandles = () => {
+        if (chartType === 'kagi') {
+            // Kagi is drawn from closes; the real bars still feed the studies and the legend.
+            const segments = kagi(
+                bars().map((candle) => ({ time: candle.time, close: candle.close })),
+                kagiReversal,
+            );
+            (price as unknown as ISeriesApi<'Custom'>).setData(segments as KagiDatum[]);
+            volume.setData([]);
+            return;
+        }
         const candles = seriesBars();
         if (chartType === 'line' || chartType === 'area') {
             price.setData(
@@ -482,6 +503,13 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         },
         setScaleMode: (mode) => applyScaleMode(mode),
         setInvertScale: (on) => chart.priceScale('right').applyOptions({ invertScale: on }),
+        setKagiReversal: (value) => {
+            kagiReversal = value;
+            if (chartType === 'kagi') {
+                applyCandles();
+                emitReadout();
+            }
+        },
         setRenkoBox: (box) => {
             renkoBox = box;
             if (chartType === 'renko') {

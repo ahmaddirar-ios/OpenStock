@@ -132,10 +132,13 @@ import {
     CHART_TYPES,
     CHART_TYPE_KEYS,
     SCALE_MODES,
+    parseKagiReversal,
     parseRenkoBox,
     readInvert,
+    readKagiReversal,
     readRenkoBox,
     writeInvert,
+    writeKagiReversal,
     writeRenkoBox,
     SCALE_MODE_KEYS,
     readChartType,
@@ -251,12 +254,16 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [renkoBox, setRenkoBox] = useState<number | undefined>(undefined);
     const renkoBoxRef = useRef<number | undefined>(undefined);
     renkoBoxRef.current = renkoBox;
+    const [kagiReversal, setKagiReversal] = useState<number | undefined>(undefined);
+    const kagiReversalRef = useRef<number | undefined>(undefined);
+    kagiReversalRef.current = kagiReversal;
     useEffect(() => {
         setChartType(readChartType(window.localStorage));
         setScaleMode(readScaleMode(window.localStorage));
         setTimeZone(readTimeZone(window.localStorage));
         setInvertScale(readInvert(window.localStorage));
         setRenkoBox(readRenkoBox(window.localStorage));
+        setKagiReversal(readKagiReversal(window.localStorage));
     }, []);
     useEffect(() => {
         writeChartType(window.localStorage, chartType);
@@ -273,6 +280,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         writeRenkoBox(window.localStorage, renkoBox);
     }, [renkoBox]);
+    useEffect(() => {
+        writeKagiReversal(window.localStorage, kagiReversal);
+    }, [kagiReversal]);
     const [data, setData] = useState<CandleSet | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     // The study list is this browser's, shared with every pane on /charts: read after mount, saved
@@ -655,6 +665,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             sessionBreaks: sessionBreaksRef.current,
             invertScale: invertScaleRef.current,
             renkoBox: renkoBoxRef.current,
+            kagiReversal: kagiReversalRef.current,
             onPriceSeries: (series) => {
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
@@ -713,6 +724,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         candleHostRef.current?.setRenkoBox(renkoBox);
     }, [renkoBox]);
+    useEffect(() => {
+        candleHostRef.current?.setKagiReversal(kagiReversal);
+    }, [kagiReversal]);
     useEffect(() => {
         candleHostRef.current?.setSessionBreaks(sessionBreaks);
     }, [sessionBreaks]);
@@ -1290,6 +1304,26 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 ))}
                 <span className="mx-1 h-4 w-px bg-line" />
                 <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
+                {chartType === 'kagi' && (
+                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                        {t('chart.kagiReversal')}
+                        <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0.5}
+                            max={50}
+                            step={0.5}
+                            value={kagiReversal == null ? '' : Number((kagiReversal * 100).toFixed(2))}
+                            placeholder="4"
+                            aria-label={t('chart.kagiReversal')}
+                            onChange={(event) => {
+                                const percent = Number(event.target.value);
+                                setKagiReversal(Number.isFinite(percent) ? parseKagiReversal(percent / 100) : undefined);
+                            }}
+                            className="num w-16 rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                    </label>
+                )}
                 {chartType === 'renko' && (
                     <label className="flex items-center gap-1 text-[11px] text-faint">
                         {t('chart.renkoBox')}

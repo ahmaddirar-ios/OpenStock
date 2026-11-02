@@ -5,10 +5,19 @@
 import type { StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 
-export type ChartType = 'candles' | 'hollow' | 'heikin' | 'bars' | 'line' | 'area' | 'renko';
+export type ChartType = 'candles' | 'hollow' | 'heikin' | 'bars' | 'line' | 'area' | 'renko' | 'kagi';
 
 /** The order the menu lists them in: the three candle readings, then bars, then the two lines. */
-export const CHART_TYPES: readonly ChartType[] = ['candles', 'hollow', 'heikin', 'bars', 'line', 'area', 'renko'];
+export const CHART_TYPES: readonly ChartType[] = [
+    'candles',
+    'hollow',
+    'heikin',
+    'bars',
+    'line',
+    'area',
+    'renko',
+    'kagi',
+];
 
 export const DEFAULT_CHART_TYPE: ChartType = 'candles';
 
@@ -20,6 +29,7 @@ export const CHART_TYPE_KEYS: Record<ChartType, StringKey> = {
     line: 'chart.type.line',
     area: 'chart.type.area',
     renko: 'chart.type.renko',
+    kagi: 'chart.type.kagi',
 };
 
 /** Anything that is not one of the six reads as the default: a chart never opens in an unknown mode. */
@@ -58,6 +68,31 @@ export function parseRenkoBox(value: unknown): number | undefined {
 }
 
 export const RENKO_BOX_KEY = 'openstock:chart-renko-box';
+
+/** How far the price must retrace before a Kagi line turns, as a fraction. */
+export function parseKagiReversal(value: unknown): number | undefined {
+    const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+    return typeof number === 'number' && Number.isFinite(number) && number > 0 && number < 1 ? number : undefined;
+}
+
+export const KAGI_KEY = 'openstock:chart-kagi';
+
+export function readKagiReversal(storage: Readable): number | undefined {
+    try {
+        return parseKagiReversal(storage.getItem(KAGI_KEY));
+    } catch {
+        return undefined;
+    }
+}
+
+export function writeKagiReversal(storage: Pick<Storage, 'setItem' | 'removeItem'>, value: number | undefined): void {
+    try {
+        if (value == null) storage.removeItem(KAGI_KEY);
+        else storage.setItem(KAGI_KEY, String(value));
+    } catch {
+        /* private mode: the reversal still applies for this visit */
+    }
+}
 
 export const INVERT_KEY = 'openstock:chart-invert';
 
