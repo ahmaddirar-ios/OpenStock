@@ -22,7 +22,7 @@ import {
     type SeriesType,
     type UTCTimestamp,
 } from 'lightweight-charts';
-import { heikinAshi, type ChartType, type ScaleMode } from '@/lib/chart-view';
+import { heikinAshi, renko, type ChartType, type ScaleMode } from '@/lib/chart-view';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
@@ -321,6 +321,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
      */
     const bars = () => {
         const candles = data?.candles ?? [];
+        if (chartType === 'renko') return renko(candles);
         return chartType === 'heikin' ? heikinAshi(candles) : candles;
     };
 
@@ -331,7 +332,9 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
      */
     const seriesBars = () => {
         const candles = bars();
-        return sessionBreaks ? withSessionBreaks(candles) : candles;
+        // Renko's times already encode direction, not the clock: breaks would insert thousands of
+        // one-second slots across every real gap.
+        return sessionBreaks && chartType !== 'renko' ? withSessionBreaks(candles) : candles;
     };
 
     const applyCandles = () => {
@@ -509,7 +512,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             };
         },
         fit: () => {
-            const count = data?.candles.length ?? 0;
+            const count = bars().length;
             if (count === 0) {
                 chart.timeScale().fitContent();
                 return;

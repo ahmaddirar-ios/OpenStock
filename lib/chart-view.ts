@@ -5,10 +5,10 @@
 import type { StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 
-export type ChartType = 'candles' | 'hollow' | 'heikin' | 'bars' | 'line' | 'area';
+export type ChartType = 'candles' | 'hollow' | 'heikin' | 'bars' | 'line' | 'area' | 'renko';
 
 /** The order the menu lists them in: the three candle readings, then bars, then the two lines. */
-export const CHART_TYPES: readonly ChartType[] = ['candles', 'hollow', 'heikin', 'bars', 'line', 'area'];
+export const CHART_TYPES: readonly ChartType[] = ['candles', 'hollow', 'heikin', 'bars', 'line', 'area', 'renko'];
 
 export const DEFAULT_CHART_TYPE: ChartType = 'candles';
 
@@ -19,6 +19,7 @@ export const CHART_TYPE_KEYS: Record<ChartType, StringKey> = {
     bars: 'chart.type.bars',
     line: 'chart.type.line',
     area: 'chart.type.area',
+    renko: 'chart.type.renko',
 };
 
 /** Anything that is not one of the six reads as the default: a chart never opens in an unknown mode. */
@@ -82,6 +83,45 @@ export function writeChartType(storage: Writable, type: ChartType): void {
     } catch {
         /* private mode: the type still applies for this visit */
     }
+}
+
+/**
+ * Renko bricks: a new brick prints only when the price moves a whole box from the last brick's
+ * close, so time falls away and the chart becomes a pure record of direction. The width defaults to
+ * half a percent of the first close, rounded to two decimals, because the box is a choice the chart
+ * makes until the trader is offered one.
+ *
+ * Bricks keep the time of the bar that printed them; when one bar prints several, each extra brick
+ * is stamped one second later, so the times stay strictly increasing (the chart library's rule) and
+ * every brick is still traceable to its bar.
+ */
+export function renko(candles: readonly Candle[], box?: number): Candle[] {
+    if (candles.length === 0) return [];
+    const size = box && box > 0 ? box : Math.max(0.01, Number((candles[0].close * 0.005).toFixed(2)));
+    const bricks: Candle[] = [];
+    let base = candles[0].close;
+    let stamp = candles[0].time;
+
+    const push = (from: number, to: number, time: number, volume: number) => {
+        bricks.push({
+            time: bricks.length === 0 ? time : Math.max(time, bricks[bricks.length - 1].time + 1),
+            open: from,
+            high: Math.max(from, to),
+            low: Math.min(from, to),
+            close: to,
+            volume,
+        });
+        base = to;
+        stamp = bricks[bricks.length - 1].time;
+    };
+
+    for (const candle of candles) {
+        // A gap can print several bricks at once: keep going while the price is a whole box away.
+        while (candle.close >= base + size) push(base, Number((base + size).toFixed(4)), candle.time, candle.volume);
+        while (candle.close <= base - size) push(base, Number((base - size).toFixed(4)), candle.time, candle.volume);
+        stamp = Math.max(stamp, candle.time);
+    }
+    return bricks;
 }
 
 /**

@@ -5,6 +5,7 @@ import {
     CHART_TYPES,
     DEFAULT_CHART_TYPE,
     heikinAshi,
+    renko,
     parseChartType,
     parseScaleMode,
     readChartType,
@@ -124,5 +125,50 @@ describe('scale mode', () => {
         store.set(SCALE_MODE_KEY, 'nope');
         expect(readScaleMode(storage)).toBe('linear');
         expect(readScaleMode({ getItem: () => { throw new Error('no'); } })).toBe('linear');
+    });
+});
+
+describe('renko', () => {
+    const bar = (time: number, close: number, open = close, volume = 100) => ({
+        time,
+        open,
+        high: Math.max(open, close),
+        low: Math.min(open, close),
+        close,
+        volume,
+    });
+
+    it('prints a brick only when a whole box is crossed', () => {
+        // Box of 1, starting from 100: 100.4 is inside the box, 101 prints one, 102.5 prints one.
+        const bricks = renko([bar(1, 100), bar(2, 100.4), bar(3, 101), bar(4, 102.5)], 1);
+        expect(bricks.map((b) => b.close)).toEqual([101, 102]);
+        expect(bricks[0].open).toBe(100);
+        expect(bricks[0].high).toBe(101);
+    });
+
+    it('prints several bricks when one bar moves several boxes, with increasing times', () => {
+        const bricks = renko([bar(10, 100), bar(20, 103.2)], 1);
+        expect(bricks.map((b) => b.close)).toEqual([101, 102, 103]);
+        expect(bricks[0].time).toBe(20);
+        expect(bricks[1].time).toBeGreaterThan(bricks[0].time);
+        expect(bricks[2].time).toBeGreaterThan(bricks[1].time);
+        expect(bricks.every((b) => b.volume === 100)).toBe(true);
+    });
+
+    it('reverses direction after a full box the other way', () => {
+        const bricks = renko([bar(1, 100), bar(2, 102), bar(3, 100.5)], 1);
+        expect(bricks.map((b) => b.close)).toEqual([101, 102, 101]);
+        expect(bricks[2].open).toBe(102);
+        expect(bricks[2].close).toBe(101);
+    });
+
+    it('chooses half a percent of the first close when no box is given', () => {
+        const bricks = renko([bar(1, 200), bar(2, 201.5)], undefined);
+        expect(bricks).toHaveLength(1);
+        expect(bricks[0].close).toBe(201);
+    });
+
+    it('answers nothing for no candles', () => {
+        expect(renko([], 1)).toEqual([]);
     });
 });
