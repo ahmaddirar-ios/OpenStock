@@ -44,6 +44,12 @@ import {
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import { nearestBar, snapPoint } from '@/lib/chart-magnet';
 import {
+    TIME_ZONES,
+    readTimeZone,
+    writeTimeZone,
+    type TimeZoneId,
+} from '@/lib/chart-time';
+import {
     applyHistory,
     canRedo,
     canUndo,
@@ -137,7 +143,7 @@ import {
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -228,9 +234,16 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [scaleMode, setScaleMode] = useState<ScaleMode>('linear');
     const scaleModeRef = useRef<ScaleMode>(scaleMode);
     scaleModeRef.current = scaleMode;
+    const [timeZone, setTimeZone] = useState<TimeZoneId>('local');
+    const timeZoneRef = useRef<TimeZoneId>(timeZone);
+    timeZoneRef.current = timeZone;
+    const [sessionBreaks, setSessionBreaks] = useState(false);
+    const sessionBreaksRef = useRef(false);
+    sessionBreaksRef.current = sessionBreaks;
     useEffect(() => {
         setChartType(readChartType(window.localStorage));
         setScaleMode(readScaleMode(window.localStorage));
+        setTimeZone(readTimeZone(window.localStorage));
     }, []);
     useEffect(() => {
         writeChartType(window.localStorage, chartType);
@@ -238,6 +251,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         writeScaleMode(window.localStorage, scaleMode);
     }, [scaleMode]);
+    useEffect(() => {
+        writeTimeZone(window.localStorage, timeZone);
+    }, [timeZone]);
     const [data, setData] = useState<CandleSet | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     // The study list is this browser's, shared with every pane on /charts: read after mount, saved
@@ -616,6 +632,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             studies: studiesRef.current,
             chartType: chartTypeRef.current,
             scaleMode: scaleModeRef.current,
+            timeZone: timeZoneRef.current,
+            sessionBreaks: sessionBreaksRef.current,
             onPriceSeries: (series) => {
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
@@ -663,6 +681,14 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         candleHostRef.current?.setScaleMode(scaleMode);
     }, [scaleMode]);
+
+    // The clock and the session gaps are view options too.
+    useEffect(() => {
+        candleHostRef.current?.setTimeZone(timeZone);
+    }, [timeZone]);
+    useEffect(() => {
+        candleHostRef.current?.setSessionBreaks(sessionBreaks);
+    }, [sessionBreaks]);
 
     // Undo/redo on the drawings, the shortcut every editor shares. Typing in a field keeps its own
     // undo, so the handler steps aside there.
@@ -1250,6 +1276,28 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         active: chartType === type,
                     })),
                 )}
+                {dropdown(
+                    'tz',
+                    t('chart.tz'),
+                    TIME_ZONES.map((zone) => ({
+                        key: zone.id,
+                        label: t(zone.label),
+                        onClick: () => {
+                            setTimeZone(zone.id);
+                            setMenu(null);
+                        },
+                        active: timeZone === zone.id,
+                    })),
+                )}
+                <button
+                    type="button"
+                    onClick={() => setSessionBreaks((value) => !value)}
+                    aria-pressed={sessionBreaks}
+                    className={cn('pill h-7 px-2.5 text-[12px]', sessionBreaks && 'is-up')}
+                    title={t('chart.sessionBreaks')}
+                >
+                    {t('chart.sessionBreaks')}
+                </button>
                 {dropdown(
                     'scale',
                     t('chart.scale'),

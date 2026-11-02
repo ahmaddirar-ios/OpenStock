@@ -10,7 +10,12 @@ import {
     HistogramSeries,
     LineSeries,
     LineStyle,
+    TickMarkType,
     createChart,
+    type Time,
+    type DeepPartial,
+    type TimeChartOptions,
+    type TimeScaleOptions,
     type IChartApi,
     type ISeriesApi,
     type MouseEventParams,
@@ -18,6 +23,8 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import { heikinAshi, type ChartType, type ScaleMode } from '@/lib/chart-view';
+import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
+import { withSessionBreaks } from '@/lib/chart-sessions';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import {
     STUDIES,
@@ -49,6 +56,10 @@ export type CandleHost = {
     setChartType: (type: ChartType) => void;
     /** Spaces the right axis arithmetically, logarithmically, or as percent from the base bar. */
     setScaleMode: (mode: ScaleMode) => void;
+    /** Labels the time axis in this zone. */
+    setTimeZone: (zone: TimeZoneId) => void;
+    /** Collapses closed-market gaps by inserting empty slots. */
+    setSessionBreaks: (on: boolean) => void;
     setTimeVisible: (visible: boolean) => void;
     /** The chart as an image, for the export button; null before the library is ready. */
     screenshot: () => HTMLCanvasElement | null;
@@ -76,6 +87,10 @@ export type CandleHostOptions = {
     chartType?: ChartType;
     /** The axis spacing to open with. */
     scaleMode?: ScaleMode;
+    /** The zone the time axis is labelled in; `local` is the browser's. */
+    timeZone?: TimeZoneId;
+    /** Whether closed-market gaps are shown as empty space. */
+    sessionBreaks?: boolean;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -145,7 +160,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     const upFill = token('--up', '#4ade80', 0.4);
     const downFill = token('--down', '#f87171', 0.4);
 
-    const chart = createChart(container, {
+    const chartOptions: DeepPartial<TimeChartOptions> = {
         autoSize: true,
         layout: {
             background: { color: 'transparent' },
@@ -159,9 +174,15 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             borderColor: grid,
             timeVisible: options.timeVisible ?? true,
             secondsVisible: false,
+            tickMarkFormatter: (time: Time, type: TickMarkType) =>
+                tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone),
         },
-        localization: { locale: 'en-US' },
-    });
+        localization: {
+            locale: 'en-US',
+            timeFormatter: (time: Time) => timeLabel(Number(time), timeZone),
+        },
+    };
+    const chart = createChart(container, chartOptions);
 
     const brand = token('--brand', '#34d399');
     const brandFill = token('--brand', '#34d399', 0.24);
@@ -177,6 +198,18 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         dashed: LineStyle.Dashed,
         dotted: LineStyle.Dotted,
     };
+
+    const TICK_KIND: Record<TickMarkType, TickKind> = {
+        [TickMarkType.Year]: 'year',
+        [TickMarkType.Month]: 'month',
+        [TickMarkType.DayOfMonth]: 'day',
+        [TickMarkType.Time]: 'time',
+        [TickMarkType.TimeWithSeconds]: 'seconds',
+    };
+    let timeZone: TimeZoneId = options.timeZone ?? 'local';
+    let sessionBreaks = options.sessionBreaks ?? false;
+    const tickFormatter = () => (time: Time, type: TickMarkType) =>
+        tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone);
 
     const applyScaleMode = (mode: ScaleMode) => {
         // The right axis only: the volume scale keeps its own units either way.
@@ -291,27 +324,51 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         return chartType === 'heikin' ? heikinAshi(candles) : candles;
     };
 
-    const applyCandles = () => {
+    /**
+     * What the price and volume series are drawn from: the bars, with empty slots where the market
+     * was shut when session breaks are on. Studies and the legend keep reading the real bars, so a
+     * gap changes the picture and nothing else.
+     */
+    const seriesBars = () => {
         const candles = bars();
+        return sessionBreaks ? withSessionBreaks(candles) : candles;
+    };
+
+    const applyCandles = () => {
+        const candles = seriesBars();
         if (chartType === 'line' || chartType === 'area') {
-            price.setData(candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.close })));
+            price.setData(
+                candles.map((candle) =>
+                    'close' in candle
+                        ? { time: candle.time as UTCTimestamp, value: candle.close }
+                        : { time: candle.time as UTCTimestamp },
+                ),
+            );
         } else {
             price.setData(
-                candles.map((candle) => ({
-                    time: candle.time as UTCTimestamp,
-                    open: candle.open,
-                    high: candle.high,
-                    low: candle.low,
-                    close: candle.close,
-                })),
+                candles.map((candle) =>
+                    'close' in candle
+                        ? {
+                              time: candle.time as UTCTimestamp,
+                              open: candle.open,
+                              high: candle.high,
+                              low: candle.low,
+                              close: candle.close,
+                          }
+                        : { time: candle.time as UTCTimestamp },
+                ),
             );
         }
         volume.setData(
-            candles.map((candle) => ({
-                time: candle.time as UTCTimestamp,
-                value: candle.volume,
-                color: candle.close >= candle.open ? upFill : downFill,
-            })),
+            candles.map((candle) =>
+                'close' in candle
+                    ? {
+                          time: candle.time as UTCTimestamp,
+                          value: candle.volume,
+                          color: candle.close >= candle.open ? upFill : downFill,
+                      }
+                    : { time: candle.time as UTCTimestamp },
+            ),
         );
     };
 
@@ -410,6 +467,17 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             emitReadout();
         },
         setScaleMode: (mode) => applyScaleMode(mode),
+        setTimeZone: (zone) => {
+            timeZone = zone;
+            // The formatters are closures over `timeZone`, so they are replaced to take effect.
+            const tickOptions: DeepPartial<TimeScaleOptions> = { tickMarkFormatter: tickFormatter() };
+            chart.timeScale().applyOptions(tickOptions);
+            chart.applyOptions({ localization: { timeFormatter: (time: Time) => timeLabel(Number(time), timeZone) } });
+        },
+        setSessionBreaks: (on) => {
+            sessionBreaks = on;
+            applyCandles();
+        },
         setChartType: (next) => {
             if (next === chartType) return;
             chartType = next;
