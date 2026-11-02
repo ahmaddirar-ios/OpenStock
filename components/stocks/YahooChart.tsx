@@ -13,6 +13,7 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import {
+    Bell,
     Camera,
     ChevronDown,
     ClipboardPaste,
@@ -115,10 +116,12 @@ import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
 import type { StudyConfig } from '@/lib/chart-studies';
 import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
+import { alertSource } from '@/lib/alerts';
 import ChartLegend from '@/components/stocks/ChartLegend';
 import type { BarReadout } from '@/lib/chart-readout';
 import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
+import CreateAlertModal from '@/components/watchlist/CreateAlertModal';
 import {
     CHART_TYPES,
     CHART_TYPE_KEYS,
@@ -1177,6 +1180,10 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
     const hasCandles = (data?.candles.length ?? 0) > 0;
     const selectedDrawing = selectedId ? drawings.find((drawing) => drawing.id === selectedId) ?? null : null;
+    // A chart alert defaults to the level the trader just selected, else the last close.
+    const selectedLevel = selectedDrawing && selectedDrawing.points.length === 1 ? selectedDrawing.points[0].price : null;
+    const lastClose = (data?.candles ?? []).at(-1)?.close ?? null;
+    const alertPrice = selectedLevel ?? lastClose;
 
     const compareLegend = [
         ...(data ? [{ symbol, change: latestChange(data.candles, compareFrom) }] : []),
@@ -1359,6 +1366,22 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 >
                     <Ruler className="size-3.5" /> {t('chart.tool.measure')}
                 </button>
+                {alertSource(symbol) && (
+                    <CreateAlertModal
+                        symbol={symbol}
+                        currentPrice={alertPrice}
+                        currency={data?.currency ?? 'USD'}
+                        lang={lang}
+                    >
+                        <button
+                            type="button"
+                            className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', selectedLevel != null && 'is-up')}
+                            title={t('chart.alert')}
+                        >
+                            <Bell className="size-3.5" /> {t('chart.alert')}
+                        </button>
+                    </CreateAlertModal>
+                )}
                 {dropdown(
                     'lines',
                     t('chart.group.lines'),
