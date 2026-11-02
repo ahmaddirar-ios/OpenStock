@@ -5,6 +5,7 @@
 import {
     AreaSeries,
     BarSeries,
+    PriceScaleMode,
     CandlestickSeries,
     HistogramSeries,
     LineSeries,
@@ -15,7 +16,7 @@ import {
     type SeriesType,
     type UTCTimestamp,
 } from 'lightweight-charts';
-import { heikinAshi, type ChartType } from '@/lib/chart-view';
+import { heikinAshi, type ChartType, type ScaleMode } from '@/lib/chart-view';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import {
     STUDIES,
@@ -44,6 +45,8 @@ export type CandleHost = {
     setStudies: (studies: StudyConfig[]) => void;
     /** Redraws the same candles as bodies, hollow bodies, Heikin Ashi, bars, a line or an area. */
     setChartType: (type: ChartType) => void;
+    /** Spaces the right axis arithmetically, logarithmically, or as percent from the base bar. */
+    setScaleMode: (mode: ScaleMode) => void;
     setTimeVisible: (visible: boolean) => void;
     fit: () => void;
     /**
@@ -67,6 +70,8 @@ export type CandleHostOptions = {
     studies?: StudyConfig[];
     /** The type to open with; anything unknown reads as candles. */
     chartType?: ChartType;
+    /** The axis spacing to open with. */
+    scaleMode?: ScaleMode;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -150,6 +155,17 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     const brand = token('--brand', '#34d399');
     const brandFill = token('--brand', '#34d399', 0.24);
     let chartType: ChartType = options.chartType ?? 'candles';
+
+    const PRICE_SCALE_MODE: Record<ScaleMode, PriceScaleMode> = {
+        linear: PriceScaleMode.Normal,
+        log: PriceScaleMode.Logarithmic,
+        percent: PriceScaleMode.Percentage,
+    };
+    const applyScaleMode = (mode: ScaleMode) => {
+        // The right axis only: the volume scale keeps its own units either way.
+        chart.priceScale('right').applyOptions({ mode: PRICE_SCALE_MODE[mode] });
+    };
+    applyScaleMode(options.scaleMode ?? 'linear');
 
     // A series' type is fixed at creation in lightweight-charts, so changing the chart type means
     // replacing this one series. The volume series is on its own scale at the bottom, so it can stay.
@@ -374,6 +390,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             buildStudies();
             emitReadout();
         },
+        setScaleMode: (mode) => applyScaleMode(mode),
         setChartType: (next) => {
             if (next === chartType) return;
             chartType = next;

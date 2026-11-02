@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+    SCALE_MODES,
+    SCALE_MODE_KEY,
     CHART_TYPES,
     DEFAULT_CHART_TYPE,
     heikinAshi,
     parseChartType,
+    parseScaleMode,
     readChartType,
+    readScaleMode,
     writeChartType,
+    writeScaleMode,
     CHART_TYPE_KEY,
     type ChartType,
 } from '@/lib/chart-view';
@@ -96,5 +101,28 @@ describe('chart type storage', () => {
         };
         expect(readChartType(broken)).toBe('candles');
         expect(() => writeChartType(broken, 'area' as ChartType)).not.toThrow();
+    });
+});
+
+describe('scale mode', () => {
+    it('accepts the three modes and defaults to linear', () => {
+        for (const mode of SCALE_MODES) expect(parseScaleMode(mode)).toBe(mode);
+        expect(parseScaleMode('magic')).toBe('linear');
+        expect(parseScaleMode(null)).toBe('linear');
+        expect(parseScaleMode(3)).toBe('linear');
+    });
+
+    it('round-trips and repairs its own storage', () => {
+        const store = new Map<string, string>();
+        const storage = {
+            getItem: (key: string) => store.get(key) ?? null,
+            setItem: (key: string, value: string) => void store.set(key, value),
+        };
+        writeScaleMode(storage, 'log');
+        expect(store.get(SCALE_MODE_KEY)).toBe('log');
+        expect(readScaleMode(storage)).toBe('log');
+        store.set(SCALE_MODE_KEY, 'nope');
+        expect(readScaleMode(storage)).toBe('linear');
+        expect(readScaleMode({ getItem: () => { throw new Error('no'); } })).toBe('linear');
     });
 });

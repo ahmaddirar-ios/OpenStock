@@ -30,6 +30,41 @@ export function parseChartType(value: unknown): ChartType {
 
 export const CHART_TYPE_KEY = 'openstock:chart-type';
 
+/** How the price axis spaces its labels: arithmetic, multiplicative, or percent from the base bar. */
+export type ScaleMode = 'linear' | 'log' | 'percent';
+
+export const SCALE_MODES: readonly ScaleMode[] = ['linear', 'log', 'percent'];
+
+export const SCALE_MODE_KEYS: Record<ScaleMode, StringKey> = {
+    linear: 'chart.scale.linear',
+    log: 'chart.scale.log',
+    percent: 'chart.scale.percent',
+};
+
+export function parseScaleMode(value: unknown): ScaleMode {
+    return typeof value === 'string' && (SCALE_MODES as readonly string[]).includes(value)
+        ? (value as ScaleMode)
+        : 'linear';
+}
+
+export const SCALE_MODE_KEY = 'openstock:chart-scale';
+
+export function readScaleMode(storage: Readable): ScaleMode {
+    try {
+        return parseScaleMode(storage.getItem(SCALE_MODE_KEY));
+    } catch {
+        return 'linear';
+    }
+}
+
+export function writeScaleMode(storage: Writable, mode: ScaleMode): void {
+    try {
+        storage.setItem(SCALE_MODE_KEY, mode);
+    } catch {
+        /* private mode: the scale still applies for this visit */
+    }
+}
+
 type Readable = Pick<Storage, 'getItem'>;
 type Writable = Pick<Storage, 'setItem'>;
 

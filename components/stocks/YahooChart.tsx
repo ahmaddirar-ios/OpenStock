@@ -97,14 +97,19 @@ import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
 import {
     CHART_TYPES,
     CHART_TYPE_KEYS,
+    SCALE_MODES,
+    SCALE_MODE_KEYS,
     readChartType,
+    readScaleMode,
     writeChartType,
+    writeScaleMode,
     type ChartType,
+    type ScaleMode,
 } from '@/lib/chart-view';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -188,12 +193,19 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [chartType, setChartType] = useState<ChartType>('candles');
     const chartTypeRef = useRef<ChartType>(chartType);
     chartTypeRef.current = chartType;
+    const [scaleMode, setScaleMode] = useState<ScaleMode>('linear');
+    const scaleModeRef = useRef<ScaleMode>(scaleMode);
+    scaleModeRef.current = scaleMode;
     useEffect(() => {
         setChartType(readChartType(window.localStorage));
+        setScaleMode(readScaleMode(window.localStorage));
     }, []);
     useEffect(() => {
         writeChartType(window.localStorage, chartType);
     }, [chartType]);
+    useEffect(() => {
+        writeScaleMode(window.localStorage, scaleMode);
+    }, [scaleMode]);
     const [data, setData] = useState<CandleSet | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     // The study list is this browser's, shared with every pane on /charts: read after mount, saved
@@ -504,6 +516,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             data: current,
             studies: studiesRef.current,
             chartType: chartTypeRef.current,
+            scaleMode: scaleModeRef.current,
             onPriceSeries: (series) => {
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
@@ -546,6 +559,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         candleHostRef.current?.setChartType(chartType);
     }, [chartType]);
+
+    // The scale is an axis option: nothing is rebuilt, not even the series.
+    useEffect(() => {
+        candleHostRef.current?.setScaleMode(scaleMode);
+    }, [scaleMode]);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
@@ -1034,6 +1052,19 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                             setMenu(null);
                         },
                         active: chartType === type,
+                    })),
+                )}
+                {dropdown(
+                    'scale',
+                    t('chart.scale'),
+                    SCALE_MODES.map((mode) => ({
+                        key: mode,
+                        label: t(SCALE_MODE_KEYS[mode]),
+                        onClick: () => {
+                            setScaleMode(mode);
+                            setMenu(null);
+                        },
+                        active: scaleMode === mode,
                     })),
                 )}
                 <button
