@@ -8,6 +8,7 @@ import {
     renko,
     parseChartType,
     parseKagiReversal,
+    parseLineBreakCount,
     parseRenkoBox,
     parseScaleMode,
     readChartType,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/chart-view';
 import type { Candle } from '@/lib/yahoo-candles';
 import { kagi } from '@/lib/chart-kagi';
+import { lineBreak } from '@/lib/chart-linebreak';
 
 const bars: Candle[] = [
     { time: 1, open: 10, high: 14, low: 8, close: 12, volume: 100 },
@@ -225,5 +227,39 @@ describe('kagi reversal parsing', () => {
         expect(parseKagiReversal('0')).toBeUndefined();
         expect(parseKagiReversal('1')).toBeUndefined();
         expect(parseKagiReversal('x')).toBeUndefined();
+    });
+});
+
+describe('line break', () => {
+    const closes = (values: number[]) => values.map((close, i) => ({ time: 100 + i, close }));
+
+    it('prints a box only when the close clears the last three', () => {
+        // 100 → 105 prints (clears 100), then 103 does not clear the last three (105, 100...).
+        const points = lineBreak(closes([100, 105, 103, 104]), 3);
+        expect(points).toHaveLength(2);
+        expect(points[1]).toEqual({ time: 101, price: 105, up: true });
+    });
+
+    it('prints a down box when the low is broken, and colours it', () => {
+        const points = lineBreak(closes([100, 105, 106, 107, 95]), 3);
+        const last = points[points.length - 1];
+        expect(last.price).toBe(95);
+        expect(last.up).toBe(false);
+    });
+
+    it('keeps times strictly increasing and answers nothing for no candles', () => {
+        const points = lineBreak(closes([100, 110, 120, 130]), 2);
+        for (let i = 1; i < points.length; i += 1) expect(points[i].time).toBeGreaterThan(points[i - 1].time);
+        expect(lineBreak([])).toEqual([]);
+    });
+});
+
+describe('line break count parsing', () => {
+    it('accepts 2–20 and refuses the rest', () => {
+        expect(parseLineBreakCount('3')).toBe(3);
+        expect(parseLineBreakCount(5)).toBe(5);
+        expect(parseLineBreakCount('1')).toBeUndefined();
+        expect(parseLineBreakCount('21')).toBeUndefined();
+        expect(parseLineBreakCount('2.5')).toBeUndefined();
     });
 });

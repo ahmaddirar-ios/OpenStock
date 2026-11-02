@@ -5,7 +5,16 @@
 import type { StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 
-export type ChartType = 'candles' | 'hollow' | 'heikin' | 'bars' | 'line' | 'area' | 'renko' | 'kagi';
+export type ChartType =
+    | 'candles'
+    | 'hollow'
+    | 'heikin'
+    | 'bars'
+    | 'line'
+    | 'area'
+    | 'renko'
+    | 'kagi'
+    | 'linebreak';
 
 /** The order the menu lists them in: the three candle readings, then bars, then the two lines. */
 export const CHART_TYPES: readonly ChartType[] = [
@@ -17,6 +26,7 @@ export const CHART_TYPES: readonly ChartType[] = [
     'area',
     'renko',
     'kagi',
+    'linebreak',
 ];
 
 export const DEFAULT_CHART_TYPE: ChartType = 'candles';
@@ -30,6 +40,7 @@ export const CHART_TYPE_KEYS: Record<ChartType, StringKey> = {
     area: 'chart.type.area',
     renko: 'chart.type.renko',
     kagi: 'chart.type.kagi',
+    linebreak: 'chart.type.linebreak',
 };
 
 /** Anything that is not one of the six reads as the default: a chart never opens in an unknown mode. */
@@ -76,6 +87,31 @@ export function parseKagiReversal(value: unknown): number | undefined {
 }
 
 export const KAGI_KEY = 'openstock:chart-kagi';
+
+/** How many prior boxes a close must clear for a Line Break box (3 is the classic). */
+export function parseLineBreakCount(value: unknown): number | undefined {
+    const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+    return typeof number === 'number' && Number.isInteger(number) && number >= 2 && number <= 20 ? number : undefined;
+}
+
+export const LINEBREAK_KEY = 'openstock:chart-linebreak';
+
+export function readLineBreakCount(storage: Readable): number | undefined {
+    try {
+        return parseLineBreakCount(storage.getItem(LINEBREAK_KEY));
+    } catch {
+        return undefined;
+    }
+}
+
+export function writeLineBreakCount(storage: Pick<Storage, 'setItem' | 'removeItem'>, value: number | undefined): void {
+    try {
+        if (value == null) storage.removeItem(LINEBREAK_KEY);
+        else storage.setItem(LINEBREAK_KEY, String(value));
+    } catch {
+        /* private mode: the count still applies for this visit */
+    }
+}
 
 export function readKagiReversal(storage: Readable): number | undefined {
     try {

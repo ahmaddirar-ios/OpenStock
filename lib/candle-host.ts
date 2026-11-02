@@ -25,6 +25,8 @@ import {
 import { heikinAshi, renko, type ChartType, type ScaleMode } from '@/lib/chart-view';
 import { kagi } from '@/lib/chart-kagi';
 import { KagiPaneView, type KagiDatum } from '@/lib/kagi-series';
+import { lineBreak } from '@/lib/chart-linebreak';
+import { LineBreakPaneView, type LineBreakDatum } from '@/lib/linebreak-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
@@ -66,6 +68,8 @@ export type CandleHost = {
     setRenkoBox: (box: number | undefined) => void;
     /** The Kagi retracement, as a fraction; undefined means four percent. */
     setKagiReversal: (value: number | undefined) => void;
+    /** The Line Break count; undefined means the classic three. */
+    setLineBreakCount: (value: number | undefined) => void;
     /** Collapses closed-market gaps by inserting empty slots. */
     setSessionBreaks: (on: boolean) => void;
     setTimeVisible: (visible: boolean) => void;
@@ -105,6 +109,8 @@ export type CandleHostOptions = {
     renkoBox?: number;
     /** The Kagi retracement to open with, as a fraction. */
     kagiReversal?: number;
+    /** The Line Break count to open with. */
+    lineBreakCount?: number;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -225,6 +231,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let sessionBreaks = options.sessionBreaks ?? false;
     let renkoBox = options.renkoBox;
     let kagiReversal = options.kagiReversal;
+    let lineBreakCount = options.lineBreakCount;
     const tickFormatter = () => (time: Time, type: TickMarkType) =>
         tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone);
 
@@ -258,6 +265,9 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 priceLineVisible: false,
                 lastValueVisible: false,
             });
+        }
+        if (chartType === 'linebreak') {
+            return chart.addCustomSeries(new LineBreakPaneView(), {}) as unknown as ISeriesApi<SeriesType>;
         }
         if (chartType === 'kagi') {
             // A custom series: the Kagi staircase has no built-in equivalent.
@@ -360,6 +370,15 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
 
     const applyCandles = () => {
+        if (chartType === 'linebreak') {
+            const boxes = lineBreak(
+                bars().map((candle) => ({ time: candle.time, close: candle.close })),
+                lineBreakCount,
+            );
+            (price as unknown as ISeriesApi<'Custom'>).setData(boxes as LineBreakDatum[]);
+            volume.setData([]);
+            return;
+        }
         if (chartType === 'kagi') {
             // Kagi is drawn from closes; the real bars still feed the studies and the legend.
             const segments = kagi(
@@ -503,6 +522,13 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         },
         setScaleMode: (mode) => applyScaleMode(mode),
         setInvertScale: (on) => chart.priceScale('right').applyOptions({ invertScale: on }),
+        setLineBreakCount: (value) => {
+            lineBreakCount = value;
+            if (chartType === 'linebreak') {
+                applyCandles();
+                emitReadout();
+            }
+        },
         setKagiReversal: (value) => {
             kagiReversal = value;
             if (chartType === 'kagi') {
