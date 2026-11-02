@@ -25,7 +25,10 @@ import {
     nearestTime,
     newDrawingId,
     nextColor,
+    arrowHeadPoints,
+    channelRails,
     cloneDrawing,
+    measureSpan,
     parseDrawings,
     dashOf,
     strokeWidthOf,
@@ -69,7 +72,18 @@ describe('the tool registry', () => {
         for (const group of ['lines', 'patterns', 'elliott', 'counts', 'cycles'] as const) {
             expect(toolsInGroup(group).length).toBeGreaterThan(0);
         }
-        expect(toolsInGroup('lines').map((d) => d.tool)).toEqual(['trend', 'horizontal', 'rectangle', 'fib', 'gann', 'text']);
+        expect(toolsInGroup('lines').map((d) => d.tool)).toEqual([
+            'trend',
+            'horizontal',
+            'rectangle',
+            'xrect',
+            'channel',
+            'arrow',
+            'pricetime',
+            'fib',
+            'gann',
+            'text',
+        ]);
         expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3']);
         expect(toolsInGroup('cycles').map((d) => d.tool)).toEqual(['cycles', 'sine']);
     });
@@ -457,5 +471,51 @@ describe('stroke', () => {
         expect(dashOf({ ...base, dash: 'solid' })).toBeUndefined();
         expect(dashOf({ ...base, dash: 'dashed' })).toBe('7 4');
         expect(dashOf({ ...base, dash: 'dotted' })).toBe('2 3');
+    });
+});
+
+describe('the four newer tools', () => {
+    it('needs the clicks their definitions promise', () => {
+        expect(pointsNeeded('xrect')).toBe(2);
+        expect(pointsNeeded('arrow')).toBe(2);
+        expect(pointsNeeded('pricetime')).toBe(2);
+        expect(pointsNeeded('channel')).toBe(3);
+    });
+
+    it('round-trips each of them through storage', () => {
+        for (const tool of ['xrect', 'arrow', 'pricetime'] as const) {
+            const drawing: Drawing = { id: tool, tool, points: [{ time: 1, price: 2 }, { time: 3, price: 4 }] };
+            expect(parseDrawings(serializeDrawings([drawing]))).toEqual([drawing]);
+        }
+        const channel: Drawing = {
+            id: 'c',
+            tool: 'channel',
+            points: [{ time: 1, price: 2 }, { time: 3, price: 2 }, { time: 3, price: 5 }],
+        };
+        expect(parseDrawings(serializeDrawings([channel]))).toEqual([channel]);
+    });
+
+    it('offsets the channel rail by the third point, keeping the base', () => {
+        const rails = channelRails({ time: 0, price: 10 }, { time: 10, price: 10 }, { time: 10, price: 14 });
+        expect(rails.base).toEqual([{ time: 0, price: 10 }, { time: 10, price: 10 }]);
+        expect(rails.parallel).toEqual([{ time: 0, price: 14 }, { time: 10, price: 14 }]);
+    });
+
+    it('measures a price/time box, with a sign', () => {
+        expect(measureSpan({ time: 0, price: 10 }, { time: 3600, price: 12.5 })).toEqual({ price: 2.5, seconds: 3600 });
+        expect(measureSpan({ time: 0, price: 10 }, { time: 7200, price: 9 })).toEqual({ price: -1, seconds: 7200 });
+    });
+
+    it('builds an arrow head that points at the tip', () => {
+        const points = arrowHeadPoints({ x: 0, y: 0 }, { x: 100, y: 0 }, 10).split(' ');
+        expect(points).toHaveLength(3);
+        expect(points[0]).toBe('100,0');
+        // The barbs sit behind the tip and on either side of the shaft.
+        for (const barb of points.slice(1)) {
+            const [x, y] = barb.split(',').map(Number);
+            expect(x).toBeLessThan(100);
+            expect(Math.abs(y)).toBeGreaterThan(0);
+        }
+        expect(arrowHeadPoints({ x: 5, y: 5 }, { x: 5, y: 5 })).toBe('');
     });
 });

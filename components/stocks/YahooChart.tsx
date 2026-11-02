@@ -141,6 +141,10 @@ const TOOL_KEYS: Record<ShapeTool, StringKey> = {
     trend: 'chart.tool.trend',
     horizontal: 'chart.tool.horizontal',
     rectangle: 'chart.tool.rectangle',
+    xrect: 'chart.tool.xrect',
+    channel: 'chart.tool.channel',
+    arrow: 'chart.tool.arrow',
+    pricetime: 'chart.tool.pricetime',
     fib: 'chart.tool.fib',
     gann: 'chart.tool.gann',
     text: 'chart.tool.text',
@@ -1294,7 +1298,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 {dropdown(
                     'lines',
                     t('chart.group.lines'),
-                    (['trend', 'horizontal', 'rectangle', 'fib', 'gann'] as ShapeTool[]).map((id) => ({
+                    (['trend', 'horizontal', 'rectangle', 'xrect', 'channel', 'arrow', 'fib', 'gann', 'text', 'pricetime'] as ShapeTool[]).map((id) => ({
                         key: id,
                         label: t(TOOL_KEYS[id]),
                         onClick: () => startTool(id),

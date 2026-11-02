@@ -7,8 +7,11 @@ import {
     drawingColor,
     fibLevels,
     gannGuides,
+    arrowHeadPoints,
+    channelRails,
     dashOf,
     handleIndex,
+    measureSpan,
     hitTest,
     labelsFor,
     nearestTime,
@@ -357,6 +360,103 @@ export default function ChartDrawings({
                         strokeWidth={width}
                         opacity={opacity}
                     />
+                    {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
+        if (kind === 'xrect') {
+            // A box whose top and bottom prices run on to the right edge.
+            const rightEdge = svgRef.current?.clientWidth ?? 0;
+            const left = Math.min(screen[0].x, screen[1].x);
+            const top = Math.min(screen[0].y, screen[1].y);
+            const bottom = Math.max(screen[0].y, screen[1].y);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <rect
+                        x={left}
+                        y={top}
+                        width={Math.max(0, rightEdge - left)}
+                        height={Math.max(0, bottom - top)}
+                        fill={`color-mix(in oklab, ${color} 10%, transparent)`}
+                        stroke={color}
+                        strokeWidth={width}
+                        opacity={opacity}
+                    />
+                    {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
+        if (kind === 'channel') {
+            const rightEdge = svgRef.current?.clientWidth ?? 0;
+            const rails = channelRails(drawing.points[0], drawing.points[1], drawing.points[2]);
+            const ends = rails.base.map((point) => toScreen(point));
+            const offsets = rails.parallel.map((point) => toScreen(point));
+            if ([...ends, ...offsets].some((point) => !point)) return null;
+            const [b0, b1] = ends as ScreenPoint[];
+            const [p0, p1] = offsets as ScreenPoint[];
+            const reach = (from: ScreenPoint, to: ScreenPoint) => {
+                const dx = to.x - from.x;
+                const y = Math.abs(dx) > 1 ? from.y + ((to.y - from.y) / dx) * (rightEdge - from.x) : from.y;
+                return { from, end: { x: rightEdge, y } };
+            };
+            const baseRay = reach(b0, b1);
+            const parallelRay = reach(p0, p1);
+            const area = `${b0.x},${b0.y} ${baseRay.end.x},${baseRay.end.y} ${parallelRay.end.x},${parallelRay.end.y} ${p0.x},${p0.y}`;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <polygon points={area} fill={`color-mix(in oklab, ${color} 8%, transparent)`} stroke="none" />
+                    <line x1={b0.x} y1={b0.y} x2={baseRay.end.x} y2={baseRay.end.y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    <line x1={p0.x} y1={p0.y} x2={parallelRay.end.x} y2={parallelRay.end.y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    <line x1={b0.x} y1={b0.y} x2={p0.x} y2={p0.y} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.7} />
+                    {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
+        if (kind === 'arrow') {
+            const head = arrowHeadPoints(screen[0], screen[1], 9 + width * 2);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {head && <polygon points={head} fill={color} opacity={opacity} />}
+                    {dot(screen[0].x, screen[0].y, `${drawing.id}-a`, color, opacity, TEXT_DOT)}
+                    {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
+        if (kind === 'pricetime') {
+            const span = measureSpan(drawing.points[0], drawing.points[1]);
+            const days = Math.abs(span.seconds) / 86400;
+            const spanText = days >= 1 ? `${days.toFixed(1)}D` : `${(Math.abs(span.seconds) / 3600).toFixed(1)}H`;
+            const priceText = `${span.price >= 0 ? '+' : '−'}${Math.abs(span.price).toFixed(2)}`;
+            const x = Math.min(screen[0].x, screen[1].x);
+            const y = Math.min(screen[0].y, screen[1].y);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <rect
+                        x={x}
+                        y={y}
+                        width={Math.abs(screen[1].x - screen[0].x)}
+                        height={Math.abs(screen[1].y - screen[0].y)}
+                        fill={`color-mix(in oklab, ${color} 12%, transparent)`}
+                        stroke={color}
+                        strokeWidth={width}
+                        opacity={opacity}
+                    />
+                    <text
+                        x={x + Math.abs(screen[1].x - screen[0].x) / 2}
+                        y={y - 6}
+                        textAnchor="middle"
+                        fontSize={12}
+                        className="mono"
+                        fill={color}
+                        opacity={opacity}
+                    >
+                        {`${priceText} · ${spanText}`}
+                    </text>
                     {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
                 </g>
             );

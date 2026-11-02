@@ -9,11 +9,26 @@
 export type DrawPoint = { time: number; price: number };
 
 /** How a shape is painted. Two tools can share a kind and differ only in their point count. */
-export type ShapeKind = 'trend' | 'horizontal' | 'rectangle' | 'fib' | 'gann' | 'text' | 'poly' | 'hs' | 'triangle' | 'vlines' | 'sine';
+export type ShapeKind =
+    | 'trend'
+    | 'horizontal'
+    | 'rectangle'
+    | 'xrect'
+    | 'channel'
+    | 'arrow'
+    | 'pricetime'
+    | 'fib'
+    | 'gann'
+    | 'text'
+    | 'poly'
+    | 'hs'
+    | 'triangle'
+    | 'vlines'
+    | 'sine';
 
 export type ShapeTool =
     // lines and boxes
-    | 'trend' | 'horizontal' | 'rectangle' | 'fib' | 'gann' | 'text'
+    | 'trend' | 'horizontal' | 'rectangle' | 'xrect' | 'channel' | 'arrow' | 'pricetime' | 'fib' | 'gann' | 'text'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -97,6 +112,10 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'trend', group: 'lines', kind: 'trend', clicks: 2, defaultColor: 'blue' },
     { tool: 'horizontal', group: 'lines', kind: 'horizontal', clicks: 1, defaultColor: 'blue' },
     { tool: 'rectangle', group: 'lines', kind: 'rectangle', clicks: 2, defaultColor: 'blue' },
+    { tool: 'xrect', group: 'lines', kind: 'xrect', clicks: 2, defaultColor: 'blue' },
+    { tool: 'channel', group: 'lines', kind: 'channel', clicks: 3, defaultColor: 'violet' },
+    { tool: 'arrow', group: 'lines', kind: 'arrow', clicks: 2, defaultColor: 'orange' },
+    { tool: 'pricetime', group: 'lines', kind: 'pricetime', clicks: 2, defaultColor: 'white' },
     { tool: 'fib', group: 'lines', kind: 'fib', clicks: 2, defaultColor: 'gold' },
     { tool: 'gann', group: 'lines', kind: 'gann', clicks: 2, defaultColor: 'violet' },
     { tool: 'text', group: 'lines', kind: 'text', clicks: 1, defaultColor: 'white' },
@@ -138,6 +157,42 @@ export const pointsNeeded = (tool: ShapeTool): number => toolDef(tool).clicks;
 export const toolsInGroup = (group: ToolGroup): ToolDef[] => TOOL_DEFS.filter((d) => d.group === group);
 
 export const newDrawingId = (): string => Math.random().toString(36).slice(2, 10);
+
+/** The two rails of a parallel channel: the base through the first two points, and the copy of it
+ *  that passes through the third point (the one that sets the width). */
+export function channelRails(a: DrawPoint, b: DrawPoint, c: DrawPoint): { base: [DrawPoint, DrawPoint]; parallel: [DrawPoint, DrawPoint] } {
+    const offset = { time: c.time - b.time, price: c.price - b.price };
+    return {
+        base: [a, b],
+        parallel: [
+            { time: a.time + offset.time, price: a.price + offset.price },
+            { time: b.time + offset.time, price: b.price + offset.price },
+        ],
+    };
+}
+
+/** What a price/time box measures: the move in price and the span in seconds, signed. */
+export function measureSpan(a: DrawPoint, b: DrawPoint): { price: number; seconds: number } {
+    return { price: b.price - a.price, seconds: b.time - a.time };
+}
+
+/** A pointer for an arrow tip, in SVG coordinates: the two barbs of a head that points at `to`. */
+export function arrowHeadPoints(from: { x: number; y: number }, to: { x: number; y: number }, size = 10): string {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1) return '';
+    const ux = dx / length;
+    const uy = dy / length;
+    // Two barbs, rotated off the shaft by 28 degrees and pulled back along it.
+    const angle = (28 * Math.PI) / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const back = size;
+    const b1 = { x: to.x - back * (ux * cos - uy * sin), y: to.y - back * (uy * cos + ux * sin) };
+    const b2 = { x: to.x - back * (ux * cos + uy * sin), y: to.y - back * (uy * cos - ux * sin) };
+    return `${to.x},${to.y} ${b1.x},${b1.y} ${b2.x},${b2.y}`;
+}
 
 /** The colour a shape is painted with: its own, or its tool's default. */
 export const drawingColor = (drawing: Pick<Drawing, 'tool' | 'color'>): string =>
@@ -359,7 +414,9 @@ export const dashOf = (drawing: Drawing): string | undefined => {
  */
 export function cloneDrawing(drawing: Drawing, id: string, offset: { time?: number; price?: number } = {}): Drawing {
     const { time = 0, price = 0 } = offset;
-    const { locked: _locked, labels, ...rest } = drawing;
+    // `locked` is deliberately dropped: a pasted object should be usable straight away.
+    const { locked, labels, ...rest } = drawing;
+    void locked;
     return {
         ...rest,
         id,
