@@ -87,6 +87,8 @@ import {
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { createCandleHost, token, type CandleHost, type IndicatorFlags } from '@/lib/candle-host';
+import ChartLegend from '@/components/stocks/ChartLegend';
+import type { BarReadout } from '@/lib/chart-readout';
 import { INDICATOR_BUTTONS, INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
@@ -174,6 +176,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [data, setData] = useState<CandleSet | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     const [on, setOn] = useState<Record<Indicator, boolean>>({ sma: false, ema: false, rsi: false, macd: false });
+    // The bar the legend reads: the hovered one, or the last bar the host drew.
+    const [readout, setReadout] = useState<BarReadout | null>(null);
     const [tool, setTool] = useState<ActiveTool | null>(null);
     const [pendingLabels, setPendingLabels] = useState<string[] | null>(null);
     const [noteText, setNoteText] = useState('');
@@ -476,11 +480,15 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             host.fit();
         }
         candleHostRef.current = host;
+        // The host owns the crosshair and the indicator arrays, so the legend cannot drift from the
+        // chart: it fires on hover, on a replay step, and on an indicator toggle alike.
+        const unsubscribeReadout = host.subscribeReadout(setReadout);
         chartRef.current = host.chart;
         seriesRef.current = host.price;
         markersApiRef.current = createSeriesMarkers(host.price, markersRef.current);
 
         return () => {
+            unsubscribeReadout();
             candleHostRef.current = null;
             chartRef.current = null;
             seriesRef.current = null;
@@ -841,7 +849,11 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         // dir=ltr on the plotting area too: the labels drawn on the canvas overlay are SVG text
         // (Fibonacci ratios, notes), and in an RTL page "0.786" would otherwise reorder to "786.0".
         <div className={cn('relative', expanded ? 'size-full' : 'h-[420px]')} dir="ltr">
-            <div ref={hostRef} className="size-full" />
+            {/* The host element is the one lightweight-charts listens on; the data attribute keeps
+                a browser check pointed at the chart rather than at the widget's inner canvases. */}
+            <div ref={hostRef} data-chart="price" className="size-full" />
+
+            {status === 'ready' && <ChartLegend lang={lang} readout={readout} />}
 
             {status === 'ready' && !replay && (
                 <ChartDrawings

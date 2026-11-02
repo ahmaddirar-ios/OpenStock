@@ -9,8 +9,10 @@ import {
     createChart,
     type IChartApi,
     type ISeriesApi,
+    type MouseEventParams,
     type UTCTimestamp,
 } from 'lightweight-charts';
+import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import { ema, macd, rsi, sma, type Series } from '@/lib/indicators';
 import type { CandleSet } from '@/lib/yahoo-candles';
 
@@ -29,6 +31,16 @@ export type CandleHost = {
     setIndicators: (flags: IndicatorFlags) => void;
     setTimeVisible: (visible: boolean) => void;
     fit: () => void;
+    /**
+     * The bar under the crosshair — or the last bar when the cursor is away — with the value of
+     * every indicator drawn at it. Null before any candles exist.
+     */
+    readAt: (time?: number | null) => BarReadout | null;
+    /**
+     * Emits the readout on every crosshair move and whenever the candles or the indicators are
+     * replaced, so a legend follows a replay step without knowing about replay.
+     */
+    subscribeReadout: (listener: (readout: BarReadout | null) => void) => () => void;
     destroy: () => void;
 };
 
@@ -132,6 +144,26 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     // The panes this host owns. Everything the host adds sits under any pane the page extended, so
     // removing them from the end never touches a compare pane.
     let ownedPanes: number[] = [];
+    // The legend's source: the same arrays the indicator panes are drawn from, plus the bar the
+    // crosshair last stood on. Capturing them here means the legend cannot disagree with the chart.
+    let readoutSeries: ReadoutSeries = {};
+    let hoverTime: number | null = null;
+    const readoutListeners = new Set<(readout: BarReadout | null) => void>();
+
+    const readAt = (time: number | null = hoverTime) => readoutAt(data?.candles ?? [], readoutSeries, time);
+    const emitReadout = () => {
+        const readout = readAt();
+        for (const listener of readoutListeners) listener(readout);
+    };
+
+    // A time outside the candles (the empty space to the right) is "no hovered bar", which the
+    // readout answers with the last bar — exactly the fallback TradingView's legend uses.
+    const handleCrosshair = (param: MouseEventParams) => {
+        const time = typeof param.time === 'number' ? param.time : null;
+        if (time === hoverTime) return;
+        hoverTime = time;
+        emitReadout();
+    };
 
     const addPane = (stretch: number): number => {
         const pane = chart.addPane();
@@ -167,16 +199,21 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
 
     const buildIndicators = () => {
         clearIndicators();
+        readoutSeries = {};
         const candles = data?.candles ?? [];
         if (candles.length === 0) return;
         const closes = candles.map((candle) => candle.close);
 
         if (flags.sma) {
-            const series = overlay(chart, line(sma(closes, 20), candles), brand);
+            const values = sma(closes, 20);
+            readoutSeries.sma = values;
+            const series = overlay(chart, line(values, candles), brand);
             if (series) overlays.push(series);
         }
         if (flags.ema) {
-            const series = overlay(chart, line(ema(closes, 50), candles), muted);
+            const values = ema(closes, 50);
+            readoutSeries.ema = values;
+            const series = overlay(chart, line(values, candles), muted);
             if (series) overlays.push(series);
         }
 
@@ -185,14 +222,19 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         if (flags.rsi) {
             const index = addPane(oscillators > 1 ? 0.2 : 0.28);
             ownedPanes.push(index);
+            const values = rsi(closes, 14);
+            readoutSeries.rsi = values;
             chart
                 .addSeries(LineSeries, { color: brand, lineWidth: 1, priceLineVisible: false }, index)
-                .setData(line(rsi(closes, 14), candles));
+                .setData(line(values, candles));
         }
         if (flags.macd) {
             const index = addPane(oscillators > 1 ? 0.2 : 0.28);
             ownedPanes.push(index);
             const { macd: macdLine, signal, histogram } = macd(closes);
+            readoutSeries.macd = macdLine;
+            readoutSeries.signal = signal;
+            readoutSeries.histogram = histogram;
             chart
                 .addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, index)
                 .setData(
@@ -220,15 +262,26 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             data = set;
             applyCandles();
             buildIndicators();
+            emitReadout();
         },
         setIndicators: (next) => {
             flags = next;
             buildIndicators();
+            emitReadout();
         },
         setTimeVisible: (visible) => chart.timeScale().applyOptions({ timeVisible: visible }),
         // `fitContent()` waits on the chart's own layout pass, so a pane fitted while its container
         // is still settling keeps the default window instead of the data. The logical range is the
         // same intent, applied immediately and deterministically.
+        readAt,
+        subscribeReadout: (listener) => {
+            readoutListeners.add(listener);
+            // Immediately, so a legend mounted after the chart opens full instead of empty.
+            listener(readAt());
+            return () => {
+                readoutListeners.delete(listener);
+            };
+        },
         fit: () => {
             const count = data?.candles.length ?? 0;
             if (count === 0) {
@@ -238,6 +291,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             chart.timeScale().setVisibleLogicalRange({ from: -1, to: count + 1 });
         },
         destroy: () => {
+            readoutListeners.clear();
+            chart.unsubscribeCrosshairMove(handleCrosshair);
             if (options.onRangeChange) chart.timeScale().unsubscribeVisibleLogicalRangeChange(options.onRangeChange);
             chart.remove();
         },
@@ -247,6 +302,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     // The page's own panes (compare) go under the price and above the oscillators.
     options.extend?.(host);
     buildIndicators();
+
+    chart.subscribeCrosshairMove(handleCrosshair);
 
     if (options.onRangeChange) {
         // v5 returns void from subscribe*, so the handler is kept on the options and unsubscribed by destroy.

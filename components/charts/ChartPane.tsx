@@ -22,6 +22,8 @@ import PaneSearch from '@/components/charts/PaneSearch';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { clipToCursor } from '@/lib/chart-grid';
+import ChartLegend from '@/components/stocks/ChartLegend';
+import type { BarReadout } from '@/lib/chart-readout';
 
 export type CrosshairSync = { time: number; price: number };
 export type RangeSync = { from: number; to: number };
@@ -96,6 +98,8 @@ export default function ChartPane({
     const ready = useRef(false);
     // Replay reads the lab's deep history instead of the chart's light payload, and clips it.
     const [deepSet, setDeepSet] = useState<CandleSet | null>(null);
+    // The pane's own legend: the bar under this pane's crosshair, or the last bar it drew.
+    const [readout, setReadout] = useState<BarReadout | null>(null);
     /** Set while this pane applies someone else's view, so it does not publish the echo back. */
     const ignoreUntil = useRef(0);
 
@@ -135,6 +139,7 @@ export default function ChartPane({
             publishRange.current({ from: next.from, to: next.to });
         };
 
+        const unsubscribeReadout = host.subscribeReadout(setReadout);
         host.chart.subscribeCrosshairMove(handleCrosshair);
         host.chart.timeScale().subscribeVisibleLogicalRangeChange(handleRange);
 
@@ -158,6 +163,7 @@ export default function ChartPane({
         el.addEventListener('pointerdown', takeOver, { capture: true });
 
         return () => {
+            unsubscribeReadout();
             observer.disconnect();
             el.removeEventListener('wheel', takeOver, { capture: true });
             el.removeEventListener('pointerdown', takeOver, { capture: true });
@@ -401,7 +407,9 @@ export default function ChartPane({
 
             <div className="relative min-h-0 flex-1">
                 {/* The canvas host stays mounted so the chart survives every state change. */}
-                <div ref={elRef} className="absolute inset-0" dir="ltr" />
+                <div ref={elRef} data-chart="pane" className="absolute inset-0" dir="ltr" />
+
+                {symbol && status === 'ready' && <ChartLegend lang={lang} readout={readout} />}
 
                 {!symbol && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-card/80 p-4 text-center backdrop-blur-[1px]">
