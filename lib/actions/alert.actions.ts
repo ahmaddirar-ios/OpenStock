@@ -6,14 +6,21 @@ import { revalidatePath } from 'next/cache';
 import { requireUserId } from '@/lib/better-auth/auth';
 import { getLiveQuotes } from '@/lib/actions/finnhub.actions';
 import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
+import { getAlertCandles } from '@/lib/actions/yahoo-candles.actions';
+import { compareYahooSymbol } from '@/lib/compare';
+import type { Candle } from '@/lib/yahoo-candles';
 import {
     alertSource,
     alertStoredSymbol,
     alertYahooSymbol,
     isAlertCondition,
+    needsCandles,
+    normalizeAlertParams,
     planCheck,
+    validateAlertParams,
     validateAlertTarget,
     type AlertCondition,
+    type AlertParams,
     type AlertSnapshot,
 } from '@/lib/alerts';
 
@@ -24,6 +31,8 @@ export type AlertInput = {
     symbol: string;
     condition: AlertCondition;
     targetPrice: number;
+    /** The second number a rule needs: an RSI period or a volume window. */
+    params?: AlertParams;
 };
 
 export type FiredAlert = {
@@ -31,8 +40,10 @@ export type FiredAlert = {
     symbol: string;
     condition: AlertCondition;
     targetPrice: number;
-    price: number;
-    changePercent: number;
+    /** What the rule measured: a price, an RSI, a close, or a volume multiple. */
+    value: number;
+    price?: number;
+    changePercent?: number;
 };
 
 export type CheckResult = {
@@ -47,9 +58,9 @@ export type CheckResult = {
 };
 
 /** A user-visible reason, thrown as the message so the caller can translate it. */
-const fail = (code: string): never => {
+function fail(code: string): never {
     throw new Error(code);
-};
+}
 
 /**
  * Creates an alert. On the public demo alerts are checked when the centre is opened; in
@@ -64,15 +75,22 @@ export async function createAlert(params: AlertInput) {
     const condition = params.condition;
     if (!isAlertCondition(condition)) fail('invalidCondition');
 
+    // A series rule needs a candle source as well as a quote source: every US ticker and Tadawul
+    // listing has one, a Binance pair does not.
+    if (needsCandles(condition) && !compareYahooSymbol(symbol)) fail('unsupportedSymbol');
+
     const targetPrice = Number(params.targetPrice);
     if (!validateAlertTarget(condition, targetPrice)) fail('invalidTarget');
+
+    const ruleParams = normalizeAlertParams(condition, params.params);
+    if (!validateAlertParams(condition, ruleParams)) fail('invalidTarget');
 
     await connectToDatabase();
     if ((await Alert.countDocuments({ userId, active: true })) >= MAX_ACTIVE_ALERTS) fail('limit');
 
     try {
         // lastPrice starts empty: a cross rule cannot fire until two checks have been seen.
-        const alert = await Alert.create({ userId, symbol, targetPrice, condition, active: true });
+        const alert = await Alert.create({ userId, symbol, targetPrice, condition, params: ruleParams, active: true });
         revalidatePath('/alerts');
         revalidatePath('/watchlist');
         return JSON.parse(JSON.stringify(alert));
@@ -82,10 +100,10 @@ export async function createAlert(params: AlertInput) {
     }
 }
 
-/** Edits a rule. Changing the condition clears the remembered price, so a stale cross cannot fire. */
+/** Edits a rule. Changing what it watches clears the remembered value, so a stale cross cannot fire. */
 export async function updateAlert(
     alertId: string,
-    patch: { targetPrice?: number; condition?: AlertCondition; active?: boolean },
+    patch: { targetPrice?: number; condition?: AlertCondition; active?: boolean; params?: AlertParams },
 ) {
     const userId = await requireUserId();
     await connectToDatabase();
@@ -99,13 +117,20 @@ export async function updateAlert(
     const targetPrice = patch.targetPrice == null ? existing.targetPrice : Number(patch.targetPrice);
     if (!validateAlertTarget(condition, targetPrice)) fail('invalidTarget');
 
-    const update: Record<string, unknown> = { condition, targetPrice };
+    const ruleParams = patch.params == null
+        ? normalizeAlertParams(condition, (existing.params ?? {}) as AlertParams)
+        : normalizeAlertParams(condition, patch.params);
+    if (!validateAlertParams(condition, ruleParams)) fail('invalidTarget');
+
+    const update: Record<string, unknown> = { condition, targetPrice, params: ruleParams };
     if (typeof patch.active === 'boolean') update.active = patch.active;
 
-    // Only a change of condition invalidates the remembered price. Pausing and resuming must
-    // not: a cross rule would need two more checks after every pause, and the spec only asks
-    // for the stale-cross case.
-    if (condition !== existing.condition) update.lastPrice = null;
+    // Changing what the rule watches invalidates the remembered value; pausing and resuming must
+    // not, or a cross rule would need two more checks after every pause.
+    const ruleChanged = condition !== existing.condition
+        || ruleParams.period !== ((existing.params ?? {}) as AlertParams).period
+        || ruleParams.window !== ((existing.params ?? {}) as AlertParams).window;
+    if (ruleChanged) update.lastPrice = null;
 
     // Reactivating a fired rule means "watch again", so clear the firing exactly as the
     // re-arm button does (the same rule reachable from an API caller).
@@ -197,6 +222,17 @@ async function priceSymbols(symbols: string[]): Promise<Record<string, AlertSnap
     return snapshots;
 }
 
+/** The daily series for every symbol whose rules measure one, one call per symbol. */
+async function candleSeries(symbols: string[]): Promise<Record<string, Candle[]>> {
+    const sets = await Promise.all(
+        symbols.map(async (symbol) => {
+            const set = await getAlertCandles(symbol);
+            return set?.candles?.length ? ([symbol, set.candles] as const) : null;
+        }),
+    );
+    return Object.fromEntries(sets.filter((entry): entry is readonly [string, Candle[]] => entry !== null));
+}
+
 /**
  * The on-visit check. Every live rule is priced once and handed to `planCheck`, the same
  * decision the Inngest cron runs; the rules it says fired are claimed atomically so two
@@ -210,25 +246,26 @@ export async function checkAlerts(): Promise<CheckResult> {
     const alerts = await Alert.find({ userId, active: true, triggered: false, expiresAt: { $gt: now } }).lean();
     if (alerts.length === 0) return { checked: 0, skipped: 0, fired: [], quotes: {} };
 
-    const symbols = [...new Set(alerts.map((alert) => alert.symbol))];
-    const quotes = await priceSymbols(symbols);
+    // Pay only for what the live rules read: a quote for the price rules, a daily series for the
+    // indicator rules. One call per symbol either way.
+    const rules = alerts.map((alert) => ({
+        id: String(alert._id),
+        symbol: alert.symbol,
+        condition: alert.condition as AlertCondition,
+        targetPrice: alert.targetPrice,
+        params: (alert.params ?? {}) as AlertParams,
+        lastPrice: alert.lastPrice ?? null,
+    }));
+    const quoted = [...new Set(rules.filter((rule) => !needsCandles(rule.condition)).map((rule) => rule.symbol))];
+    const measured = [...new Set(rules.filter((rule) => needsCandles(rule.condition)).map((rule) => rule.symbol))];
 
-    const plan = planCheck(
-        alerts.map((alert) => ({
-            id: String(alert._id),
-            symbol: alert.symbol,
-            condition: alert.condition as AlertCondition,
-            targetPrice: alert.targetPrice,
-            lastPrice: alert.lastPrice ?? null,
-        })),
-        quotes,
-    );
+    const [quotes, series] = await Promise.all([priceSymbols(quoted), candleSeries(measured)]);
+    const plan = planCheck(rules, quotes, series);
 
-    // Remember this check's price on every rule that did not fire, so a cross has a
-    // previous price next time.
+    // Remember what each rule saw on this check, so a cross has a previous value next time.
     await Promise.all(
-        plan.misses.map(({ id, lastPrice }) =>
-            Alert.updateOne({ _id: id, triggered: false }, { $set: { lastPrice } }),
+        plan.misses.map(({ id, value }) =>
+            Alert.updateOne({ _id: id, triggered: false }, { $set: { lastPrice: value } }),
         ),
     );
 
@@ -244,8 +281,8 @@ export async function checkAlerts(): Promise<CheckResult> {
                         // it stops counting toward the active-alert cap until it is re-armed.
                         active: false,
                         triggeredAt: new Date(),
-                        triggeredPrice: fire.price,
-                        lastPrice: fire.price,
+                        triggeredPrice: fire.value,
+                        lastPrice: fire.value,
                         seen: false,
                     },
                 },
@@ -257,6 +294,7 @@ export async function checkAlerts(): Promise<CheckResult> {
                     symbol: fire.symbol,
                     condition: fire.condition,
                     targetPrice: fire.targetPrice,
+                    value: fire.value,
                     price: fire.price,
                     changePercent: fire.changePercent,
                 });

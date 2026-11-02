@@ -8,6 +8,7 @@ import { callAIProviderWithFallback } from "@/lib/ai-provider";
 import { refreshScreenerSlice, SCREENER_BATCH_LIMIT } from "@/lib/screener-refresh";
 import { SCREENER_TOTAL } from "@/lib/screener-universe";
 import type { AlertCondition } from "@/lib/alerts";
+import type { Candle } from "@/lib/yahoo-candles";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
@@ -229,6 +230,7 @@ export const checkStockAlerts = inngest.createFunction(
             symbol: string;
             condition: AlertCondition;
             targetPrice: number;
+            params?: { period?: number; window?: number };
             lastPrice?: number | null;
         };
         const alerts = activeAlerts as unknown as StoredAlert[];
@@ -265,28 +267,43 @@ export const checkStockAlerts = inngest.createFunction(
 
         // Step 4: the same decision the alert centre makes, from the same pure function, so the
         // two paths cannot disagree about what fired or what the next cross compares against.
-        const { planCheck } = await import("@/lib/alerts");
+        const { needsCandles, planCheck } = await import("@/lib/alerts");
         type Snapshot = { price: number; changePercent: number };
-        const plan = planCheck(
-            alerts.map((alert) => ({
-                id: String(alert._id),
-                symbol: alert.symbol,
-                condition: alert.condition,
-                targetPrice: alert.targetPrice,
-                lastPrice: alert.lastPrice ?? null,
-            })),
-            prices as Record<string, Snapshot>,
-        );
+        const rows = alerts.map((alert) => ({
+            id: String(alert._id),
+            symbol: alert.symbol,
+            condition: alert.condition,
+            targetPrice: alert.targetPrice,
+            params: alert.params ?? {},
+            lastPrice: alert.lastPrice ?? null,
+        }));
 
-        // Remember this check's price, so a cross rule has a previous price next time.
+        // Only the symbols whose rules measure a series pay for candles; the rest live on quotes.
+        const measured = [...new Set(rows.filter((row) => needsCandles(row.condition)).map((row) => row.symbol))];
+        const series = measured.length > 0
+            ? await step.run('fetch-candles', async () => {
+                const { getAlertCandles } = await import("@/lib/actions/yahoo-candles.actions");
+                const sets = await Promise.all(
+                    measured.map(async (symbol) => {
+                        const set = await getAlertCandles(symbol);
+                        return set?.candles?.length ? ([symbol, set.candles] as const) : null;
+                    }),
+                );
+                return Object.fromEntries(sets.filter((entry): entry is readonly [string, Candle[]] => entry !== null));
+            })
+            : {};
+
+        const plan = planCheck(rows, prices as Record<string, Snapshot>, series as Record<string, Candle[]>);
+
+        // Remember what each rule saw on this check, so a cross has a previous value next time.
         if (plan.misses.length > 0) {
             await step.run('remember-prices', async () => {
                 const { connectToDatabase } = await import("@/database/mongoose");
                 const { Alert } = await import("@/database/models/alert.model");
                 await connectToDatabase();
                 await Alert.bulkWrite(
-                    plan.misses.map(({ id, lastPrice }) => ({
-                        updateOne: { filter: { _id: id, triggered: false }, update: { $set: { lastPrice } } },
+                    plan.misses.map(({ id, value }) => ({
+                        updateOne: { filter: { _id: id, triggered: false }, update: { $set: { lastPrice: value } } },
                     })),
                 );
             });
@@ -315,8 +332,8 @@ export const checkStockAlerts = inngest.createFunction(
                                 triggered: true,
                                 active: false,
                                 triggeredAt: new Date(),
-                                triggeredPrice: fire.price,
-                                lastPrice: fire.price,
+                                triggeredPrice: fire.value,
+                                lastPrice: fire.value,
                                 seen: false,
                             },
                         },
@@ -329,7 +346,7 @@ export const checkStockAlerts = inngest.createFunction(
                         triggeredPrice: null,
                     }).catch(() => {});
 
-                    console.log(`🚀 ALERT FIRED: ${alert.symbol} is ${fire.price} (${alert.condition} ${alert.targetPrice})`);
+                    console.log(`🚀 ALERT FIRED: ${alert.symbol} is ${fire.value} (${alert.condition} ${alert.targetPrice})`);
 
                     // The mail templates speak in prices; the four newer rules are announced in the
                     // alert centre only, so an e-mail never quotes a percentage as a price.
@@ -349,7 +366,8 @@ export const checkStockAlerts = inngest.createFunction(
                             const result = await sendStockAlertEmail({
                                 email: user.email,
                                 symbol: alert.symbol,
-                                currentPrice: fire.price,
+                                // The mail speaks in prices, and it is only sent for the price rules.
+                                currentPrice: fire.price ?? fire.value,
                                 targetPrice: alert.targetPrice,
                                 condition: alert.condition,
                             });

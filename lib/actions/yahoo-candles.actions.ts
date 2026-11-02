@@ -72,3 +72,14 @@ export async function getStrategyCandles(symbol: string, intervalId: string): Pr
 export async function getCompareCandles(symbol: string, intervalId: string): Promise<CandleSet | null> {
     return getSymbolCandles(symbol, intervalId);
 }
+
+/**
+ * The alert centre's series: two years of daily bars, which covers a 200-bar average and a 20-bar
+ * volume window with room to spare. History does not move, so it is cached for an hour — one call
+ * per symbol per hour, however many rules watch that symbol.
+ */
+export async function getAlertCandles(symbol: string): Promise<CandleSet | null> {
+    const yahooSymbol = compareYahooSymbol(symbol);
+    if (!yahooSymbol) return null;
+    return fetchCandles(yahooSymbol, '1d', { range: '2y', revalidate: 3600 });
+}

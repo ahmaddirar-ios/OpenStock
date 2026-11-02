@@ -5,10 +5,15 @@ import {
     alertStoredSymbol,
     alertYahooSymbol,
     evaluateAlert,
+    evaluateMeasure,
     isAlertCondition,
     isPercentCondition,
+    measureRule,
+    needsCandles,
     nextLastPrice,
+    normalizeAlertParams,
     planCheck,
+    validateAlertParams,
     validateAlertTarget,
     type AlertCondition,
 } from '@/lib/alerts';
@@ -40,9 +45,11 @@ describe('alertSource', () => {
 });
 
 describe('conditions', () => {
-    it('lists all six and recognises only them', () => {
-        expect(ALERT_CONDITIONS).toHaveLength(6);
+    it('recognises only the eleven it lists', () => {
         expect(isAlertCondition('ABOVE')).toBe(true);
+        expect(isAlertCondition('RSI_BELOW')).toBe(true);
+        expect(isAlertCondition('PRICE_CROSS_UP_SMA')).toBe(true);
+        expect(isAlertCondition('VOLUME_SPIKE')).toBe(true);
         expect(isAlertCondition('SIDEWAYS')).toBe(false);
         expect(isAlertCondition(null)).toBe(false);
     });
@@ -156,9 +163,187 @@ describe('planCheck', () => {
             ],
             { '2222.SR': { price: 31, changePercent: 2 } },
         );
-        expect(plan.misses).toEqual([{ id: 'miss', lastPrice: 31 }]);
+        expect(plan.misses).toEqual([{ id: 'miss', value: 31 }]);
         expect(plan.fires).toEqual([
-            { id: 'hit', symbol: '2222.SR', condition: 'ABOVE', targetPrice: 30, price: 31, changePercent: 2 },
+            { id: 'hit', symbol: '2222.SR', condition: 'ABOVE', targetPrice: 30, value: 31, price: 31, changePercent: 2 },
         ]);
+    });
+});
+
+// --- indicator and volume rules -------------------------------------------------------------
+
+const series = (closes: number[], volumes?: number[]) =>
+    closes.map((close, i) => ({ time: i * 86_400, open: close, high: close, low: close, close, volume: volumes?.[i] ?? 1_000 }));
+
+const rising = (n: number) => Array.from({ length: n }, (_, i) => 100 + i);
+const falling = (n: number) => Array.from({ length: n }, (_, i) => 100 - i);
+
+describe('needsCandles', () => {
+    it('routes the price and percent rules to a quote and the rest to a series', () => {
+        for (const condition of ['ABOVE', 'BELOW', 'CROSS_UP', 'CROSS_DOWN', 'CHANGE_UP', 'CHANGE_DOWN'] as AlertCondition[]) {
+            expect(needsCandles(condition)).toBe(false);
+        }
+        for (const condition of ['RSI_BELOW', 'RSI_ABOVE', 'PRICE_CROSS_UP_SMA', 'PRICE_CROSS_DOWN_SMA', 'VOLUME_SPIKE'] as AlertCondition[]) {
+            expect(needsCandles(condition)).toBe(true);
+        }
+    });
+
+    it('lists all eleven conditions', () => {
+        expect(ALERT_CONDITIONS).toHaveLength(11);
+    });
+});
+
+describe('the new rules’ numbers', () => {
+    it('bounds an RSI level, an SMA period and a volume multiple', () => {
+        expect(validateAlertTarget('RSI_BELOW', 30)).toBe(true);
+        expect(validateAlertTarget('RSI_BELOW', 0)).toBe(false);
+        expect(validateAlertTarget('RSI_ABOVE', 99)).toBe(true);
+        expect(validateAlertTarget('RSI_ABOVE', 100)).toBe(false);
+        expect(validateAlertTarget('PRICE_CROSS_UP_SMA', 50)).toBe(true);
+        expect(validateAlertTarget('PRICE_CROSS_UP_SMA', 4)).toBe(false);
+        expect(validateAlertTarget('PRICE_CROSS_DOWN_SMA', 401)).toBe(false);
+        expect(validateAlertTarget('VOLUME_SPIKE', 2)).toBe(true);
+        expect(validateAlertTarget('VOLUME_SPIKE', 0.5)).toBe(false);
+        expect(validateAlertTarget('VOLUME_SPIKE', 21)).toBe(false);
+    });
+
+    it('bounds the second number and fills its default', () => {
+        expect(validateAlertParams('RSI_BELOW', { period: 14 })).toBe(true);
+        expect(validateAlertParams('RSI_BELOW', { period: 1 })).toBe(false);
+        expect(validateAlertParams('RSI_BELOW', { period: 51 })).toBe(false);
+        expect(validateAlertParams('VOLUME_SPIKE', { window: 20 })).toBe(true);
+        expect(validateAlertParams('VOLUME_SPIKE', { window: 4 })).toBe(false);
+        expect(validateAlertParams('VOLUME_SPIKE', { window: 101 })).toBe(false);
+
+        expect(normalizeAlertParams('RSI_BELOW')).toEqual({ period: 14 });
+        expect(normalizeAlertParams('RSI_BELOW', { period: 21 })).toEqual({ period: 21 });
+        expect(normalizeAlertParams('VOLUME_SPIKE')).toEqual({ window: 20 });
+        expect(normalizeAlertParams('VOLUME_SPIKE', { window: 50 })).toEqual({ window: 50 });
+        expect(normalizeAlertParams('ABOVE')).toEqual({});
+        expect(normalizeAlertParams('PRICE_CROSS_UP_SMA')).toEqual({});
+    });
+});
+
+describe('measureRule', () => {
+    const rule = (condition: AlertCondition, targetPrice = 30, params = {}) => ({ condition, targetPrice, params });
+
+    it('reads RSI at the last bar, and the ceiling and floor of a one-way run', () => {
+        const up = measureRule(rule('RSI_BELOW'), series(rising(30)));
+        expect(up?.value).toBe(100);
+        expect(up?.display).toBe(100);
+
+        const down = measureRule(rule('RSI_BELOW'), series(falling(30)));
+        expect(down?.value).toBe(0);
+
+        const mixed = measureRule(rule('RSI_BELOW'), series([100, 101, 100, 102, 101, 103, 102, 104, 103, 105, 104, 106, 105, 107, 106, 108]));
+        expect(mixed!.value).toBeGreaterThan(0);
+        expect(mixed!.value).toBeLessThan(100);
+    });
+
+    it('returns no measure when the series is shorter than the rule needs', () => {
+        expect(measureRule(rule('RSI_BELOW'), series(rising(14)))).toBeNull(); // period 14 needs 15 bars for one value
+        expect(measureRule(rule('PRICE_CROSS_UP_SMA', 50), series(rising(49)))).toBeNull();
+        expect(measureRule(rule('VOLUME_SPIKE', 2), series(rising(20)))).toBeNull(); // 20 bars, but the window is 20
+        expect(measureRule(rule('RSI_BELOW'), [])).toBeNull();
+        expect(measureRule(rule('RSI_BELOW'), undefined)).toBeNull();
+    });
+
+    it('has only one value, hence no previous, on the bar RSI first exists', () => {
+        const measure = measureRule(rule('RSI_BELOW'), series(rising(15)));
+        expect(measure?.value).toBe(100);
+        expect(measure?.previous).toBeNull();
+    });
+
+    it('measures an SMA cross as the gap between the close and the average', () => {
+        // period 5: the last close jumps above its own average while the bar before sat below it.
+        const candles = series([10, 10, 10, 10, 10, 9, 9, 12]);
+        const measure = measureRule(rule('PRICE_CROSS_UP_SMA', 5), candles);
+        expect(measure?.value).toBeCloseTo(2, 6); // 12 − mean(10,10,9,9,12) = 2
+        expect(measure?.previous).toBeCloseTo(-0.6, 6); // 9 − mean(10,10,10,9,9)
+        expect(measure?.display).toBe(12); // the price a trader reads, not the gap
+        expect(evaluateMeasure(rule('PRICE_CROSS_UP_SMA', 5), measure!)).toBe(true);
+        expect(evaluateMeasure(rule('PRICE_CROSS_DOWN_SMA', 5), measure!)).toBe(false);
+    });
+
+    it('averages the volume of the bars before the current one, never the current bar itself', () => {
+        const volumes = [...Array(20).fill(100), 300]; // 21 bars, window 20
+        const measure = measureRule(rule('VOLUME_SPIKE', 2, { window: 20 }), series([...Array(21).fill(50)], volumes));
+        expect(measure?.value).toBeCloseTo(3, 6); // 300 ÷ 100, so the spike is not diluted by itself
+        expect(measure?.display).toBeCloseTo(3, 6);
+        expect(evaluateMeasure(rule('VOLUME_SPIKE', 2), measure!)).toBe(true);
+    });
+
+    it('never divides by a zero-volume average', () => {
+        const volumes = [...Array(20).fill(0), 500];
+        expect(measureRule(rule('VOLUME_SPIKE', 2, { window: 20 }), series([...Array(21).fill(50)], volumes))).toBeNull();
+    });
+});
+
+describe('evaluateMeasure', () => {
+    const rule = (condition: AlertCondition, targetPrice: number, params = {}) => ({ condition, targetPrice, params });
+
+    it('fires a level rule at the level, and not a hair past it', () => {
+        expect(evaluateMeasure(rule('RSI_BELOW', 30), { value: 30, previous: 40, display: 30 })).toBe(true);
+        expect(evaluateMeasure(rule('RSI_BELOW', 30), { value: 30.1, previous: 40, display: 30.1 })).toBe(false);
+        expect(evaluateMeasure(rule('RSI_ABOVE', 70), { value: 70, previous: 60, display: 70 })).toBe(true);
+        expect(evaluateMeasure(rule('RSI_ABOVE', 70), { value: 69.9, previous: 60, display: 69.9 })).toBe(false);
+        expect(evaluateMeasure(rule('VOLUME_SPIKE', 2), { value: 2, previous: 1, display: 2 })).toBe(true);
+        expect(evaluateMeasure(rule('VOLUME_SPIKE', 2), { value: 1.99, previous: 1, display: 1.99 })).toBe(false);
+    });
+
+    it('needs a previous value for a cross, and only the transition counts', () => {
+        expect(evaluateMeasure(rule('PRICE_CROSS_UP_SMA', 50), { value: 1, previous: null, display: 12 })).toBe(false);
+        expect(evaluateMeasure(rule('PRICE_CROSS_UP_SMA', 50), { value: 2, previous: -0.6, display: 12 })).toBe(true);
+        expect(evaluateMeasure(rule('PRICE_CROSS_UP_SMA', 50), { value: 3, previous: 1, display: 12 })).toBe(false); // already above
+        expect(evaluateMeasure(rule('PRICE_CROSS_UP_SMA', 50), { value: 0, previous: 0, display: 12 })).toBe(false); // only touched
+        expect(evaluateMeasure(rule('PRICE_CROSS_DOWN_SMA', 50), { value: -1, previous: 0.6, display: 12 })).toBe(true);
+        expect(evaluateMeasure(rule('PRICE_CROSS_DOWN_SMA', 50), { value: -1, previous: -0.5, display: 12 })).toBe(false);
+    });
+});
+
+describe('planCheck with candles', () => {
+    const row = (over: Partial<Parameters<typeof planCheck>[0][number]> = {}) => ({
+        id: 'a1',
+        symbol: '2222.SR',
+        condition: 'RSI_BELOW' as AlertCondition,
+        targetPrice: 70,
+        params: {},
+        lastPrice: null,
+        ...over,
+    });
+
+    it('reads a series rule from the candles, with no quote at all', () => {
+        const plan = planCheck([row()], {}, { '2222.SR': series(falling(30)) });
+        expect(plan.checked).toBe(1);
+        expect(plan.fires).toEqual([
+            { id: 'a1', symbol: '2222.SR', condition: 'RSI_BELOW', targetPrice: 70, value: 0, price: undefined, changePercent: undefined },
+        ]);
+    });
+
+    it('skips a series rule whose candles are missing or too short, and never reads zero', () => {
+        const missing = planCheck([row()], {}, {});
+        expect(missing).toMatchObject({ checked: 0, skipped: 1, fires: [] });
+        const short = planCheck([row()], {}, { '2222.SR': series(falling(10)) });
+        expect(short).toMatchObject({ checked: 0, skipped: 1, fires: [] });
+    });
+
+    it('remembers the measured value, not a price, on a miss', () => {
+        const plan = planCheck([row({ targetPrice: 0.5 })], {}, { '2222.SR': series(rising(20)) });
+        // RSI on a strictly rising series is 100, which is not below 0.5, so it is a miss.
+        expect(plan.misses).toEqual([{ id: 'a1', value: 100 }]);
+    });
+
+    it('mixes price rules and series rules in one check, each from its own source', () => {
+        const plan = planCheck(
+            [
+                row({ id: 'series', symbol: '2222.SR' }),
+                row({ id: 'quote', symbol: 'AAPL', condition: 'ABOVE', targetPrice: 100, params: {} }),
+            ],
+            { AAPL: { price: 101, changePercent: 1 } },
+            { '2222.SR': series(falling(30)) },
+        );
+        expect(plan.checked).toBe(2);
+        expect(plan.skipped).toBe(0);
+        expect(plan.fires.map((fire) => fire.id).sort()).toEqual(['quote', 'series']);
     });
 });

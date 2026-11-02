@@ -9,13 +9,14 @@ import { deleteAlert } from "@/lib/actions/alert.actions";
 import { type AlertCondition } from "@/lib/alerts";
 import { tx, type Lang } from "@/lib/i18n";
 import { arNumberDigits } from '@/lib/i18n';
-import { alertConditionLabel, alertTargetLabel } from "@/components/alerts/labels";
+import { alertConditionLabel, alertParamsLabel, alertTargetLabel } from "@/components/alerts/labels";
 
 type AlertRow = {
     _id: string;
     symbol: string;
     targetPrice: number;
     condition: AlertCondition;
+    params?: { period?: number; window?: number };
     triggered?: boolean;
     active?: boolean;
     expiresAt?: string;
@@ -66,6 +67,7 @@ export default function AlertsPanel({ alerts, lang }: { alerts: AlertRow[]; lang
                                 <p className="mono font-semibold text-foreground">{alert.symbol}</p>
                                 <p className="num truncate text-[12.5px] text-faint">
                                     {alertConditionLabel(lang, alert.condition)} {alertTargetLabel(lang, alert.condition, alert.targetPrice)}
+                                    {alertParamsLabel(lang, alert.condition, alert.params) && ` · ${alertParamsLabel(lang, alert.condition, alert.params)}`}
                                     {alert.expiresAt && !alert.triggered && ` · ${tx(lang, 'alert.until').replace('{d}', arNumberDigits(new Date(alert.expiresAt).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-nu-latn' : 'en-US', { month: 'short', day: 'numeric' }), lang))}`}
                                 </p>
                             </div>

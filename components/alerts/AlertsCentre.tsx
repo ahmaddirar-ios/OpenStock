@@ -5,16 +5,24 @@ import { useRouter } from 'next/navigation';
 import { BellRing, Check, Loader2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { checkAlerts, createAlert, deleteAlert, markAlertsSeen, rearmAlert, updateAlert } from '@/lib/actions/alert.actions';
-import { alertSource, type AlertCondition } from '@/lib/alerts';
+import { alertSource, PARAM_BOUNDS, needsCandles, type AlertCondition } from '@/lib/alerts';
 import { cn } from '@/lib/utils';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
-import { ALERT_CONDITIONS, alertConditionLabel, alertTargetLabel, isPercentAlert } from '@/components/alerts/labels';
+import {
+    ALERT_CONDITIONS,
+    alertConditionLabel,
+    alertParamsLabel,
+    alertTargetLabel,
+    isPercentAlert,
+    measureLabel,
+} from '@/components/alerts/labels';
 
 export type AlertRow = {
     _id: string;
     symbol: string;
     targetPrice: number;
     condition: AlertCondition;
+    params?: { period?: number; window?: number };
     active?: boolean;
     triggered?: boolean;
     lastPrice?: number | null;
@@ -26,6 +34,21 @@ export type AlertRow = {
 };
 
 type Filter = 'all' | 'active' | 'fired';
+
+/** The params payload for a condition, read from the form's second input. */
+const paramObject = (condition: AlertCondition, value: string) => {
+    const number = Number(value);
+    if (condition === 'RSI_BELOW' || condition === 'RSI_ABOVE') return { period: number };
+    if (condition === 'VOLUME_SPIKE') return { window: number };
+    return {};
+};
+
+/** The second number a rule asks for, and the default its form opens on. */
+const paramFor = (condition: AlertCondition, row?: AlertRow): string => {
+    if (condition === 'RSI_BELOW' || condition === 'RSI_ABOVE') return String(row?.params?.period ?? PARAM_BOUNDS.rsiPeriod.default);
+    if (condition === 'VOLUME_SPIKE') return String(row?.params?.window ?? PARAM_BOUNDS.volumeWindow.default);
+    return '';
+};
 
 /** The action throws a code as the message; anything unknown is the generic failure. */
 const errorKey = (error: unknown): StringKey => {
@@ -50,8 +73,8 @@ const statusOf = (alert: AlertRow) => {
     return { key: 'alerts.status.watching' as StringKey, className: 'pill is-up' };
 };
 
-const priceLabel = (value: number | null | undefined, lang: Lang) =>
-    value == null || !Number.isFinite(value) ? '—' : arDigits(Number(value).toFixed(2), lang);
+const priceLabel = (value: number | null | undefined, lang: Lang, condition: AlertCondition) =>
+    value == null || !Number.isFinite(value) ? '—' : measureLabel(lang, condition, value);
 
 export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lang: Lang }) {
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
@@ -61,9 +84,11 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
     const [busy, setBusy] = useState<string | null>(null);
     const [editing, setEditing] = useState<string | null>(null);
     const [editTarget, setEditTarget] = useState('');
+    const [editParam, setEditParam] = useState('');
     const [symbol, setSymbol] = useState('');
     const [condition, setCondition] = useState<AlertCondition>('ABOVE');
     const [target, setTarget] = useState('');
+    const [param, setParam] = useState('');
     const [creating, setCreating] = useState(false);
     const checkedOnce = useRef(false);
 
@@ -76,7 +101,7 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                     result.fired.length === 1
                         ? t('alerts.firedAt')
                               .replace('{s}', result.fired[0].symbol)
-                              .replace('{p}', arDigits(result.fired[0].price.toFixed(2), lang))
+                              .replace('{p}', measureLabel(lang, result.fired[0].condition, result.fired[0].value))
                         : t('alerts.firedMany').replace('{n}', arDigits(result.fired.length, lang)),
                 );
             } else if (result.checked === 0 && result.skipped > 0) {
@@ -119,10 +144,16 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
         event.preventDefault();
         setCreating(true);
         try {
-            await createAlert({ symbol, condition, targetPrice: Number(target) });
+            await createAlert({
+                symbol,
+                condition,
+                targetPrice: Number(target),
+                ...(needsCandles(condition) ? { params: paramObject(condition, param) } : {}),
+            });
             toast.success(t('alerts.created').replace('{s}', symbol.trim().toUpperCase()));
             setSymbol('');
             setTarget('');
+            setParam('');
             router.refresh();
         } catch (error) {
             toast.error(t(errorKey(error)));
@@ -146,7 +177,9 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
 
     const saveEdit = async (alert: AlertRow) => {
         const next = Number(editTarget);
-        await act(alert._id, () => updateAlert(alert._id, { targetPrice: next }), 'alerts.updated');
+        const patch: Parameters<typeof updateAlert>[1] = { targetPrice: next };
+        if (needsCandles(alert.condition)) patch.params = paramObject(alert.condition, editParam);
+        await act(alert._id, () => updateAlert(alert._id, patch), 'alerts.updated');
         setEditing(null);
     };
 
@@ -179,7 +212,11 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                     />
                     <select
                         value={condition}
-                        onChange={(event) => setCondition(event.target.value as AlertCondition)}
+                        onChange={(event) => {
+                            const next = event.target.value as AlertCondition;
+                            setCondition(next);
+                            setParam(paramFor(next));
+                        }}
                         aria-label={t('alerts.condition')}
                         className="h-9 rounded-[9px] bg-page px-2 text-[12.5px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
@@ -192,12 +229,27 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                             value={target}
                             onChange={(event) => setTarget(event.target.value)}
                             inputMode="decimal"
-                            placeholder={isPercentAlert(condition) ? t('alerts.targetPercent') : t('alerts.targetPrice')}
+                            placeholder={isPercentAlert(condition) || condition === 'VOLUME_SPIKE' ? t('alerts.targetPercent') : t('alerts.targetPrice')}
                             aria-label={t('alerts.target')}
                             className="num h-full w-20 bg-transparent text-[12.5px] outline-none placeholder:text-faint"
                         />
-                        <span className="pe-2 text-[12px] text-faint">{isPercentAlert(condition) ? '%' : ''}</span>
+                        <span className="pe-2 text-[12px] text-faint">
+                            {isPercentAlert(condition) || condition === 'VOLUME_SPIKE' ? (condition === 'VOLUME_SPIKE' ? '×' : '%') : ''}
+                        </span>
                     </div>
+                    {needsCandles(condition) && condition !== 'PRICE_CROSS_UP_SMA' && condition !== 'PRICE_CROSS_DOWN_SMA' && (
+                        <div className="flex h-9 items-center gap-1.5 rounded-[9px] bg-page px-2.5 shadow-[inset_0_0_0_1px_var(--line)] focus-within:ring-2 focus-within:ring-ring">
+                            <label htmlFor="alert-param" className="text-[12px] text-faint">{t(condition === 'VOLUME_SPIKE' ? 'alerts.param.window' : 'alerts.param.period')}</label>
+                            <input
+                                id="alert-param"
+                                value={param}
+                                onChange={(event) => setParam(event.target.value)}
+                                inputMode="numeric"
+                                aria-label={t(condition === 'VOLUME_SPIKE' ? 'alerts.param.window' : 'alerts.param.period')}
+                                className="num h-full w-14 bg-transparent text-[12.5px] outline-none"
+                            />
+                        </div>
+                    )}
                     <button type="submit" disabled={creating || !symbol.trim() || !target} className={cn('btn btn-primary h-9', (creating || !symbol.trim() || !target) && 'opacity-50')}>
                         {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} {t('alerts.create')}
                     </button>
@@ -242,8 +294,9 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                                     </p>
                                     <p className="num truncate text-[12.5px] text-faint">
                                         {alertConditionLabel(lang, alert.condition)} {alertTargetLabel(lang, alert.condition, alert.targetPrice)}
-                                        {alert.lastPrice != null && ` · ${t('alerts.last').replace('{p}', priceLabel(alert.lastPrice, lang))}`}
-                                        {alert.triggered && alert.triggeredPrice != null && ` · ${t('alerts.status.fired')} ${priceLabel(alert.triggeredPrice, lang)}`}
+                                        {alertParamsLabel(lang, alert.condition, alert.params) && ` · ${alertParamsLabel(lang, alert.condition, alert.params)}`}
+                                        {alert.lastPrice != null && ` · ${t('alerts.last').replace('{p}', priceLabel(alert.lastPrice, lang, alert.condition))}`}
+                                        {alert.triggered && alert.triggeredPrice != null && ` · ${t('alerts.status.fired')} ${priceLabel(alert.triggeredPrice, lang, alert.condition)}`}
                                     </p>
                                 </div>
 
@@ -256,6 +309,15 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                                             aria-label={t('alerts.target')}
                                             className="num h-7 w-20 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
                                         />
+                                        {needsCandles(alert.condition) && alert.condition !== 'PRICE_CROSS_UP_SMA' && alert.condition !== 'PRICE_CROSS_DOWN_SMA' && (
+                                            <input
+                                                value={editParam}
+                                                onChange={(event) => setEditParam(event.target.value)}
+                                                inputMode="numeric"
+                                                aria-label={t(alert.condition === 'VOLUME_SPIKE' ? 'alerts.param.window' : 'alerts.param.period')}
+                                                className="num h-7 w-16 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
+                                            />
+                                        )}
                                         <button type="button" onClick={() => void saveEdit(alert)} className="icon-btn" title={t('chart.save')} aria-label={t('chart.save')}>
                                             <Check className="size-3.5" />
                                         </button>
@@ -266,7 +328,7 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                                 ) : (
                                     <button
                                         type="button"
-                                        onClick={() => { setEditing(alert._id); setEditTarget(String(alert.targetPrice)); }}
+                                        onClick={() => { setEditing(alert._id); setEditTarget(String(alert.targetPrice)); setEditParam(paramFor(alert.condition, alert)); }}
                                         className="icon-btn"
                                         title={t('alerts.edit')}
                                         aria-label={t('alerts.edit')}

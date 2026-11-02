@@ -1,16 +1,16 @@
 import { Schema, model, models, type Document, type Model } from 'mongoose';
-
-/** The six rules the alert engine knows. `CHANGE_*` targets are percentages, the rest are prices. */
-export const ALERT_CONDITIONS = ['ABOVE', 'BELOW', 'CROSS_UP', 'CROSS_DOWN', 'CHANGE_UP', 'CHANGE_DOWN'] as const;
+import { ALERT_CONDITIONS, type AlertCondition, type AlertParams } from '@/lib/alerts';
 
 export interface IAlert extends Document {
     userId: string;
     symbol: string;
     targetPrice: number;
-    condition: (typeof ALERT_CONDITIONS)[number];
+    condition: AlertCondition;
+    /** The second number some rules carry: an RSI period or a volume window. */
+    params: AlertParams;
     active: boolean;
     triggered: boolean;
-    /** The price seen on the previous check; the cross rules compare against it. */
+    /** The value seen on the previous check: a price, or what a series rule measured. */
     lastPrice: number | null;
     /** When and at what price the rule fired. */
     triggeredAt: Date | null;
@@ -27,6 +27,9 @@ const AlertSchema = new Schema<IAlert>(
         symbol: { type: String, required: true, uppercase: true, trim: true },
         targetPrice: { type: Number, required: true },
         condition: { type: String, enum: ALERT_CONDITIONS, required: true },
+        // Mixed rather than a nested schema: the second number differs by rule, and an old row
+        // without it must keep working untouched.
+        params: { type: Schema.Types.Mixed, default: {} },
         active: { type: Boolean, default: true },
         triggered: { type: Boolean, default: false },
         lastPrice: { type: Number, default: null },

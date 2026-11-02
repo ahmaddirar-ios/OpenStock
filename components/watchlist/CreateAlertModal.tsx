@@ -7,6 +7,8 @@ import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { tx, type Lang } from "@/lib/i18n";
+import { needsCandles, PARAM_BOUNDS, type AlertCondition } from "@/lib/alerts";
+import { alertConditionLabel } from "@/components/alerts/labels";
 
 interface CreateAlertModalProps {
     symbol: string;
@@ -17,33 +19,56 @@ interface CreateAlertModalProps {
     onAlertCreated?: () => void;
 }
 
-// Labels live in the dictionary; the values are what the server stores.
-const CONDITIONS = ['ABOVE', 'BELOW'] as const;
+// Labels live in the dictionary; the values are what the server stores. The quick modal offers
+// the rules a trader reaches for from a row; the centre offers the same list plus editing.
+const CONDITIONS: AlertCondition[] = [
+    'ABOVE',
+    'BELOW',
+    'RSI_BELOW',
+    'RSI_ABOVE',
+    'PRICE_CROSS_UP_SMA',
+    'PRICE_CROSS_DOWN_SMA',
+    'VOLUME_SPIKE',
+];
 
 export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD', children, lang = 'en', onAlertCreated }: CreateAlertModalProps) {
     const [open, setOpen] = useState(false);
-    const [condition, setCondition] = useState<'ABOVE' | 'BELOW'>('ABOVE');
+    const [condition, setCondition] = useState<AlertCondition>('ABOVE');
     const [targetPrice, setTargetPrice] = useState('');
+    const [period, setPeriod] = useState('');
     const [loading, setLoading] = useState(false);
 
     const target = parseFloat(targetPrice);
+    const isPriceRule = condition === 'ABOVE' || condition === 'BELOW';
     const hasPrice = !!currentPrice && currentPrice > 0;
-    const distance = hasPrice && Number.isFinite(target) ? ((target - currentPrice!) / currentPrice!) * 100 : null;
+    const distance = isPriceRule && hasPrice && Number.isFinite(target) ? ((target - currentPrice!) / currentPrice!) * 100 : null;
     const alreadyMet = distance !== null && (condition === 'ABOVE' ? distance <= 0 : distance >= 0);
 
     const onOpenChange = (next: boolean) => {
         setOpen(next);
-        if (next) setTargetPrice(hasPrice ? currentPrice!.toFixed(2) : '');
+        if (next) setTargetPrice(isPriceRule && hasPrice ? currentPrice!.toFixed(2) : '');
+    };
+
+    const paramsFor = (value: AlertCondition) => {
+        const number = Number(period);
+        if (value === 'RSI_BELOW' || value === 'RSI_ABOVE') return { period: Number.isFinite(number) && number > 0 ? number : PARAM_BOUNDS.rsiPeriod.default };
+        if (value === 'VOLUME_SPIKE') return { window: Number.isFinite(number) && number > 0 ? number : PARAM_BOUNDS.volumeWindow.default };
+        return {};
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         try {
-            await createAlert({ symbol, targetPrice: target, condition });
+            await createAlert({
+                symbol,
+                targetPrice: target,
+                condition,
+                ...(needsCandles(condition) ? { params: paramsFor(condition) } : {}),
+            });
             toast.success(tx(lang, 'alertModal.created')
                 .replace('{s}', symbol)
-                .replace('{c}', `${condition === 'ABOVE' ? tx(lang, 'alert.above') : tx(lang, 'alert.below')} ${formatPrice(target, currency, lang)}`));
+                .replace('{c}', `${alertConditionLabel(lang, condition)} ${target}`));
             setOpen(false);
             onAlertCreated?.();
         } catch (error) {
@@ -68,49 +93,66 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                     </div>
 
                         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                            <div className="grid grid-cols-2 gap-1 rounded-[12px] bg-page p-1" role="radiogroup" aria-label={tx(lang, 'alertModal.condition')}>
-                                {CONDITIONS.map((value) => (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        role="radio"
-                                        aria-checked={condition === value}
-                                        onClick={() => setCondition(value)}
-                                        className={cn(
-                                            'h-9 rounded-[9px] font-semibold transition-colors',
-                                            condition === value ? 'bg-hover text-foreground shadow-[inset_0_1px_0_oklch(1_0_0/0.06)]' : 'text-faint hover:text-foreground',
-                                        )}
-                                    >
-                                        {value === 'ABOVE' ? tx(lang, 'alertModal.risesAbove') : tx(lang, 'alertModal.fallsBelow')}
-                                    </button>
-                                ))}
-                            </div>
+                            <label className="flex flex-col gap-2">
+                                <span className="form-label">{tx(lang, 'alertModal.condition')}</span>
+                                <select
+                                    value={condition}
+                                    onChange={(e) => {
+                                        const next = e.target.value as AlertCondition;
+                                        setCondition(next);
+                                        setPeriod(String(next === 'VOLUME_SPIKE' ? PARAM_BOUNDS.volumeWindow.default : PARAM_BOUNDS.rsiPeriod.default));
+                                        setTargetPrice(next === 'ABOVE' || next === 'BELOW' ? (hasPrice ? currentPrice!.toFixed(2) : '') : '');
+                                    }}
+                                    className="h-11 rounded-[11px] border border-line bg-page px-3 text-[14px] font-semibold outline-none focus-visible:border-brand"
+                                >
+                                    {CONDITIONS.map((value) => (
+                                        <option key={value} value={value}>{alertConditionLabel(lang, value)}</option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            {needsCandles(condition) && condition !== 'PRICE_CROSS_UP_SMA' && condition !== 'PRICE_CROSS_DOWN_SMA' && (
+                                <label className="flex flex-col gap-2">
+                                    <span className="form-label">{tx(lang, condition === 'VOLUME_SPIKE' ? 'alerts.param.window' : 'alerts.param.period')}</span>
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min="1"
+                                        value={period}
+                                        onChange={(e) => setPeriod(e.target.value)}
+                                        className="num h-11 rounded-[11px] border border-line bg-page px-3 text-[15px] font-semibold text-foreground outline-none focus-visible:border-brand"
+                                    />
+                                </label>
+                            )}
 
                             <label className="flex flex-col gap-2">
                                 <span className="form-label">{tx(lang, 'alertModal.target')}</span>
                                 <span className="flex h-12 items-center gap-2 rounded-[11px] border border-line bg-page px-3 focus-within:border-brand">
-                                    <span className="mono text-faint">{currency}</span>
+                                    {isPriceRule && <span className="mono text-faint">{currency}</span>}
                                     <input
                                         type="number"
                                         inputMode="decimal"
-                                        step="0.01"
-                                        min="0.01"
+                                        step={isPriceRule ? '0.01' : '1'}
+                                        min="1"
                                         required
                                         autoFocus
                                         value={targetPrice}
                                         onChange={(e) => setTargetPrice(e.target.value)}
                                         className="num w-full bg-transparent text-lg font-semibold text-foreground outline-none"
                                     />
+                                    {condition === 'VOLUME_SPIKE' && <span className="text-faint">×</span>}
                                 </span>
                                 <span className={cn('num text-[12.5px]', alreadyMet ? 'text-warn' : 'text-faint')}>
-                                    {!hasPrice
-                                        ? tx(lang, 'alertModal.noPrice')
-                                        : alreadyMet
-                                            ? tx(lang, condition === 'ABOVE' ? 'alertModal.alreadyAbove' : 'alertModal.alreadyBelow')
-                                            : [
-                                                tx(lang, 'alertModal.now').replace('{p}', formatPrice(currentPrice!, currency)),
-                                                ...(distance === null ? [] : [tx(lang, 'alertModal.away').replace('{n}', `${distance > 0 ? '+' : ''}${distance.toFixed(2)}`)]),
-                                            ].join(' · ')}
+                                    {!isPriceRule
+                                        ? ''
+                                        : !hasPrice
+                                            ? tx(lang, 'alertModal.noPrice')
+                                            : alreadyMet
+                                                ? tx(lang, condition === 'ABOVE' ? 'alertModal.alreadyAbove' : 'alertModal.alreadyBelow')
+                                                : [
+                                                    tx(lang, 'alertModal.now').replace('{p}', formatPrice(currentPrice!, currency)),
+                                                    ...(distance === null ? [] : [tx(lang, 'alertModal.away').replace('{n}', `${distance > 0 ? '+' : ''}${distance.toFixed(2)}`)]),
+                                                ].join(' · ')}
                                 </span>
                             </label>
 

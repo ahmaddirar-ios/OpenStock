@@ -40,6 +40,8 @@ const getLiveQuotes = vi.fn();
 vi.mock('@/lib/actions/finnhub.actions', () => ({ getLiveQuotes: (...args: unknown[]) => getLiveQuotes(...args) }));
 const getYahooDailyQuotes = vi.fn();
 vi.mock('@/lib/actions/yahoo.actions', () => ({ getYahooDailyQuotes: (...args: unknown[]) => getYahooDailyQuotes(...args) }));
+const getAlertCandles = vi.fn();
+vi.mock('@/lib/actions/yahoo-candles.actions', () => ({ getAlertCandles: (...args: unknown[]) => getAlertCandles(...args) }));
 
 import {
     checkAlerts,
@@ -63,6 +65,7 @@ beforeEach(() => {
     lean.mockResolvedValue([]);
     getLiveQuotes.mockResolvedValue({});
     getYahooDailyQuotes.mockResolvedValue({});
+    getAlertCandles.mockResolvedValue(null);
 });
 
 describe('alert actions are scoped to the session user', () => {
@@ -137,7 +140,7 @@ describe('alerts work without OpenStock Cloud', () => {
     it('creates a watchlist-only alert with no realtime flag involved', async () => {
         // The demo has no realtime mode, no cron and no mailer: creating must still succeed.
         await createAlert({ symbol: '2222', targetPrice: 30, condition: 'CROSS_UP' });
-        expect(create).toHaveBeenCalledWith({ userId: 'user-123', symbol: '2222.SR', targetPrice: 30, condition: 'CROSS_UP', active: true });
+        expect(create).toHaveBeenCalledWith({ userId: 'user-123', symbol: '2222.SR', targetPrice: 30, condition: 'CROSS_UP', params: {}, active: true });
     });
 
     it('prices the demo’s Tadawul rules through Yahoo', async () => {
@@ -170,7 +173,7 @@ describe('createAlert validates untrusted input', () => {
 
     it('stores only validated fields, so callers cannot pre-trigger or extend an alert', async () => {
         await createAlert({ symbol: ' brk.b ', targetPrice: 400, condition: 'BELOW', triggered: true, expiresAt: new Date(2100, 0) } as never);
-        expect(create).toHaveBeenCalledWith({ userId: 'user-123', symbol: 'BRK.B', targetPrice: 400, condition: 'BELOW', active: true });
+        expect(create).toHaveBeenCalledWith({ userId: 'user-123', symbol: 'BRK.B', targetPrice: 400, condition: 'BELOW', params: {}, active: true });
     });
 
     it('clears the remembered price when the condition changes, so a stale cross cannot fire', async () => {
@@ -312,5 +315,74 @@ describe('checkAlerts', () => {
         expect(result.checked).toBe(1);
         expect(result.skipped).toBe(1);
         expect(result.fired.map((alert) => alert.symbol)).toEqual(['2222.SR']);
+    });
+});
+
+describe('indicator rules in the actions', () => {
+    const candlesFor = (closes: number[], volumes?: number[]) => ({
+        currency: 'SAR',
+        candles: closes.map((close, i) => ({ time: i * 86_400, open: close, high: close, low: close, close, volume: volumes?.[i] ?? 1_000 })),
+    });
+    const falling = (n: number) => Array.from({ length: n }, (_, i) => 100 - i);
+
+    it('stores the second number a rule needs, with its default when it is left out', async () => {
+        await createAlert({ symbol: 'AAPL', targetPrice: 30, condition: 'RSI_BELOW' });
+        expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ condition: 'RSI_BELOW', params: { period: 14 } }));
+
+        await createAlert({ symbol: 'AAPL', targetPrice: 30, condition: 'RSI_BELOW', params: { period: 21 } });
+        expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ params: { period: 21 } }));
+
+        await createAlert({ symbol: 'AAPL', targetPrice: 2, condition: 'VOLUME_SPIKE', params: { window: 50 } });
+        expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ params: { window: 50 } }));
+
+        await createAlert({ symbol: 'AAPL', targetPrice: 50, condition: 'PRICE_CROSS_UP_SMA' });
+        expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ condition: 'PRICE_CROSS_UP_SMA', params: {} }));
+    });
+
+    it('refuses a second number outside its range and a rule with no candle source', async () => {
+        await expect(createAlert({ symbol: 'AAPL', targetPrice: 30, condition: 'RSI_BELOW', params: { period: 1 } })).rejects.toThrow('invalidTarget');
+        await expect(createAlert({ symbol: 'AAPL', targetPrice: 2, condition: 'VOLUME_SPIKE', params: { window: 4 } })).rejects.toThrow('invalidTarget');
+        // A Binance pair has a Finnhub quote but no daily candle series.
+        await expect(createAlert({ symbol: 'BINANCE:BTCUSDT', targetPrice: 30, condition: 'RSI_BELOW' })).rejects.toThrow('unsupportedSymbol');
+        // The same pair is still fine for a quote rule.
+        await createAlert({ symbol: 'BINANCE:BTCUSDT', targetPrice: 30, condition: 'ABOVE' });
+        expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ symbol: 'BINANCE:BTCUSDT', condition: 'ABOVE' }));
+    });
+
+    it('fetches candles once per symbol, and only for the rules that measure a series', async () => {
+        lean.mockResolvedValue([
+            { _id: 'a1', userId: 'user-123', symbol: '2222.SR', condition: 'RSI_BELOW', targetPrice: 70, params: {}, lastPrice: null },
+            { _id: 'a2', userId: 'user-123', symbol: '2222.SR', condition: 'VOLUME_SPIKE', targetPrice: 2, params: { window: 20 }, lastPrice: null },
+            { _id: 'a3', userId: 'user-123', symbol: 'AAPL', condition: 'ABOVE', targetPrice: 100, params: {}, lastPrice: null },
+        ]);
+        getAlertCandles.mockResolvedValue(candlesFor(falling(30), [...Array(29).fill(1_000), 5_000]));
+        getLiveQuotes.mockResolvedValue({ AAPL: { c: 101, dp: 1 } });
+
+        const result = await checkAlerts();
+        expect(getAlertCandles).toHaveBeenCalledTimes(1); // two rules on 2222.SR, one call
+        expect(getAlertCandles).toHaveBeenCalledWith('2222.SR');
+        expect(getLiveQuotes).toHaveBeenCalledWith(['AAPL']);
+        expect(getYahooDailyQuotes).not.toHaveBeenCalled(); // a series rule needs no quote
+        expect(result.checked).toBe(3);
+        expect(result.fired.map((alert) => alert.id).sort()).toEqual(['a1', 'a2', 'a3']);
+        // The firing records what the rule measured, not a price.
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { _id: 'a1', triggered: false, active: true },
+            { $set: expect.objectContaining({ triggeredPrice: 0, lastPrice: 0 }) },
+            { new: true },
+        );
+    });
+
+    it('skips a series rule whose candles never arrive, and does not touch its state', async () => {
+        lean.mockResolvedValue([
+            { _id: 'a1', userId: 'user-123', symbol: '2222.SR', condition: 'RSI_BELOW', targetPrice: 70, params: {}, lastPrice: 12 },
+        ]);
+        getAlertCandles.mockResolvedValue(null);
+
+        const result = await checkAlerts();
+        expect(result.checked).toBe(0);
+        expect(result.skipped).toBe(1);
+        expect(findOneAndUpdate).not.toHaveBeenCalled();
+        expect(updateOne).not.toHaveBeenCalled();
     });
 });
