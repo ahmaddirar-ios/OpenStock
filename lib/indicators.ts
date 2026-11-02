@@ -71,3 +71,89 @@ export function macd(values: number[], fast = 12, slow = 26, signalPeriod = 9): 
     const histogram: Series = line.map((v, i) => (v != null && signal[i] != null ? v - (signal[i] as number) : null));
     return { macd: line, signal, histogram };
 }
+
+
+export type Bollinger = { upper: Series; middle: Series; lower: Series };
+
+/**
+ * Bollinger Bands: the SMA with a band k population standard deviations either side, measured over
+ * the same window. Population (not sample) is what the charting platforms draw.
+ */
+export function bollinger(values: number[], period = 20, k = 2): Bollinger {
+    const middle = sma(values, period);
+    const upper: Series = [];
+    const lower: Series = [];
+    for (let i = 0; i < values.length; i += 1) {
+        const mean = middle[i];
+        if (mean == null) {
+            upper.push(null);
+            lower.push(null);
+            continue;
+        }
+        let squares = 0;
+        for (let j = i - period + 1; j <= i; j += 1) squares += (values[j] - mean) ** 2;
+        const deviation = Math.sqrt(squares / period);
+        upper.push(mean + k * deviation);
+        lower.push(mean - k * deviation);
+    }
+    return { upper, middle, lower };
+}
+
+const SESSION_SECONDS = 86_400;
+
+export type VolumeBar = { time: number; high: number; low: number; close: number; volume: number };
+
+/**
+ * VWAP: the typical price weighted by volume. The anchor is read from the data, not from a setting:
+ * an intraday series resets at each **UTC day** (both the Saudi and the US session sit inside one
+ * UTC day), while a daily or coarser series anchors once at its first bar — a session VWAP on a
+ * daily chart would just be the typical price. A bar with no volume contributes nothing and reads
+ * null until volume appears.
+ */
+export function vwap(candles: readonly VolumeBar[]): Series {
+    if (candles.length === 0) return [];
+    const gaps: number[] = [];
+    for (let i = 1; i < candles.length; i += 1) gaps.push(candles[i].time - candles[i - 1].time);
+    gaps.sort((a, b) => a - b);
+    const median = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 0;
+    const perSession = median > 0 && median < SESSION_SECONDS;
+
+    const out: Series = [];
+    let weighted = 0;
+    let volume = 0;
+    let session = -1;
+    for (const candle of candles) {
+        const day = Math.floor(candle.time / SESSION_SECONDS);
+        if (perSession && day !== session) {
+            weighted = 0;
+            volume = 0;
+            session = day;
+        }
+        weighted += ((candle.high + candle.low + candle.close) / 3) * candle.volume;
+        volume += candle.volume;
+        out.push(volume > 0 ? weighted / volume : null);
+    }
+    return out;
+}
+
+export type RangeBar = { high: number; low: number; close: number };
+
+/** Average True Range, Wilder-smoothed, seeded on the mean of the first `period` true ranges. */
+export function atr(candles: readonly RangeBar[], period = 14): Series {
+    const out: Series = candles.map(() => null);
+    if (candles.length === 0 || period < 1 || candles.length < period) return out;
+
+    const ranges = candles.map((bar, i) => {
+        if (i === 0) return bar.high - bar.low;
+        const previous = candles[i - 1].close;
+        return Math.max(bar.high - bar.low, Math.abs(bar.high - previous), Math.abs(bar.low - previous));
+    });
+
+    let running = ranges.slice(0, period).reduce((sum, value) => sum + value, 0) / period;
+    out[period - 1] = running;
+    for (let i = period; i < candles.length; i += 1) {
+        running = (running * (period - 1) + ranges[i]) / period;
+        out[i] = running;
+    }
+    return out;
+}
