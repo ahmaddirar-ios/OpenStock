@@ -14,6 +14,9 @@ import {
 } from 'lightweight-charts';
 import {
     ChevronDown,
+    ClipboardPaste,
+    Copy,
+    CopyPlus,
     Download,
     Eraser,
     ExternalLink,
@@ -85,9 +88,13 @@ import {
     buildTransferPayload,
     drawingColor,
     isColorKey,
+    DRAWING_DASHES,
+    DRAWING_WIDTHS,
+    cloneDrawing,
     loadDrawings,
     mergeDrawings,
     nearestTime,
+    newDrawingId,
     nextColor,
     parseTransferPayload,
     saveDrawings,
@@ -123,7 +130,7 @@ import {
     type ScaleMode,
 } from '@/lib/chart-view';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
-import { fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
+import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
 type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale';
 
@@ -285,6 +292,36 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         setSelectedId(null);
     }, []);
     const [selectedId, setSelectedId] = useState<string | null>(null);
+
+    // A clipboard for drawings, in memory: a copy is a sketch until it is pasted.
+    const clipboard = useRef<Drawing | null>(null);
+    const copySelected = useCallback(() => {
+        const drawing = drawings.find((d) => d.id === selectedId);
+        if (drawing) clipboard.current = drawing;
+    }, [drawings, selectedId]);
+    const offsetCopy = (drawing: Drawing) =>
+        cloneDrawing(drawing, newDrawingId(), { price: Math.max(0.001, Math.abs(drawing.points[0]?.price ?? 0) * 0.005) });
+    const pasteClipboard = useCallback(() => {
+        const source = clipboard.current;
+        if (!source) return;
+        const copy = cloneDrawing(source, newDrawingId(), {
+            price: Math.max(0.001, Math.abs(source.points[0]?.price ?? 0) * 0.005),
+        });
+        setDrawings((list) => [...list, copy]);
+        setSelectedId(copy.id);
+    }, [setDrawings]);
+    const duplicateSelected = useCallback(() => {
+        const drawing = drawings.find((d) => d.id === selectedId);
+        if (!drawing) return;
+        const copy = offsetCopy(drawing);
+        setDrawings((list) => [...list, copy]);
+        setSelectedId(copy.id);
+    }, [drawings, selectedId, setDrawings]);
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash'>>) => {
+        if (!selectedId) return;
+        setDrawings((list) => list.map((d) => (d.id === selectedId ? { ...d, ...patch } : d)));
+    };
+
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [menu, setMenu] = useState<MenuId | null>(null);
@@ -376,7 +413,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         } catch {
             /* private mode: no remembered comparisons */
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -633,11 +669,19 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             } else if ((key === 'z' && event.shiftKey) || key === 'y') {
                 event.preventDefault();
                 redo();
+            } else if (key === 'c') {
+                copySelected();
+            } else if (key === 'v') {
+                event.preventDefault();
+                pasteClipboard();
+            } else if (key === 'd') {
+                event.preventDefault();
+                duplicateSelected();
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [undo, redo]);
+    }, [undo, redo, copySelected, pasteClipboard, duplicateSelected]);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
@@ -1387,6 +1431,59 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     aria-label={t(selectedDrawing?.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
                 >
                     {selectedDrawing?.locked ? <Lock /> : <Unlock />}
+                </button>
+                <div role="group" aria-label={t('chart.tool.width')} className="flex items-center gap-0.5">
+                    {DRAWING_WIDTHS.map((step) => {
+                        const active = (selectedDrawing?.width ?? 1.6) === step;
+                        return (
+                            <button
+                                key={step}
+                                type="button"
+                                onClick={() => restyleDrawing({ width: step })}
+                                disabled={!selectedId}
+                                aria-pressed={selectedDrawing?.width === step}
+                                aria-label={`${t('chart.tool.width')} ${arDigits(step, lang)}`}
+                                className={cn(
+                                    'num rounded-[5px] px-1 py-px text-[10.5px] text-faint transition-colors hover:bg-hover/40',
+                                    active && 'bg-hover/60 text-foreground',
+                                )}
+                            >
+                                {arDigits(step, lang)}
+                            </button>
+                        );
+                    })}
+                </div>
+                <div role="group" aria-label={t('chart.tool.dash')} className="flex items-center gap-0.5">
+                    {DRAWING_DASHES.map((dash) => {
+                        const active = (selectedDrawing?.dash ?? 'solid') === dash;
+                        return (
+                            <button
+                                key={dash}
+                                type="button"
+                                onClick={() => restyleDrawing({ dash })}
+                                disabled={!selectedId}
+                                aria-pressed={active}
+                                aria-label={t(`chart.tool.${dash}`)}
+                                title={t(`chart.tool.${dash}`)}
+                                className={cn('icon-btn', active && 'text-brand')}
+                            >
+                                <span
+                                    aria-hidden="true"
+                                    className="block w-4"
+                                    style={{ borderTop: `2px ${dash === 'dotted' ? 'dotted' : dash === 'dashed' ? 'dashed' : 'solid'} currentColor` }}
+                                />
+                            </button>
+                        );
+                    })}
+                </div>
+                <button type="button" onClick={copySelected} disabled={!selectedId} className="icon-btn" title={t('chart.tool.copy')} aria-label={t('chart.tool.copy')}>
+                    <Copy />
+                </button>
+                <button type="button" onClick={pasteClipboard} className="icon-btn" title={t('chart.tool.paste')} aria-label={t('chart.tool.paste')}>
+                    <ClipboardPaste />
+                </button>
+                <button type="button" onClick={duplicateSelected} disabled={!selectedId} className="icon-btn" title={t('chart.tool.duplicate')} aria-label={t('chart.tool.duplicate')}>
+                    <CopyPlus />
                 </button>
                 <button
                     type="button"

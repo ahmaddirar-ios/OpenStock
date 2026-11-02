@@ -36,7 +36,22 @@ export type Drawing = {
     color?: ColorKey;
     /** Locked drawings still render and still select, but their points cannot be dragged. */
     locked?: boolean;
+    /** Stroke weight, 1–4; unset means the tool's own default. */
+    width?: DrawingWidth;
+    /** Stroke pattern, independent of the tool; unset keeps the tool's own (a level is dashed). */
+    dash?: DrawingDash;
 };
+
+export const DRAWING_WIDTHS = [1, 2, 3, 4] as const;
+export type DrawingWidth = (typeof DRAWING_WIDTHS)[number];
+
+export type DrawingDash = 'solid' | 'dashed' | 'dotted';
+export const DRAWING_DASHES: readonly DrawingDash[] = ['solid', 'dashed', 'dotted'];
+
+const isWidth = (value: unknown): value is DrawingWidth =>
+    typeof value === 'number' && (DRAWING_WIDTHS as readonly number[]).includes(value);
+const isDash = (value: unknown): value is DrawingDash =>
+    typeof value === 'string' && (DRAWING_DASHES as string[]).includes(value);
 
 // --- colours ---------------------------------------------------------------
 
@@ -329,6 +344,30 @@ export function withText(drawing: Drawing, text: unknown): Drawing {
     return clean == null ? drawing : { ...drawing, text: clean };
 }
 
+/** The stroke weight a drawing is painted with; the tools' own default is a hairline. */
+export const strokeWidthOf = (drawing: Drawing): number => drawing.width ?? 1.6;
+
+/** The dash pattern, or undefined for the tool's own (solid, except a level's dashed guide). */
+export const dashOf = (drawing: Drawing): string | undefined => {
+    if (!drawing.dash || drawing.dash === 'solid') return undefined;
+    return drawing.dash === 'dotted' ? '2 3' : '7 4';
+};
+
+/**
+ * A copy that can be pasted or duplicated: a fresh id, no lock (a pasted object should be usable),
+ * and an optional offset so it does not hide exactly under the original.
+ */
+export function cloneDrawing(drawing: Drawing, id: string, offset: { time?: number; price?: number } = {}): Drawing {
+    const { time = 0, price = 0 } = offset;
+    const { locked: _locked, labels, ...rest } = drawing;
+    return {
+        ...rest,
+        id,
+        points: drawing.points.map((point) => ({ time: point.time + time, price: point.price + price })),
+        ...(labels ? { labels: [...labels] } : {}),
+    };
+}
+
 /** The labels a shape prints: its own when it has them, otherwise the tool's. */
 export const labelsFor = (drawing: Drawing): string[] => drawing.labels ?? toolDef(drawing.tool).pointLabels ?? [];
 
@@ -378,6 +417,8 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const text = candidate.tool === 'text' ? (cleanText(candidate.text) ?? '—') : undefined;
     const color = isColorKey(candidate.color) ? candidate.color : undefined;
     const locked = candidate.locked === true ? true : undefined;
+    const width = isWidth(candidate.width) ? candidate.width : undefined;
+    const dash = isDash(candidate.dash) ? candidate.dash : undefined;
 
     return {
         id: candidate.id,
@@ -387,6 +428,8 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(text ? { text } : {}),
         ...(color ? { color } : {}),
         ...(locked ? { locked } : {}),
+        ...(width ? { width } : {}),
+        ...(dash ? { dash } : {}),
     };
 };
 

@@ -7,11 +7,13 @@ import {
     drawingColor,
     fibLevels,
     gannGuides,
+    dashOf,
     handleIndex,
     hitTest,
     labelsFor,
     nearestTime,
     newDrawingId,
+    strokeWidthOf,
     pointsNeeded,
     sinePoints,
     toolDef,
@@ -234,13 +236,15 @@ export default function ChartDrawings({
         const opacity = previewing ? 0.65 : 1;
         const selected = drawing.id === selectedId;
         const locked = drawing.locked === true;
-        const width = selected ? 2.4 : 1.6;
+        // The trader's stroke, with the selection adding a little weight for feedback.
+        const width = strokeWidthOf(drawing) + (selected ? 0.8 : 0);
+        const dash = dashOf(drawing);
         const glyphs = labelsFor(drawing);
 
         // A level runs the whole width; where it is clicked horizontally does not matter.
         if (kind === 'horizontal') {
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     <line x1={0} x2="100%" y1={screen[0].y} y2={screen[0].y} stroke={color} strokeWidth={width} opacity={opacity} strokeDasharray={selected ? undefined : '6 4'} />
                     {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, opacity)}
                 </g>
@@ -253,7 +257,7 @@ export default function ChartDrawings({
             const indexB = b == null ? -1 : barTimes.indexOf(b);
             if (indexA < 0 || indexB < 0) return null;
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     {cycleIndices(barTimes.length, indexA, indexB).map((index) => {
                         const x = toScreen({ time: barTimes[index], price: drawing.points[0].price })?.x;
                         if (x == null) return null;
@@ -267,7 +271,7 @@ export default function ChartDrawings({
             const curve = sinePoints(screen[0], screen[1], (svgRef.current?.clientWidth ?? 0));
             if (curve.length === 0) return null;
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     <path d={curve.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />
                     {dot(screen[0].x, screen[0].y, `${drawing.id}-a`, color, opacity)}
                     {dot(screen[1].x, screen[1].y, `${drawing.id}-b`, color, opacity)}
@@ -278,7 +282,7 @@ export default function ChartDrawings({
         if (kind === 'fib') {
             let lastLabelY: number | null = null;
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     {fibLevels(drawing.points[0], drawing.points[1]).map(({ ratio, price }) => {
                         const y = toScreen({ time: drawing.points[0].time, price })?.y;
                         if (y == null) return null;
@@ -315,7 +319,7 @@ export default function ChartDrawings({
             const left = Math.min(...xs);
             const right = Math.max(...xs);
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     <rect x={left} y={top} width={right - left} height={bottom - top} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />
                     <line x1={left} y1={top} x2={right} y2={bottom} stroke={color} strokeWidth={1} opacity={0.7} />
                     <line x1={left} y1={bottom} x2={right} y2={top} stroke={color} strokeWidth={1} opacity={0.7} />
@@ -329,7 +333,7 @@ export default function ChartDrawings({
 
         if (kind === 'text') {
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, opacity, TEXT_DOT)}
                     <text x={screen[0].x + 8} y={screen[0].y + 4} fill={color} fontSize={12} opacity={opacity} className="mono">
                         {drawing.text}
@@ -342,7 +346,7 @@ export default function ChartDrawings({
             const x = Math.min(screen[0].x, screen[1].x);
             const y = Math.min(screen[0].y, screen[1].y);
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     <rect
                         x={x}
                         y={y}
@@ -366,7 +370,7 @@ export default function ChartDrawings({
                 return <line key={key} x1={from.x} y1={from.y} x2={rightEdge} y2={y} stroke={stroke} strokeWidth={width} opacity={opacity} />;
             };
             return (
-                <g key={drawing.id}>
+                <g key={drawing.id} strokeDasharray={dash}>
                     {kind !== 'triangle' &&
                         screen.slice(0, -1).map((point, i) => (
                             <line key={`${drawing.id}-s${i}`} x1={point.x} y1={point.y} x2={screen[i + 1].x} y2={screen[i + 1].y} stroke={color} strokeWidth={width} opacity={opacity} />
@@ -407,7 +411,7 @@ export default function ChartDrawings({
 
         // trend: a segment between its two points
         return (
-            <g key={drawing.id}>
+            <g key={drawing.id} strokeDasharray={dash}>
                 <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
                 {selected && !locked &&
                     screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}

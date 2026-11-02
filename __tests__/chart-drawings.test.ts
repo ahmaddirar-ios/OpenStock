@@ -25,7 +25,10 @@ import {
     nearestTime,
     newDrawingId,
     nextColor,
+    cloneDrawing,
     parseDrawings,
+    dashOf,
+    strokeWidthOf,
     parseTransferPayload,
     pointsNeeded,
     serializeDrawings,
@@ -262,6 +265,29 @@ describe('notes', () => {
         expect(withText(note, null)).toEqual(note);
     });
 
+    it('clones with a new id, an offset and no lock', () => {
+        const source: Drawing = {
+            id: 'a',
+            tool: 'trend',
+            points: [{ time: 1, price: 2 }, { time: 3, price: 4 }],
+            labels: ['A', 'B'],
+            color: 'gold',
+            width: 3,
+            dash: 'dashed',
+            locked: true,
+        };
+        const copy = cloneDrawing(source, 'b', { time: 5, price: 1 });
+        expect(copy.id).toBe('b');
+        expect(copy.points).toEqual([{ time: 6, price: 3 }, { time: 8, price: 5 }]);
+        expect(copy.labels).toEqual(['A', 'B']);
+        expect(copy.labels).not.toBe(source.labels);
+        expect(copy.locked).toBeUndefined();
+        expect(copy.color).toBe('gold');
+        expect(copy.width).toBe(3);
+        expect(copy.dash).toBe('dashed');
+        expect(source.points[0]).toEqual({ time: 1, price: 2 });
+    });
+
     it('moves one point and leaves the others where they were', () => {
         const line: Drawing = { id: 'l', tool: 'trend', points: [{ time: 1, price: 1 }, { time: 2, price: 2 }] };
         expect(withPoint(line, 1, { time: 9, price: 9 }).points).toEqual([{ time: 1, price: 1 }, { time: 9, price: 9 }]);
@@ -288,6 +314,16 @@ describe('parseDrawings', () => {
         expect(parseDrawings(JSON.stringify([good, { id: 'b', tool: 'blob', points: [] }]))).toEqual([good]);
         expect(parseDrawings(JSON.stringify([{ id: 'c', tool: 'trend', points: [{ time: 'no' }] }]))).toEqual([]);
         expect(parseDrawings(JSON.stringify([{ id: 'd', tool: 'trend', points: [{ time: 0, price: 1 }] }]))).toEqual([]);
+    });
+
+    it('keeps a stroke width and dash, and refuses values it cannot draw', () => {
+        const styled: Drawing = { id: 's', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], width: 3, dash: 'dotted' };
+        const [kept] = parseDrawings(serializeDrawings([styled]));
+        expect(kept.width).toBe(3);
+        expect(kept.dash).toBe('dotted');
+        const [bad] = parseDrawings(JSON.stringify([{ ...styled, width: 9, dash: 'wavy' }]));
+        expect(bad.width).toBeUndefined();
+        expect(bad.dash).toBeUndefined();
     });
 
     it('keeps a lock, and treats anything but true as unlocked', () => {
@@ -405,5 +441,21 @@ describe('transfer', () => {
         const merged = mergeDrawings(current, incoming);
         expect(merged.map((d) => d.id).sort()).toEqual(['a', 'keep']);
         expect(merged.find((d) => d.id === 'a')?.points[0]).toEqual({ time: 5, price: 5 });
+    });
+});
+
+describe('stroke', () => {
+    const base: Drawing = { id: 'w', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }] };
+
+    it('uses the drawing width when it has one, else a hairline', () => {
+        expect(strokeWidthOf(base)).toBe(1.6);
+        expect(strokeWidthOf({ ...base, width: 4 })).toBe(4);
+    });
+
+    it('maps the two dashed patterns and leaves solid undefined', () => {
+        expect(dashOf(base)).toBeUndefined();
+        expect(dashOf({ ...base, dash: 'solid' })).toBeUndefined();
+        expect(dashOf({ ...base, dash: 'dashed' })).toBe('7 4');
+        expect(dashOf({ ...base, dash: 'dotted' })).toBe('2 3');
     });
 });
