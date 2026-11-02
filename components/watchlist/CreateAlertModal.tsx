@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { tx, type Lang } from "@/lib/i18n";
 import { needsCandles, PARAM_BOUNDS, type AlertCondition } from "@/lib/alerts";
-import { alertConditionLabel } from "@/components/alerts/labels";
+import { alertConditionLabel } from "@/lib/alert-labels";
 
 interface CreateAlertModalProps {
     symbol: string;

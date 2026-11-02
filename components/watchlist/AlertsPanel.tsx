@@ -9,7 +9,7 @@ import { deleteAlert } from "@/lib/actions/alert.actions";
 import { type AlertCondition } from "@/lib/alerts";
 import { tx, type Lang } from "@/lib/i18n";
 import { arNumberDigits } from '@/lib/i18n';
-import { alertConditionLabel, alertParamsLabel, alertTargetLabel } from "@/components/alerts/labels";
+import { alertConditionLabel, alertParamsLabel, alertTargetLabel } from "@/lib/alert-labels";
 
 type AlertRow = {
     _id: string;

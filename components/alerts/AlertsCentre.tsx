@@ -8,14 +8,10 @@ import { checkAlerts, createAlert, deleteAlert, markAlertsSeen, rearmAlert, upda
 import { alertSource, PARAM_BOUNDS, needsCandles, type AlertCondition } from '@/lib/alerts';
 import { cn } from '@/lib/utils';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
-import {
-    ALERT_CONDITIONS,
-    alertConditionLabel,
-    alertParamsLabel,
-    alertTargetLabel,
-    isPercentAlert,
-    measureLabel,
-} from '@/components/alerts/labels';
+import { ALERT_CONDITIONS, alertConditionLabel, alertParamsLabel, alertTargetLabel, isPercentAlert, measureLabel } from '@/lib/alert-labels';
+import PushToggle from '@/components/alerts/PushToggle';
+import { alertPushPayload } from '@/lib/push';
+import type { FiredAlert } from '@/lib/actions/alert.actions';
 
 export type AlertRow = {
     _id: string;
@@ -90,7 +86,32 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
     const [target, setTarget] = useState('');
     const [param, setParam] = useState('');
     const [creating, setCreating] = useState(false);
+    const [pushOn, setPushOn] = useState(false);
     const checkedOnce = useRef(false);
+
+    // A notification is for the moments the page is not being read; the toast covers the rest.
+    const notifyFired = useCallback(async (fired: FiredAlert[]) => {
+        if (document.visibilityState !== 'hidden') return;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            for (const hit of fired.slice(0, 3)) {
+                const payload = alertPushPayload({
+                    symbol: hit.symbol,
+                    label: `${alertConditionLabel(lang, hit.condition)} ${alertTargetLabel(lang, hit.condition, hit.targetPrice)}`,
+                    value: measureLabel(lang, hit.condition, hit.value),
+                });
+                await registration.showNotification(payload.title, {
+                    body: payload.body,
+                    icon: '/assets/images/logo.png',
+                    tag: `openstock-alert-${hit.symbol}`,
+                    data: { url: payload.url },
+                });
+            }
+        } catch (error) {
+            console.error('Notification failed', error);
+        }
+    }, [lang]);
 
     const runCheck = useCallback(async () => {
         setChecking(true);
@@ -104,6 +125,8 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                               .replace('{p}', measureLabel(lang, result.fired[0].condition, result.fired[0].value))
                         : t('alerts.firedMany').replace('{n}', arDigits(result.fired.length, lang)),
                 );
+                // Nothing to notify unless this device asked for notifications.
+                if (pushOn) void notifyFired(result.fired);
             } else if (result.checked === 0 && result.skipped > 0) {
                 // Every quote failed: say so instead of returning silently, and change nothing.
                 toast.error(t('alerts.checkedAllSkipped').replace('{s}', arDigits(result.skipped, lang)));
@@ -122,7 +145,15 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
         } finally {
             setChecking(false);
         }
-    }, [lang, router, t]);
+    }, [lang, notifyFired, pushOn, router, t]);
+
+    // With notifications on, an open page keeps checking, so a firing reaches the device even
+    // with the tab in the background. The claim machine still fires each rule exactly once.
+    useEffect(() => {
+        if (!pushOn) return;
+        const id = window.setInterval(() => void runCheck(), 5 * 60 * 1000);
+        return () => window.clearInterval(id);
+    }, [pushOn, runCheck]);
 
     // Prices are checked on open, so the page is useful without a background cron.
     useEffect(() => {
@@ -198,6 +229,8 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                     </button>
                 </div>
             )}
+
+            <PushToggle lang={lang} onChange={setPushOn} />
 
             <form onSubmit={submit} className="card flex flex-col gap-2 p-3">
                 <p className="text-[13px] font-semibold text-foreground">{t('alerts.new')}</p>

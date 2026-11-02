@@ -9,6 +9,7 @@ import { refreshScreenerSlice, SCREENER_BATCH_LIMIT } from "@/lib/screener-refre
 import { SCREENER_TOTAL } from "@/lib/screener-universe";
 import type { AlertCondition } from "@/lib/alerts";
 import type { Candle } from "@/lib/yahoo-candles";
+import type { Lang } from "@/lib/i18n";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
@@ -347,6 +348,24 @@ export const checkStockAlerts = inngest.createFunction(
                     }).catch(() => {});
 
                     console.log(`🚀 ALERT FIRED: ${alert.symbol} is ${fire.value} (${alert.condition} ${alert.targetPrice})`);
+
+                    // Beside the mail: a notification for every rule kind, in the language each
+                    // device subscribed in. A push service that is down must not fail the step.
+                    try {
+                        const { sendToUser } = await import("@/lib/push-send");
+                        const { alertPushPayload } = await import("@/lib/push");
+                        const { alertConditionLabel, alertTargetLabel, measureLabel } = await import("@/lib/alert-labels");
+                        await sendToUser(alert.userId, (lang) => {
+                            const reader = (lang === 'ar' ? 'ar' : 'en') as Lang;
+                            return alertPushPayload({
+                                symbol: alert.symbol,
+                                label: `${alertConditionLabel(reader, alert.condition)} ${alertTargetLabel(reader, alert.condition, alert.targetPrice)}`,
+                                value: measureLabel(reader, alert.condition, fire.value),
+                            });
+                        });
+                    } catch (error) {
+                        console.error(`⚠️ Push failed for ${alert.symbol}`, error);
+                    }
 
                     // The mail templates speak in prices; the four newer rules are announced in the
                     // alert centre only, so an e-mail never quotes a percentage as a price.
