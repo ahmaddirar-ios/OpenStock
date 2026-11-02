@@ -1,42 +1,43 @@
 'use client';
 
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
-import { compactVolume, type BarReadout, type ReadoutKey } from '@/lib/chart-readout';
+import { compactVolume, type BarReadout } from '@/lib/chart-readout';
+import { STUDIES, describeStudy, type ColorToken, type StudyConfig, type StudyId, type StudyLine } from '@/lib/chart-studies';
 import { cn } from '@/lib/utils';
 
 // The chart's own reading of the bar under the crosshair: O H L C, the change against the previous
-// close, the volume, and the value of every indicator drawn at that bar — TradingView's legend, in
-// the app's two languages. Presentation only: the numbers come from `readoutAt`, and the host hands
-// them over on every crosshair move and every data change, so nothing here knows about replay.
+// close, the volume, and the value of every study drawn at that bar — TradingView's legend, in the
+// app's two languages. Presentation only: the numbers come from `readoutAt`, the host hands them
+// over on every crosshair move and every data change, so nothing here knows about replay.
 
-const NAME: Record<ReadoutKey, StringKey> = {
-    sma: 'chart.ind.sma',
-    ema: 'chart.ind.ema',
-    rsi: 'chart.ind.rsi',
-    macd: 'chart.ind.macd',
-    signal: 'chart.legend.signal',
-    histogram: 'chart.legend.histogram',
+const LABEL_TONE: Record<ColorToken, string> = {
+    brand: 'text-brand',
+    warn: 'text-warn',
+    up: 'text-up',
+    down: 'text-down',
+    faint: 'text-faint',
+    muted: 'text-muted-foreground',
 };
-
-/** The order the legend lists indicators in, whatever order the host happened to draw them. */
-const ORDER: ReadoutKey[] = ['sma', 'ema', 'rsi', 'macd', 'signal'];
 
 const price = (value: number, lang: Lang) => arDigits(value.toFixed(2), lang);
 
 /** RSI reads as one decimal, MACD needs three until it grows past one, prices keep two. */
-const measure = (key: ReadoutKey, value: number, lang: Lang) => {
-    if (key === 'rsi') return arDigits(value.toFixed(1), lang);
-    if ((key === 'macd' || key === 'signal') && Math.abs(value) < 1) return arDigits(value.toFixed(3), lang);
+const measure = (study: StudyId, line: StudyLine, value: number, lang: Lang) => {
+    if (study === 'rsi') return arDigits(value.toFixed(1), lang);
+    if (line.key === 'macd' || line.key === 'signal' || line.key === 'histogram') {
+        return arDigits(value.toFixed(Math.abs(value) < 1 ? 3 : 2), lang);
+    }
     return arDigits(value.toFixed(2), lang);
 };
 
 type Props = {
     lang: Lang;
     readout: BarReadout | null;
+    studies: readonly StudyConfig[];
     className?: string;
 };
 
-export default function ChartLegend({ lang, readout, className }: Props) {
+export default function ChartLegend({ lang, readout, studies, className }: Props) {
     if (!readout) return null;
     const t = (key: StringKey) => tx(lang, key);
     const change = readout.change;
@@ -46,7 +47,6 @@ export default function ChartLegend({ lang, readout, className }: Props) {
     const signed = change == null ? null : `${change >= 0 ? '+' : '-'}${Math.abs(change).toFixed(2)}`;
     const signedPercent =
         percent == null ? null : `${percent >= 0 ? '+' : '-'}${Math.abs(percent).toFixed(2)}%`;
-    const drawn = ORDER.filter((key) => readout.indicators[key] != null);
 
     return (
         <div
@@ -90,16 +90,35 @@ export default function ChartLegend({ lang, readout, className }: Props) {
                 </span>
             </div>
 
-            {drawn.length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 whitespace-nowrap">
-                    {drawn.map((key) => (
-                        <span key={key} className="inline-flex items-baseline gap-1">
-                            <span className={key === 'ema' || key === 'signal' ? 'text-muted-foreground' : 'text-brand'}>
-                                {t(NAME[key])}
+            {studies.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 whitespace-nowrap">
+                    {studies.map((study, index) => {
+                        const def = STUDIES[study.id];
+                        if (!def) return null;
+                        const values = def.lines
+                            .map((line) => ({ line, value: readout.indicators[`${index}:${line.key}`] }))
+                            .filter((entry): entry is { line: StudyLine; value: number } => typeof entry.value === 'number');
+                        if (values.length === 0) return null;
+                        return (
+                            <span key={`${index}:${study.id}`} className="inline-flex items-baseline gap-1">
+                                <span className={LABEL_TONE[def.lines[0].color]}>{describeStudy(study, lang)}</span>
+                                {values.map(({ line, value }) => (
+                                    <span
+                                        key={line.key}
+                                        className="inline-flex items-baseline gap-1"
+                                        title={t(line.name)}
+                                    >
+                                        {def.lines.length > 1 && (
+                                            <span aria-hidden="true" className="text-faint">
+                                                {line.short}
+                                            </span>
+                                        )}
+                                        <bdi className="num text-foreground">{measure(study.id, line, value, lang)}</bdi>
+                                    </span>
+                                ))}
                             </span>
-                            <bdi className="num text-foreground">{measure(key, readout.indicators[key] as number, lang)}</bdi>
-                        </span>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>

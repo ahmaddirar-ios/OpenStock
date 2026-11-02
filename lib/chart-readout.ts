@@ -5,11 +5,11 @@
 import type { Series } from '@/lib/indicators';
 import type { Candle } from '@/lib/yahoo-candles';
 
-/** Every indicator line the host can draw. The legend names each one in the page's language. */
-export type ReadoutKey = 'sma' | 'ema' | 'rsi' | 'macd' | 'signal' | 'histogram';
-
-/** One series per drawn indicator, each aligned to the candles by index. */
-export type ReadoutSeries = Partial<Record<ReadoutKey, Series>>;
+/**
+ * One series per drawn study line, each aligned to the candles by index. Keys are the host's own
+ * `${studyIndex}:${lineKey}`, so two studies of the same kind stay apart.
+ */
+export type ReadoutSeries = Record<string, Series>;
 
 export type BarReadout = {
     time: number;
@@ -22,8 +22,8 @@ export type BarReadout = {
     change: number | null;
     /** `change` as a share of the previous close. Null without a usable previous close. */
     changePercent: number | null;
-    /** Only the indicators that have a value on this bar: a period still warming up is absent. */
-    indicators: Partial<Record<ReadoutKey, number>>;
+    /** Only the studies that have a value on this bar: a period still warming up is absent. */
+    indicators: Record<string, number>;
 };
 
 /**
@@ -63,8 +63,8 @@ export function readoutAt(
     const change = previous == null ? null : candle.close - previous;
     const changePercent = previous == null || previous === 0 ? null : ((change as number) / previous) * 100;
 
-    const indicators: Partial<Record<ReadoutKey, number>> = {};
-    for (const [key, values] of Object.entries(series) as [ReadoutKey, Series | undefined][]) {
+    const indicators: Record<string, number> = {};
+    for (const [key, values] of Object.entries(series)) {
         const value = values?.[index];
         if (typeof value === 'number' && Number.isFinite(value)) indicators[key] = value;
     }

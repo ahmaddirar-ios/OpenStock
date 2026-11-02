@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import ChartPane, { type CrosshairSync, type RangeSync } from '@/components/charts/ChartPane';
 import LayoutPicker from '@/components/charts/LayoutPicker';
-import { NO_INDICATORS, type IndicatorFlags } from '@/lib/candle-host';
 import {
     CHART_LAYOUTS,
     INDICATOR_BUTTONS,
@@ -23,6 +22,8 @@ import {
     type GridState,
 } from '@/lib/chart-grid';
 import { CANDLE_INTERVALS, type Candle } from '@/lib/yahoo-candles';
+import { defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
+import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
 import { REPLAY_SPEEDS, type ReplaySpeed } from '@/lib/replay';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -59,7 +60,21 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     const [layout, setLayout] = useState<GridLayoutId>(initial.layout);
     const [symbols, setSymbols] = useState<string[]>(initial.symbols);
     const [intervalId, setIntervalId] = useState(initial.intervalId);
-    const [indicators, setIndicators] = useState<IndicatorFlags>(NO_INDICATORS);
+    // One study list for the whole screen, the same one the symbol page uses.
+    const [studies, setStudies] = useState<StudyConfig[]>([]);
+    const updateStudies = (next: StudyConfig[]) => {
+        setStudies(next);
+        writeStudies(window.localStorage, next);
+    };
+    const toggleStudy = (id: StudyId) => {
+        const at = studies.findIndex((study) => study.id === id);
+        updateStudies(at >= 0 ? studies.filter((_, index) => index !== at) : [...studies, defaultStudy(id)]);
+    };
+    // The list belongs to the browser, not the page: read it after mount so the server and the
+    // first client render agree on an empty chart, then the trader's own studies.
+    useEffect(() => {
+        setStudies(readStudies(window.localStorage));
+    }, []);
     const [refreshNonce, setRefreshNonce] = useState(0);
     const [crosshair, setCrosshair] = useState<{ from: number; value: CrosshairSync | null } | null>(null);
     const [range, setRange] = useState<{ from: number; value: RangeSync } | null>(null);
@@ -288,10 +303,10 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                         key={indicator.id}
                         type="button"
                         onClick={() =>
-                            setIndicators((state) => ({ ...state, [indicator.id]: !state[indicator.id] }))
+                            toggleStudy(indicator.id)
                         }
-                        className={cn('pill h-7 px-2.5 text-[12px]', indicators[indicator.id] && 'is-up')}
-                        aria-pressed={indicators[indicator.id]}
+                        className={cn('pill h-7 px-2.5 text-[12px]', studies.some((study) => study.id === indicator.id) && 'is-up')}
+                        aria-pressed={studies.some((study) => study.id === indicator.id)}
                     >
                         {t(indicator.label)}
                     </button>
@@ -394,7 +409,7 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                         symbols={slots}
                         watchlist={watchlist}
                         intervalId={intervalId}
-                        indicators={indicators}
+                        studies={studies}
                         refreshNonce={refreshNonce}
                         crosshair={crosshair}
                         range={range}

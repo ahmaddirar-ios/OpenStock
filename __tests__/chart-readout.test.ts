@@ -84,6 +84,12 @@ describe('readoutAt', () => {
         // No indicators drawn is a readout, not a failure.
         expect(readoutAt(candles, {}, null)!.indicators).toEqual({});
     });
+
+    it('keeps two studies of the same kind apart by their list position', () => {
+        const two = { '0:value': [10, null, 12], '1:value': [null, 20, 22] };
+        expect(readoutAt(candles, two, day(2))!.indicators).toEqual({ '0:value': 12, '1:value': 22 });
+        expect(readoutAt(candles, two, day(1))!.indicators).toEqual({ '1:value': 20 });
+    });
 });
 
 describe('compactVolume', () => {

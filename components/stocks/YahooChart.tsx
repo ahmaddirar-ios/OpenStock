@@ -86,14 +86,15 @@ import {
 } from '@/lib/chart-drawings';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
-import { createCandleHost, token, type CandleHost, type IndicatorFlags } from '@/lib/candle-host';
+import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
+import { defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
+import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
 import ChartLegend from '@/components/stocks/ChartLegend';
 import type { BarReadout } from '@/lib/chart-readout';
 import { INDICATOR_BUTTONS, INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type Indicator = keyof IndicatorFlags;
 type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer';
 
 /** A row of a dropdown. */
@@ -175,7 +176,20 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const [intervalId, setIntervalId] = useState<string>(DEFAULT_CANDLE_INTERVAL);
     const [data, setData] = useState<CandleSet | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-    const [on, setOn] = useState<Record<Indicator, boolean>>({ sma: false, ema: false, rsi: false, macd: false });
+    // The study list is this browser's, shared with every pane on /charts: read after mount, saved
+    // on every change.
+    const [studies, setStudies] = useState<StudyConfig[]>([]);
+    const updateStudies = useCallback((next: StudyConfig[]) => {
+        setStudies(next);
+        writeStudies(window.localStorage, next);
+    }, []);
+    useEffect(() => {
+        setStudies(readStudies(window.localStorage));
+    }, []);
+    const toggleStudy = (id: StudyId) => {
+        const at = studies.findIndex((study) => study.id === id);
+        updateStudies(at >= 0 ? studies.filter((_, index) => index !== at) : [...studies, defaultStudy(id)]);
+    };
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
     const [tool, setTool] = useState<ActiveTool | null>(null);
@@ -467,7 +481,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         const host = createCandleHost(el, {
             timeVisible: intervalId !== '1d' && intervalId !== '1wk',
             data: current,
-            indicators: on,
+            studies,
             extend,
             onRangeChange: () => setFrame((frame) => frame + 1),
         });
@@ -495,7 +509,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             markersApiRef.current = null;
             host.destroy();
         };
-    }, [hasDisplay, on, intervalId, compareList, compareData, symbol, compareFrom]);
+    }, [hasDisplay, studies, intervalId, compareList, compareData, symbol, compareFrom]);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
@@ -853,7 +867,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 a browser check pointed at the chart rather than at the widget's inner canvases. */}
             <div ref={hostRef} data-chart="price" className="size-full" />
 
-            {status === 'ready' && <ChartLegend lang={lang} readout={readout} />}
+            {status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
 
             {status === 'ready' && !replay && (
                 <ChartDrawings
@@ -976,9 +990,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                     <button
                         key={indicator.id}
                         type="button"
-                        onClick={() => setOn((state) => ({ ...state, [indicator.id]: !state[indicator.id] }))}
-                        className={cn('pill h-7 px-2.5 text-[12px]', on[indicator.id] && 'is-up')}
-                        aria-pressed={on[indicator.id]}
+                        onClick={() => toggleStudy(indicator.id)}
+                        className={cn('pill h-7 px-2.5 text-[12px]', studies.some((study) => study.id === indicator.id) && 'is-up')}
+                        aria-pressed={studies.some((study) => study.id === indicator.id)}
                     >
                         {t(indicator.label)}
                     </button>

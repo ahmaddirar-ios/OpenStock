@@ -13,12 +13,9 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
-import { ema, macd, rsi, sma, type Series } from '@/lib/indicators';
+import { STUDIES, type ColorToken, type StudyConfig } from '@/lib/chart-studies';
+import type { Series } from '@/lib/indicators';
 import type { CandleSet } from '@/lib/yahoo-candles';
-
-export type IndicatorFlags = { sma: boolean; ema: boolean; rsi: boolean; macd: boolean };
-
-export const NO_INDICATORS: IndicatorFlags = { sma: false, ema: false, rsi: false, macd: false };
 
 export type CandleHost = {
     chart: IChartApi;
@@ -28,7 +25,8 @@ export type CandleHost = {
     addPane: (stretch: number) => number;
     /** Replaces the candles without touching the view, so a live update never jumps the zoom. */
     setData: (set: CandleSet | null) => void;
-    setIndicators: (flags: IndicatorFlags) => void;
+    /** Replaces every study on the chart: overlays on the price, oscillators in their own panes. */
+    setStudies: (studies: StudyConfig[]) => void;
     setTimeVisible: (visible: boolean) => void;
     fit: () => void;
     /**
@@ -49,7 +47,7 @@ export type CandleHostOptions = {
     timeVisible?: boolean;
     /** The candles the host starts with; more can arrive through setData. */
     data?: CandleSet | null;
-    indicators?: IndicatorFlags;
+    studies?: StudyConfig[];
     /**
      * Extra series the page needs under the price and above the oscillators — the compare pane.
      * Runs once per host, before the indicator panes are laid out.
@@ -95,12 +93,20 @@ const overlay = (chart: IChartApi, points: { time: UTCTimestamp; value: number }
     return series;
 };
 
+/** Theme tokens a study may paint with, and the colour to fall back on before the CSS resolves. */
+const STUDY_COLORS: Record<ColorToken, { token: string; fallback: string }> = {
+    brand: { token: '--brand', fallback: '#34d399' },
+    warn: { token: '--warn', fallback: '#f6c76b' },
+    up: { token: '--up', fallback: '#4ade80' },
+    down: { token: '--down', fallback: '#f87171' },
+    faint: { token: '--faint', fallback: '#7d8a84' },
+    muted: { token: '--muted-foreground', fallback: '#94a3b8' },
+};
+
 export function createCandleHost(container: HTMLElement, options: CandleHostOptions = {}): CandleHost {
     const up = token('--up', '#4ade80');
     const down = token('--down', '#f87171');
     const grid = token('--line', '#1c2320');
-    const brand = token('--brand', '#34d399');
-    const muted = token('--muted-foreground', '#94a3b8');
     const upFill = token('--up', '#4ade80', 0.4);
     const downFill = token('--down', '#f87171', 0.4);
 
@@ -139,8 +145,16 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
 
     let data: CandleSet | null = options.data ?? null;
-    let flags: IndicatorFlags = options.indicators ?? NO_INDICATORS;
+    let studies: StudyConfig[] = options.studies ?? [];
     const overlays: ISeriesApi<'Line'>[] = [];
+    const colorCache = new Map<ColorToken, string>();
+    const studyColor = (color: ColorToken) => {
+        const cached = colorCache.get(color);
+        if (cached) return cached;
+        const resolved = token(STUDY_COLORS[color].token, STUDY_COLORS[color].fallback);
+        colorCache.set(color, resolved);
+        return resolved;
+    };
     // The panes this host owns. Everything the host adds sits under any pane the page extended, so
     // removing them from the end never touches a compare pane.
     let ownedPanes: number[] = [];
@@ -197,61 +211,64 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         ownedPanes = [];
     };
 
-    const buildIndicators = () => {
+    const buildStudies = () => {
         clearIndicators();
         readoutSeries = {};
         const candles = data?.candles ?? [];
         if (candles.length === 0) return;
-        const closes = candles.map((candle) => candle.close);
 
-        if (flags.sma) {
-            const values = sma(closes, 20);
-            readoutSeries.sma = values;
-            const series = overlay(chart, line(values, candles), brand);
-            if (series) overlays.push(series);
-        }
-        if (flags.ema) {
-            const values = ema(closes, 50);
-            readoutSeries.ema = values;
-            const series = overlay(chart, line(values, candles), muted);
-            if (series) overlays.push(series);
-        }
+        const oscillators = studies.filter((study) => STUDIES[study.id]?.group === 'oscillator').length;
+        const stretch = oscillators > 1 ? 0.2 : 0.28;
 
-        // Oscillators get their own pane under the price, the way a trader expects to read them.
-        const oscillators = Number(flags.rsi) + Number(flags.macd);
-        if (flags.rsi) {
-            const index = addPane(oscillators > 1 ? 0.2 : 0.28);
-            ownedPanes.push(index);
-            const values = rsi(closes, 14);
-            readoutSeries.rsi = values;
-            chart
-                .addSeries(LineSeries, { color: brand, lineWidth: 1, priceLineVisible: false }, index)
-                .setData(line(values, candles));
-        }
-        if (flags.macd) {
-            const index = addPane(oscillators > 1 ? 0.2 : 0.28);
-            ownedPanes.push(index);
-            const { macd: macdLine, signal, histogram } = macd(closes);
-            readoutSeries.macd = macdLine;
-            readoutSeries.signal = signal;
-            readoutSeries.histogram = histogram;
-            chart
-                .addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, index)
-                .setData(
-                    candles.flatMap((candle, i) => {
-                        const value = histogram[i];
-                        return value == null
-                            ? []
-                            : [{ time: candle.time as UTCTimestamp, value, color: value >= 0 ? up : down }];
-                    }),
-                );
-            chart
-                .addSeries(LineSeries, { color: brand, lineWidth: 1, priceLineVisible: false }, index)
-                .setData(line(macdLine, candles));
-            chart
-                .addSeries(LineSeries, { color: muted, lineWidth: 1, priceLineVisible: false }, index)
-                .setData(line(signal, candles));
-        }
+        studies.forEach((study, index) => {
+            const def = STUDIES[study.id];
+            if (!def) return;
+            const computed = def.compute(candles, study.params);
+            // A study that cannot fill its window draws nothing and opens no empty pane.
+            const drawn = def.lines.filter((spec) => computed[spec.key]?.some((value) => value != null));
+            if (drawn.length === 0) return;
+
+            // Oscillators get their own pane under the price, in the order the trader added them.
+            let pane = -1;
+            if (def.group === 'oscillator') {
+                pane = addPane(stretch);
+                ownedPanes.push(pane);
+            }
+
+            for (const spec of drawn) {
+                const values = computed[spec.key];
+                // Keyed by list position, not study id: two SMAs must stay distinguishable.
+                readoutSeries[`${index}:${spec.key}`] = values;
+
+                if (spec.kind === 'histogram') {
+                    chart
+                        .addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane >= 0 ? pane : undefined)
+                        .setData(
+                            candles.flatMap((candle, i) => {
+                                const value = values[i];
+                                return value == null
+                                    ? []
+                                    : [{ time: candle.time as UTCTimestamp, value, color: value >= 0 ? up : down }];
+                            }),
+                        );
+                    continue;
+                }
+
+                const points = line(values, candles);
+                if (pane >= 0) {
+                    chart
+                        .addSeries(
+                            LineSeries,
+                            { color: studyColor(spec.color), lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+                            pane,
+                        )
+                        .setData(points);
+                } else {
+                    const series = overlay(chart, points, studyColor(spec.color));
+                    if (series) overlays.push(series);
+                }
+            }
+        });
     };
 
     const host: CandleHost = {
@@ -261,12 +278,12 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         setData: (set) => {
             data = set;
             applyCandles();
-            buildIndicators();
+            buildStudies();
             emitReadout();
         },
-        setIndicators: (next) => {
-            flags = next;
-            buildIndicators();
+        setStudies: (next) => {
+            studies = next;
+            buildStudies();
             emitReadout();
         },
         setTimeVisible: (visible) => chart.timeScale().applyOptions({ timeVisible: visible }),
@@ -301,7 +318,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     applyCandles();
     // The page's own panes (compare) go under the price and above the oscillators.
     options.extend?.(host);
-    buildIndicators();
+    buildStudies();
 
     chart.subscribeCrosshairMove(handleCrosshair);
 

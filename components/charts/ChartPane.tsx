@@ -13,7 +13,8 @@ import {
     type MouseEventParams,
     type UTCTimestamp,
 } from 'lightweight-charts';
-import { createCandleHost, type CandleHost, type IndicatorFlags } from '@/lib/candle-host';
+import { createCandleHost, type CandleHost } from '@/lib/candle-host';
+import type { StudyConfig } from '@/lib/chart-studies';
 import { sessionChange, universeName } from '@/lib/chart-grid';
 import { getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
 import type { Candle, CandleSet } from '@/lib/yahoo-candles';
@@ -37,7 +38,7 @@ type Props = {
     symbols: string[];
     watchlist: string[];
     intervalId: string;
-    indicators: IndicatorFlags;
+    studies: StudyConfig[];
     /** Bumped by the refresh button to reload every pane. */
     refreshNonce: number;
     crosshair: { from: number; value: CrosshairSync | null } | null;
@@ -69,7 +70,7 @@ export default function ChartPane({
     symbols,
     watchlist,
     intervalId,
-    indicators,
+    studies,
     refreshNonce,
     crosshair,
     range,
@@ -251,8 +252,8 @@ export default function ChartPane({
     }, [symbol, intervalId, refreshNonce, nonce]);
 
     useEffect(() => {
-        hostRef.current?.setIndicators(indicators);
-    }, [indicators]);
+        hostRef.current?.setStudies(studies);
+    }, [studies]);
 
     useEffect(() => {
         hostRef.current?.setTimeVisible(isTimeVisible(intervalId));
@@ -409,7 +410,7 @@ export default function ChartPane({
                 {/* The canvas host stays mounted so the chart survives every state change. */}
                 <div ref={elRef} data-chart="pane" className="absolute inset-0" dir="ltr" />
 
-                {symbol && status === 'ready' && <ChartLegend lang={lang} readout={readout} />}
+                {symbol && status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
 
                 {!symbol && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-card/80 p-4 text-center backdrop-blur-[1px]">
