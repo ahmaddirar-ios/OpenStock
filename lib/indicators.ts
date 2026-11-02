@@ -328,3 +328,194 @@ export function obv(candles: readonly ObvBar[]): Series {
     }
     return out;
 }
+
+export type Ichimoku = {
+    tenkan: Series;
+    kijun: Series;
+    senkouA: Series;
+    senkouB: Series;
+    chikou: Series;
+};
+
+const midpoint = (candles: readonly RangeBar[], i: number, period: number): number | null =>
+    i < period - 1 ? null : (highest(candles, i - period + 1, i) + lowest(candles, i - period + 1, i)) / 2;
+
+/**
+ * Ichimoku. Five lines, three of them moved in time: the cloud (`senkouA`, `senkouB`) is the value
+ * computed `shift` bars *earlier* — read that as a projection, drawn up to the last candle — and the
+ * lagging span (`chikou`) is the close `shift` bars *later*, so on the chart it trails the price.
+ * Because everything is computed from the candles the host was given, a replay only sees the bars it
+ * has revealed: `chikou` is empty where the later close does not exist yet.
+ */
+export function ichimoku(candles: readonly RangeBar[], conversion = 9, base = 26, spanB = 52, shift = 26): Ichimoku {
+    const tenkan = candles.map((_, i) => midpoint(candles, i, conversion));
+    const kijun = candles.map((_, i) => midpoint(candles, i, base));
+    const span52 = candles.map((_, i) => midpoint(candles, i, spanB));
+
+    const senkouA: Series = candles.map((_, i) => {
+        const from = i - shift;
+        if (from < 0) return null;
+        const a = tenkan[from];
+        const b = kijun[from];
+        return a == null || b == null ? null : (a + b) / 2;
+    });
+    const senkouB: Series = candles.map((_, i) => {
+        const from = i - shift;
+        return from < 0 ? null : span52[from];
+    });
+    const chikou: Series = candles.map((_, i) => {
+        const at = i + shift;
+        return at < candles.length ? candles[at].close : null;
+    });
+
+    return { tenkan, kijun, senkouA, senkouB, chikou };
+}
+
+export type Donchian = { upper: Series; middle: Series; lower: Series };
+
+/** Donchian channel: the highest high, the lowest low, and the middle of the two. */
+export function donchian(candles: readonly RangeBar[], period = 20): Donchian {
+    const upper = candles.map((_, i) => (i < period - 1 ? null : highest(candles, i - period + 1, i)));
+    const lower = candles.map((_, i) => (i < period - 1 ? null : lowest(candles, i - period + 1, i)));
+    const middle = upper.map((value, i) => {
+        const low = lower[i];
+        return value == null || low == null ? null : (value + low) / 2;
+    });
+    return { upper, middle, lower };
+}
+
+export type Keltner = { upper: Series; middle: Series; lower: Series };
+
+/** Keltner channel: an EMA of the close, banded by a multiple of ATR. */
+export function keltner(candles: readonly RangeBar[], period = 20, multiplier = 2): Keltner {
+    const middle = ema(
+        candles.map((bar) => bar.close),
+        period,
+    );
+    const width = atr(candles, period);
+    const band = (sign: number): Series =>
+        middle.map((value, i) => {
+            const spread = width[i];
+            return value == null || spread == null ? null : value + sign * multiplier * spread;
+        });
+    return { upper: band(1), middle, lower: band(-1) };
+}
+
+/**
+ * Supertrend: an ATR band that only ratchets in the direction of the trend and flips when the close
+ * crosses it. The line is the active band — below the price while the trend is up, above it while it
+ * is down.
+ */
+export function supertrend(candles: readonly RangeBar[], period = 10, multiplier = 3): Series {
+    const width = atr(candles, period);
+    const out: Series = candles.map(() => null);
+    let upper = 0;
+    let lower = 0;
+    let up = true;
+    let started = false;
+
+    for (let i = 0; i < candles.length; i += 1) {
+        const spread = width[i];
+        if (spread == null) continue;
+        const bar = candles[i];
+        const middle = (bar.high + bar.low) / 2;
+        const basicUpper = middle + multiplier * spread;
+        const basicLower = middle - multiplier * spread;
+
+        if (!started) {
+            upper = basicUpper;
+            lower = basicLower;
+            up = bar.close >= middle;
+            started = true;
+            out[i] = up ? lower : upper;
+            continue;
+        }
+
+        const previousClose = candles[i - 1].close;
+        upper = basicUpper < upper || previousClose > upper ? basicUpper : upper;
+        lower = basicLower > lower || previousClose < lower ? basicLower : lower;
+        up = up ? bar.close > lower : bar.close > upper;
+        out[i] = up ? lower : upper;
+    }
+    return out;
+}
+
+/**
+ * Parabolic SAR: an accelerating stop that trails the price, flipping sides when it is touched.
+ * `step` is the acceleration increment, `max` its ceiling.
+ */
+export function parabolicSar(candles: readonly RangeBar[], step = 0.02, max = 0.2): Series {
+    const out: Series = candles.map(() => null);
+    if (candles.length < 2) return out;
+
+    const first = candles[0];
+    const second = candles[1];
+    let up = second.close >= first.close;
+    let acceleration = step;
+    // The stop starts at the extreme of the side the market is leaving.
+    let sar = up ? first.low : first.high;
+    let extreme = up ? Math.max(first.high, second.high) : Math.min(first.low, second.low);
+    out[1] = sar;
+
+    for (let i = 2; i < candles.length; i += 1) {
+        const bar = candles[i];
+        const previous = candles[i - 1];
+        sar += acceleration * (extreme - sar);
+
+        if (up) {
+            // Never above the last two lows, or the reversal would happen instantly.
+            sar = Math.min(sar, previous.low, candles[i - 2].low);
+            if (bar.low < sar) {
+                up = false;
+                sar = extreme;
+                extreme = bar.low;
+                acceleration = step;
+            } else if (bar.high > extreme) {
+                extreme = bar.high;
+                acceleration = Math.min(max, acceleration + step);
+            }
+        } else {
+            sar = Math.max(sar, previous.high, candles[i - 2].high);
+            if (bar.high > sar) {
+                up = true;
+                sar = extreme;
+                extreme = bar.high;
+                acceleration = step;
+            } else if (bar.low < extreme) {
+                extreme = bar.low;
+                acceleration = Math.min(max, acceleration + step);
+            }
+        }
+        out[i] = sar;
+    }
+    return out;
+}
+
+export type Pivots = { pivot: Series; r1: Series; r2: Series; r3: Series; s1: Series; s2: Series; s3: Series };
+
+/**
+ * Classic floor pivots from the **previous bar** — on a daily chart that is yesterday's high/low/close,
+ * which is the usual reading, and it stays honest on any other interval instead of pretending it knows
+ * the session calendar.
+ */
+export function pivots(candles: readonly RangeBar[]): Pivots {
+    const build = (rule: (p: number, h: number, l: number) => number): Series =>
+        candles.map((_, i) => {
+            if (i === 0) return null;
+            const high = candles[i - 1].high;
+            const low = candles[i - 1].low;
+            const close = candles[i - 1].close;
+            const p = (high + low + close) / 3;
+            return rule(p, high, low);
+        });
+
+    return {
+        pivot: build((p) => p),
+        r1: build((p, _h, l) => 2 * p - l),
+        s1: build((p, h) => 2 * p - h),
+        r2: build((p, h, l) => p + (h - l)),
+        s2: build((p, h, l) => p - (h - l)),
+        r3: build((p, h, l) => h + 2 * (p - l)),
+        s3: build((p, h, l) => l - 2 * (h - p)),
+    };
+}

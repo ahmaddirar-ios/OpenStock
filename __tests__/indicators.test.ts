@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { adx, atr, bollinger, cci, ema, macd, obv, rsi, sma, stochastic, vwap, williamsR } from '@/lib/indicators';
+import {
+    adx,
+    atr,
+    bollinger,
+    cci,
+    donchian,
+    ema,
+    ichimoku,
+    keltner,
+    macd,
+    obv,
+    parabolicSar,
+    pivots,
+    rsi,
+    sma,
+    stochastic,
+    supertrend,
+    vwap,
+    williamsR,
+} from '@/lib/indicators';
 
 describe('sma', () => {
     it('stays null until the window is full, then averages it', () => {
@@ -233,5 +252,119 @@ describe('obv', () => {
 
     it('answers one value per bar', () => {
         expect(obv([])).toEqual([]);
+    });
+});
+
+describe('ichimoku', () => {
+    const bars100 = rising(100);
+    const out = ichimoku(bars100);
+
+    it('reads the conversion and base lines as midpoints of their windows', () => {
+        // Bar 8: highs 2..10 (max 10), lows 0..8 (min 0) → (10 + 0) / 2.
+        expect(out.tenkan[8]).toBeCloseTo(5);
+        expect(out.tenkan[7]).toBeNull();
+        // Bar 25: highs 2..27 (max 27), lows 0..25 (min 0).
+        expect(out.kijun[25]).toBeCloseTo(13.5);
+        expect(out.kijun[24]).toBeNull();
+    });
+
+    it('draws the cloud from data `shift` bars old', () => {
+        // Span A needs both midpoints, so it starts once the base line does, plus the shift.
+        expect(out.senkouA[50]).toBeNull();
+        // Bar 25: tenkan = (27 + 17) / 2 = 22, kijun = (27 + 0) / 2 = 13.5.
+        expect(out.senkouA[51]).toBeCloseTo((22 + 13.5) / 2);
+        // The 52-bar midpoint at bar 51 is (53 + 0) / 2, drawn 26 bars later.
+        expect(out.senkouB[76]).toBeNull();
+        expect(out.senkouB[77]).toBeCloseTo(26.5);
+    });
+
+    it('lags the close by `shift` bars and stops at the right edge', () => {
+        expect(out.chikou[0]).toBeCloseTo(27);
+        expect(out.chikou[73]).toBeCloseTo(100);
+        expect(out.chikou[74]).toBeNull();
+    });
+});
+
+describe('donchian', () => {
+    it('is the highest high, the lowest low and their midpoint', () => {
+        const bars3 = bars([[10, 8, 9], [12, 7, 11], [11, 9, 10]]);
+        const out = donchian(bars3, 2);
+        expect(out.upper[1]).toBe(12);
+        expect(out.lower[1]).toBe(7);
+        expect(out.middle[1]).toBe(9.5);
+        expect(out.upper[0]).toBeNull();
+    });
+
+    it('stays null when the window is longer than the history', () => {
+        expect(donchian(bars([[10, 8, 9]]), 5).upper).toEqual([null]);
+    });
+});
+
+describe('keltner', () => {
+    it('puts an EMA between two ATR-scaled bands', () => {
+        const series = rising(40);
+        const out = keltner(series, 20, 2);
+        const middle = ema(series.map((bar) => bar.close), 20);
+        const width = atr(series, 20);
+        const i = 25;
+        expect(out.middle[i]).toBeCloseTo(middle[i] as number);
+        expect(out.upper[i]).toBeCloseTo((middle[i] as number) + 2 * (width[i] as number));
+        expect(out.lower[i]).toBeCloseTo((middle[i] as number) - 2 * (width[i] as number));
+        expect(out.middle[i - 1]).not.toBeNull();
+    });
+});
+
+describe('supertrend', () => {
+    it('trails below a rising market and above a falling one', () => {
+        const up = supertrend(rising(60), 10, 3);
+        expect(up[59]).not.toBeNull();
+        expect(up[59] as number).toBeLessThan(60);
+        const falling = rising(60).map((bar, i) => ({ high: 62 - i, low: 60 - i, close: 61 - i }));
+        expect(falling.length).toBe(60);
+        // Rebuild a genuinely falling series: high/low/close all descend.
+        const down = Array.from({ length: 60 }, (_, i) => ({ high: 100 - i, low: 98 - i, close: 99 - i }));
+        const downOut = supertrend(down, 10, 3);
+        expect(downOut[59] as number).toBeGreaterThan(99 - 59);
+    });
+
+    it('is null while the ATR window is warming up', () => {
+        const out = supertrend(rising(60), 10, 3);
+        expect(out[8]).toBeNull();
+        expect(out[9]).not.toBeNull();
+    });
+});
+
+describe('parabolicSar', () => {
+    const up = rising(60).map((bar) => ({ time: 0, ...bar }));
+
+    it('sits below a rising market and above a falling one', () => {
+        const out = parabolicSar(up, 0.02, 0.2);
+        expect(out[59] as number).toBeLessThan(60);
+        const down = up.map((bar, i) => ({ time: i, high: 100 - i, low: 98 - i, close: 99 - i }));
+        const downOut = parabolicSar(down, 0.02, 0.2);
+        expect(downOut[59] as number).toBeGreaterThan(99 - 59);
+    });
+
+    it("falls inside the previous bar's range", () => {
+        const out = parabolicSar(up, 0.02, 0.2);
+        for (let i = 3; i < up.length; i += 1) {
+            // In an uptrend the stop trails under the bar, never through it.
+            expect(out[i] as number).toBeLessThanOrEqual(up[i].low);
+        }
+    });
+});
+
+describe('pivots', () => {
+    it("uses the previous bar's high, low and close", () => {
+        const out = pivots(bars([[10, 8, 9], [12, 9, 11]]));
+        // P = 9, R1 = 2P − L = 10, S1 = 2P − H = 8, R2 = P + (H − L) = 11 …
+        expect(out.pivot[1]).toBeCloseTo(9);
+        expect(out.r1[1]).toBeCloseTo(10);
+        expect(out.s1[1]).toBeCloseTo(8);
+        expect(out.r2[1]).toBeCloseTo(11);
+        expect(out.s2[1]).toBeCloseTo(7);
+        expect(out.r3[1]).toBeCloseTo(12);
+        expect(out.s3[1]).toBeCloseTo(6);
+        expect(out.pivot[0]).toBeNull();
     });
 });
