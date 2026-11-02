@@ -6,6 +6,7 @@ import {
     STUDY_IDS,
     defaultStudy,
     describeStudy,
+    studiesChoice,
     studyColor,
     studyWidth,
     STUDY_COLOR_TOKENS,
@@ -37,6 +38,11 @@ describe('the registry', () => {
             expect(def.id).toBe(id);
             expect(def.lines.length).toBeGreaterThan(0);
             for (const param of def.params) {
+                if (param.kind === 'choice') {
+                    expect(param.choices.length).toBeGreaterThan(1);
+                    expect(param.choices.map((choice) => choice.value)).toContain(param.default);
+                    continue;
+                }
                 expect(param.default).toBeGreaterThanOrEqual(param.min);
                 expect(param.default).toBeLessThanOrEqual(param.max);
                 expect(param.step).toBeGreaterThan(0);
@@ -75,9 +81,9 @@ describe('the registry', () => {
 
 describe('describeStudy', () => {
     it('names a study with its parameters, in declared order', () => {
-        expect(describeStudy(defaultStudy('sma'), 'en')).toBe('SMA 20');
-        expect(describeStudy(defaultStudy('bb'), 'en')).toBe('Bollinger Bands 20 · 2');
-        expect(describeStudy(defaultStudy('macd'), 'en')).toBe('MACD 12 · 26 · 9');
+        expect(describeStudy(defaultStudy('sma'), 'en')).toBe('SMA 20 · Close');
+        expect(describeStudy(defaultStudy('bb'), 'en')).toBe('Bollinger Bands 20 · 2 · Close');
+        expect(describeStudy(defaultStudy('macd'), 'en')).toBe('MACD 12 · 26 · 9 · Close');
         expect(describeStudy(defaultStudy('vwap'), 'en')).toBe('VWAP');
         expect(describeStudy(defaultStudy('stoch'), 'en')).toBe('Stochastic 14 · 3 · 3');
         expect(describeStudy(defaultStudy('adx'), 'en')).toBe('ADX / DMI 14');
@@ -87,16 +93,22 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('ichimoku'), 'en')).toBe('Ichimoku 9 · 26 · 52 · 26');
         expect(describeStudy(defaultStudy('supertrend'), 'en')).toBe('Supertrend 10 · 3');
         expect(describeStudy(defaultStudy('donchian'), 'en')).toBe('Donchian Channel 20');
-        expect(describeStudy(defaultStudy('keltner'), 'en')).toBe('Keltner Channel 20 · 2');
+        expect(describeStudy(defaultStudy('keltner'), 'en')).toBe('Keltner Channel 20 · 2 · Close');
         expect(describeStudy(defaultStudy('sar'), 'en')).toBe('Parabolic SAR 0.02 · 0.2');
         expect(describeStudy(defaultStudy('pivots'), 'en')).toBe('Pivot Points');
-        expect(describeStudy(defaultStudy('wma'), 'en')).toBe('WMA 20');
-        expect(describeStudy(defaultStudy('hma'), 'en')).toBe('HMA 9');
-        expect(describeStudy(defaultStudy('vwma'), 'en')).toBe('VWMA 20');
+        expect(describeStudy(defaultStudy('wma'), 'en')).toBe('WMA 20 · Close');
+        expect(describeStudy(defaultStudy('hma'), 'en')).toBe('HMA 9 · Close');
+        expect(describeStudy(defaultStudy('vwma'), 'en')).toBe('VWMA 20 · Close');
+    });
+
+    it('names a choice by its label, not by a number', () => {
+        const sma = { ...defaultStudy('sma'), params: { period: 50, source: 'high' } };
+        expect(describeStudy(sma, 'en')).toBe('SMA 50 · High');
+        expect(describeStudy(sma, 'ar')).toContain('الأعلى');
     });
 
     it('follows the parameters the trader actually set', () => {
-        expect(describeStudy({ id: 'sma', params: { period: 200 } }, 'en')).toBe('SMA 200');
+        expect(describeStudy({ id: 'sma', params: { period: 200 } }, 'en')).toBe('SMA 200 · Close');
     });
 
     it('localises its digits without localising the name', () => {
@@ -112,7 +124,12 @@ describe('the dictionary', () => {
             const def = STUDIES[id];
             for (const lang of ['en', 'ar'] as const) {
                 expect(tx(lang, def.label), `${lang} ${id}`).not.toBe('');
-                for (const param of def.params) expect(tx(lang, param.label)).not.toBe('');
+                for (const param of def.params) {
+                    expect(tx(lang, param.label)).not.toBe('');
+                    if (param.kind === 'choice') {
+                        for (const choice of param.choices) expect(tx(lang, choice.label)).not.toBe('');
+                    }
+                }
                 for (const line of def.lines) expect(tx(lang, line.name)).not.toBe('');
                 expect(describeStudy(defaultStudy(id), lang)).toContain(tx(lang, def.label));
                 for (const key of ['study.width', 'study.colour'] as StringKey[]) {
@@ -167,7 +184,7 @@ describe('parseStudies', () => {
         expect(nan.params.period).toBe(20);
         expect(nan.params.stdDev).toBe(4.5);
         const [empty] = parseStudies(stored([{ id: 'macd', params: {} }]));
-        expect(empty.params).toEqual({ fast: 12, slow: 26, signal: 9 });
+        expect(empty.params).toEqual({ fast: 12, slow: 26, signal: 9, source: 'close' });
     });
 
     it('keeps order and duplicates — two SMAs are two studies', () => {
@@ -229,5 +246,40 @@ describe('style', () => {
         const [bb] = parseStudies(stored([{ id: 'bb', params: {}, color: 'up', width: 2 }]));
         expect(bb.color).toBeUndefined();
         expect(bb.width).toBe(2);
+    });
+});
+
+describe('source', () => {
+    it('defaults to the close and rejects a value it does not offer', () => {
+        expect(studiesChoice(defaultStudy('sma'), 'source')).toBe('close');
+        expect(studiesChoice({ ...defaultStudy('sma'), params: { period: 20, source: 'high' } }, 'source')).toBe('high');
+        expect(studiesChoice({ ...defaultStudy('sma'), params: { source: 'magic' } }, 'source')).toBe('close');
+        expect(studiesChoice(defaultStudy('sma'), 'period')).toBe('');
+    });
+
+    it('changes what the study computes', () => {
+        const highs = { ...defaultStudy('sma'), params: { period: 2, source: 'high' } };
+        const closes = { ...defaultStudy('sma'), params: { period: 2, source: 'close' } };
+        const def = STUDIES.sma;
+        const highLine = def.compute(candles, highs.params).value as (number | null)[];
+        const closeLine = def.compute(candles, closes.params).value as (number | null)[];
+        expect(highLine[1]).toBeCloseTo((candles[0].high + candles[1].high) / 2);
+        expect(closeLine[1]).toBeCloseTo((candles[0].close + candles[1].close) / 2);
+        expect(highLine[1]).not.toBeCloseTo(closeLine[1] as number);
+    });
+
+    it('is carried through storage and repaired when it is not a choice', () => {
+        const stored = (studies: unknown) => ({ v: 1, studies });
+        const [kept] = parseStudies(stored([{ id: 'sma', params: { period: 20, source: 'hl2' } }]));
+        expect(kept.params.source).toBe('hl2');
+        const [fixed] = parseStudies(stored([{ id: 'sma', params: { period: 20, source: 'magic' } }]));
+        expect(fixed.params.source).toBe('close');
+        const [missing] = parseStudies(stored([{ id: 'sma', params: {} }]));
+        expect(missing.params.source).toBe('close');
+    });
+
+    it('is not offered on a study that does not read one', () => {
+        expect(STUDIES.atr.params.some((param) => param.key === 'source')).toBe(false);
+        expect(STUDIES.donchian.params.some((param) => param.key === 'source')).toBe(false);
     });
 });

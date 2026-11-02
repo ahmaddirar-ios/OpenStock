@@ -12,6 +12,7 @@ import {
     obv,
     parabolicSar,
     pivots,
+    priceSeries,
     rsi,
     sma,
     stochastic,
@@ -425,5 +426,50 @@ describe('vwma', () => {
             { high: 13, low: 11, close: 12, volume: 0 },
         ];
         expect(vwma(rows, 2)).toEqual([null, null]);
+    });
+});
+
+describe('priceSeries', () => {
+    const bars = [
+        { open: 10, high: 13, low: 9, close: 12 },
+        { open: 12, high: 15, low: 11, close: 14 },
+    ];
+
+    it('reads each source letter', () => {
+        expect(priceSeries(bars, 'open')).toEqual([10, 12]);
+        expect(priceSeries(bars, 'high')).toEqual([13, 15]);
+        expect(priceSeries(bars, 'low')).toEqual([9, 11]);
+        expect(priceSeries(bars, 'close')).toEqual([12, 14]);
+    });
+
+    it('builds the three composites TradingView offers', () => {
+        expect(priceSeries(bars, 'hl2')).toEqual([11, 13]);
+        expect(priceSeries(bars, 'hlc3')).toEqual([(13 + 9 + 12) / 3, (15 + 11 + 14) / 3]);
+        expect(priceSeries(bars, 'ohlc4')).toEqual([(10 + 13 + 9 + 12) / 4, (12 + 15 + 11 + 14) / 4]);
+    });
+
+    it('falls back to the close for anything it does not know', () => {
+        expect(priceSeries(bars, 'magic')).toEqual([12, 14]);
+        expect(priceSeries(bars, '')).toEqual([12, 14]);
+    });
+});
+
+describe('source-aware averages', () => {
+    const candles = [
+        { time: 0, open: 10, high: 20, low: 5, close: 12, volume: 100 },
+        { time: 1, open: 12, high: 30, low: 6, close: 14, volume: 200 },
+        { time: 2, open: 14, high: 40, low: 7, close: 16, volume: 100 },
+    ];
+
+    it('keltner puts its EMA on the given source', () => {
+        const closes = keltner(candles, 1, 1);
+        const highs = keltner(candles, 1, 1, priceSeries(candles, 'high'));
+        expect(closes.middle[2]).toBeCloseTo(16);
+        expect(highs.middle[2]).toBeCloseTo(40);
+    });
+
+    it('vwma weights the given source by volume', () => {
+        const byHigh = vwma(candles, 2, priceSeries(candles, 'high'));
+        expect(byHigh[2]).toBeCloseTo((30 * 200 + 40 * 100) / 300);
     });
 });

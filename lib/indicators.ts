@@ -138,6 +138,33 @@ export function vwap(candles: readonly VolumeBar[]): Series {
 
 export type RangeBar = { high: number; low: number; close: number };
 
+/** A bar with all four prices — what a study's source selector needs. */
+export type SourceBar = { open: number; high: number; low: number; close: number };
+
+/**
+ * The price a study averages, exactly as TradingView names it: one of the four prices, or the
+ * composites `(H+L)/2`, `(H+L+C)/3` and `(O+H+L+C)/4`. An unknown name reads the close, so a stale
+ * stored value can never make a study blank.
+ */
+export function priceSeries(candles: readonly SourceBar[], source: string): number[] {
+    switch (source) {
+        case 'open':
+            return candles.map((bar) => bar.open);
+        case 'high':
+            return candles.map((bar) => bar.high);
+        case 'low':
+            return candles.map((bar) => bar.low);
+        case 'hl2':
+            return candles.map((bar) => (bar.high + bar.low) / 2);
+        case 'hlc3':
+            return candles.map((bar) => (bar.high + bar.low + bar.close) / 3);
+        case 'ohlc4':
+            return candles.map((bar) => (bar.open + bar.high + bar.low + bar.close) / 4);
+        default:
+            return candles.map((bar) => bar.close);
+    }
+}
+
 /** Average True Range, Wilder-smoothed, seeded on the mean of the first `period` true ranges. */
 export function atr(candles: readonly RangeBar[], period = 14): Series {
     const out: Series = candles.map(() => null);
@@ -387,11 +414,13 @@ export function donchian(candles: readonly RangeBar[], period = 20): Donchian {
 export type Keltner = { upper: Series; middle: Series; lower: Series };
 
 /** Keltner channel: an EMA of the close, banded by a multiple of ATR. */
-export function keltner(candles: readonly RangeBar[], period = 20, multiplier = 2): Keltner {
-    const middle = ema(
-        candles.map((bar) => bar.close),
-        period,
-    );
+export function keltner(
+    candles: readonly RangeBar[],
+    period = 20,
+    multiplier = 2,
+    values = candles.map((bar) => bar.close),
+): Keltner {
+    const middle = ema(values, period);
     const width = atr(candles, period);
     const band = (sign: number): Series =>
         middle.map((value, i) => {
@@ -572,13 +601,17 @@ export function hma(values: number[], period = 9): Series {
 }
 
 /** Volume-weighted moving average: the mean close, where each bar counts by its volume. */
-export function vwma(candles: readonly { close: number; volume: number }[], period = 20): Series {
+export function vwma(
+    candles: readonly { close: number; volume: number }[],
+    period = 20,
+    values = candles.map((bar) => bar.close),
+): Series {
     const out: Series = candles.map(() => null);
     for (let i = period - 1; i < candles.length; i += 1) {
         let weighted = 0;
         let volume = 0;
         for (let j = i - period + 1; j <= i; j += 1) {
-            weighted += candles[j].close * candles[j].volume;
+            weighted += values[j] * candles[j].volume;
             volume += candles[j].volume;
         }
         out[i] = volume > 0 ? weighted / volume : null;

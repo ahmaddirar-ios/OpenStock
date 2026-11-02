@@ -11,6 +11,7 @@ import {
     STUDY_WIDTHS,
     defaultStudy,
     describeStudy,
+    studiesChoice,
     studiesParam,
     studyColor,
     studyWidth,
@@ -85,6 +86,15 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
         onChange(
             studies.map((study, i) =>
                 i === index ? { ...study, params: { ...study.params, [key]: clamped } } : study,
+            ),
+        );
+    };
+
+    /** Picks a named parameter (a source): a select, so there is no half-typed state to keep. */
+    const choose = (index: number, key: string, value: string) => {
+        onChange(
+            studies.map((study, i) =>
+                i === index ? { ...study, params: { ...study.params, [key]: value } } : study,
             ),
         );
     };
@@ -236,6 +246,30 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                     {def.params.length > 0 && (
                                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                                             {def.params.map((param) => {
+                                                if (param.kind === 'choice') {
+                                                    return (
+                                                        <label
+                                                            key={param.key}
+                                                            className="flex items-center gap-1 text-[10.5px] text-faint"
+                                                        >
+                                                            {t(param.label)}
+                                                            <select
+                                                                value={studiesChoice(study, param.key)}
+                                                                onChange={(event) =>
+                                                                    choose(index, param.key, event.target.value)
+                                                                }
+                                                                aria-label={t(param.label)}
+                                                                className="num rounded-[6px] bg-page px-1 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                            >
+                                                                {param.choices.map((choice) => (
+                                                                    <option key={choice.value} value={choice.value}>
+                                                                        {t(choice.label)}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </label>
+                                                    );
+                                                }
                                                 const draftKey = `${index}:${param.key}`;
                                                 return (
                                                     <label key={param.key} className="flex items-center gap-1 text-[10.5px] text-faint">

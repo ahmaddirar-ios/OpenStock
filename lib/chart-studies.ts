@@ -16,6 +16,7 @@ import {
     obv,
     parabolicSar,
     pivots,
+    priceSeries,
     rsi,
     sma,
     stochastic,
@@ -74,7 +75,10 @@ export const STUDY_COLOR_TOKENS = Object.keys(STUDY_COLOR_SOURCES) as ColorToken
 export const STUDY_WIDTHS = [1, 2, 3] as const;
 export type StudyWidth = (typeof STUDY_WIDTHS)[number];
 
-export type StudyParam = {
+export type StudyParams = Record<string, number | string>;
+
+export type NumberParam = {
+    kind?: 'number';
     key: string;
     label: StringKey;
     min: number;
@@ -82,6 +86,19 @@ export type StudyParam = {
     step: number;
     default: number;
 };
+
+/** A pick-one parameter: a source, a mode, anything whose values are names rather than amounts. */
+export type ChoiceParam = {
+    kind: 'choice';
+    key: string;
+    label: StringKey;
+    default: string;
+    choices: { value: string; label: StringKey }[];
+};
+
+export type StudyParam = NumberParam | ChoiceParam;
+
+const isChoice = (param: StudyParam): param is ChoiceParam => param.kind === 'choice';
 
 export type StudyLine = {
     key: string;
@@ -97,7 +114,7 @@ export type StudyLine = {
  * colour to tell their lines apart, so their palette belongs to the definition. `width` is shared by
  * every line of the study.
  */
-export type StudyConfig = { id: StudyId; params: Record<string, number>; color?: ColorToken; width?: StudyWidth };
+export type StudyConfig = { id: StudyId; params: StudyParams; color?: ColorToken; width?: StudyWidth };
 
 export type StudyDef = {
     id: StudyId;
@@ -105,7 +122,7 @@ export type StudyDef = {
     group: 'overlay' | 'oscillator';
     params: StudyParam[];
     lines: StudyLine[];
-    compute: (candles: readonly Candle[], params: Record<string, number>) => Record<string, Series>;
+    compute: (candles: readonly Candle[], params: StudyParams) => Record<string, Series>;
 };
 
 const period = (min: number, max: number, value: number): StudyParam => ({
@@ -115,6 +132,25 @@ const period = (min: number, max: number, value: number): StudyParam => ({
     max,
     step: 1,
     default: value,
+});
+
+/** The source choices every price-averaging study offers, in TradingView's order. */
+const SOURCE_CHOICES: ChoiceParam['choices'] = [
+    { value: 'close', label: 'study.source.close' },
+    { value: 'open', label: 'study.source.open' },
+    { value: 'high', label: 'study.source.high' },
+    { value: 'low', label: 'study.source.low' },
+    { value: 'hl2', label: 'study.source.hl2' },
+    { value: 'hlc3', label: 'study.source.hlc3' },
+    { value: 'ohlc4', label: 'study.source.ohlc4' },
+];
+
+const source = (): ChoiceParam => ({
+    kind: 'choice',
+    key: 'source',
+    label: 'study.param.source',
+    default: 'close',
+    choices: SOURCE_CHOICES,
 });
 
 const valueLine = (color: ColorToken): StudyLine => ({
@@ -127,38 +163,51 @@ const valueLine = (color: ColorToken): StudyLine => ({
 
 /** The author-facing shape: parameters arrive through a reader, so defaults live in one place. */
 type Def = Omit<StudyDef, 'compute'> & {
-    compute: (candles: readonly Candle[], param: (key: string) => number) => Record<string, Series>;
+    compute: (
+        candles: readonly Candle[],
+        param: (key: string) => number,
+        pick: (key: string) => string,
+    ) => Record<string, Series>;
 };
 
 const define = (def: Def): StudyDef => ({
     ...def,
     compute: (candles, params) =>
-        def.compute(candles, (key) => {
-            const spec = def.params.find((param) => param.key === key);
-            if (!spec) return 0;
-            const value = params[key];
-            return typeof value === 'number' && Number.isFinite(value) ? value : spec.default;
-        }),
+        def.compute(
+            candles,
+            (key) => {
+                const spec = def.params.find((param) => param.key === key);
+                if (!spec || isChoice(spec)) return 0;
+                const value = params[key];
+                return typeof value === 'number' && Number.isFinite(value) ? value : spec.default;
+            },
+            (key) => {
+                const spec = def.params.find((param) => param.key === key);
+                if (!spec || !isChoice(spec)) return '';
+                const value = params[key];
+                return typeof value === 'string' && spec.choices.some((choice) => choice.value === value)
+                    ? value
+                    : spec.default;
+            },
+        ),
 });
-
-const closes = (candles: readonly Candle[]) => candles.map((candle) => candle.close);
 
 const DEFINITIONS: StudyDef[] = [
     define({
         id: 'sma',
         label: 'study.sma',
         group: 'overlay',
-        params: [period(1, 500, 20)],
+        params: [period(1, 500, 20), source()],
         lines: [valueLine('brand')],
-        compute: (candles, param) => ({ value: sma(closes(candles), param('period')) }),
+        compute: (candles, param, pick) => ({ value: sma(priceSeries(candles, pick('source')), param('period')) }),
     }),
     define({
         id: 'ema',
         label: 'study.ema',
         group: 'overlay',
-        params: [period(1, 500, 50)],
+        params: [period(1, 500, 50), source()],
         lines: [valueLine('muted')],
-        compute: (candles, param) => ({ value: ema(closes(candles), param('period')) }),
+        compute: (candles, param, pick) => ({ value: ema(priceSeries(candles, pick('source')), param('period')) }),
     }),
     define({
         id: 'bb',
@@ -167,13 +216,15 @@ const DEFINITIONS: StudyDef[] = [
         params: [
             period(2, 200, 20),
             { key: 'stdDev', label: 'study.param.stdDev', min: 0.1, max: 5, step: 0.1, default: 2 },
+            source(),
         ],
         lines: [
             { key: 'upper', short: 'U', name: 'study.line.upper', color: 'faint', kind: 'line' },
             { key: 'middle', short: 'M', name: 'study.line.middle', color: 'warn', kind: 'line' },
             { key: 'lower', short: 'L', name: 'study.line.lower', color: 'faint', kind: 'line' },
         ],
-        compute: (candles, param) => bollinger(closes(candles), param('period'), param('stdDev')),
+        compute: (candles, param, pick) =>
+            bollinger(priceSeries(candles, pick('source')), param('period'), param('stdDev')),
     }),
     define({
         id: 'vwap',
@@ -187,9 +238,9 @@ const DEFINITIONS: StudyDef[] = [
         id: 'rsi',
         label: 'study.rsi',
         group: 'oscillator',
-        params: [period(2, 100, 14)],
+        params: [period(2, 100, 14), source()],
         lines: [valueLine('brand')],
-        compute: (candles, param) => ({ value: rsi(closes(candles), param('period')) }),
+        compute: (candles, param, pick) => ({ value: rsi(priceSeries(candles, pick('source')), param('period')) }),
     }),
     define({
         id: 'macd',
@@ -199,14 +250,15 @@ const DEFINITIONS: StudyDef[] = [
             { key: 'fast', label: 'study.param.fast', min: 1, max: 100, step: 1, default: 12 },
             { key: 'slow', label: 'study.param.slow', min: 2, max: 200, step: 1, default: 26 },
             { key: 'signal', label: 'study.param.signal', min: 1, max: 100, step: 1, default: 9 },
+            source(),
         ],
         lines: [
             { key: 'histogram', short: 'H', name: 'study.line.histogram', color: 'muted', kind: 'histogram' },
             { key: 'macd', short: 'M', name: 'study.line.macd', color: 'brand', kind: 'line' },
             { key: 'signal', short: 'S', name: 'study.line.signal', color: 'muted', kind: 'line' },
         ],
-        compute: (candles, param) =>
-            macd(closes(candles), param('fast'), param('slow'), param('signal')),
+        compute: (candles, param, pick) =>
+            macd(priceSeries(candles, pick('source')), param('fast'), param('slow'), param('signal')),
     }),
     define({
         id: 'atr',
@@ -317,13 +369,15 @@ const DEFINITIONS: StudyDef[] = [
         params: [
             period(1, 200, 20),
             { key: 'multiplier', label: 'study.param.multiplier', min: 0.1, max: 10, step: 0.1, default: 2 },
+            source(),
         ],
         lines: [
             { key: 'upper', short: 'U', name: 'study.line.upper', color: 'faint', kind: 'line' },
             { key: 'middle', short: 'M', name: 'study.line.middle', color: 'brand', kind: 'line' },
             { key: 'lower', short: 'L', name: 'study.line.lower', color: 'faint', kind: 'line' },
         ],
-        compute: (candles, param) => keltner(candles, param('period'), param('multiplier')),
+        compute: (candles, param, pick) =>
+            keltner(candles, param('period'), param('multiplier'), priceSeries(candles, pick('source'))),
     }),
     define({
         id: 'sar',
@@ -340,25 +394,27 @@ const DEFINITIONS: StudyDef[] = [
         id: 'wma',
         label: 'study.wma',
         group: 'overlay',
-        params: [period(1, 500, 20)],
+        params: [period(1, 500, 20), source()],
         lines: [valueLine('brand')],
-        compute: (candles, param) => ({ value: wma(closes(candles), param('period')) }),
+        compute: (candles, param, pick) => ({ value: wma(priceSeries(candles, pick('source')), param('period')) }),
     }),
     define({
         id: 'hma',
         label: 'study.hma',
         group: 'overlay',
-        params: [period(2, 500, 9)],
+        params: [period(2, 500, 9), source()],
         lines: [valueLine('warn')],
-        compute: (candles, param) => ({ value: hma(closes(candles), param('period')) }),
+        compute: (candles, param, pick) => ({ value: hma(priceSeries(candles, pick('source')), param('period')) }),
     }),
     define({
         id: 'vwma',
         label: 'study.vwma',
         group: 'overlay',
-        params: [period(1, 500, 20)],
+        params: [period(1, 500, 20), source()],
         lines: [valueLine('muted')],
-        compute: (candles, param) => ({ value: vwma(candles, param('period')) }),
+        compute: (candles, param, pick) => ({
+            value: vwma(candles, param('period'), priceSeries(candles, pick('source'))),
+        }),
     }),
     define({
         id: 'pivots',
@@ -390,11 +446,12 @@ export function defaultStudy(id: StudyId): StudyConfig {
     const def = STUDIES[id];
     return {
         id,
-        params: Object.fromEntries(def.params.map((param) => [param.key, param.default])),
+        params: Object.fromEntries(def.params.map((param) => [param.key, param.default])) as StudyParams,
     };
 }
 
-const clamp = (value: number, param: StudyParam) => Number(Math.min(param.max, Math.max(param.min, value)).toFixed(2));
+const clamp = (value: number, param: NumberParam) =>
+    Number(Math.min(param.max, Math.max(param.min, value)).toFixed(2));
 
 const isColorToken = (value: unknown): value is ColorToken =>
     typeof value === 'string' && (STUDY_COLOR_TOKENS as string[]).includes(value);
@@ -414,13 +471,23 @@ export function studyColor(study: StudyConfig, line: StudyLine): ColorToken {
     return isColorToken(study.color) ? study.color : line.color;
 }
 
-/** The value actually used by a computation: the stored one, or the default when it is unusable. */
+/** The numeric value actually used by a computation: the stored one, or the default. */
 export function studiesParam(study: StudyConfig, key: string): number {
     const def = STUDIES[study.id];
     const param = def?.params.find((entry) => entry.key === key);
-    if (!param) return 0;
+    if (!param || isChoice(param)) return 0;
     const value = study.params[key];
     return typeof value === 'number' && Number.isFinite(value) ? value : param.default;
+}
+
+/** The chosen name for a choice parameter: the stored one when it is offered, else the default. */
+export function studiesChoice(study: StudyConfig, key: string): string {
+    const def = STUDIES[study.id];
+    const param = def?.params.find((entry) => entry.key === key);
+    if (!param || !isChoice(param)) return '';
+    const value = study.params[key];
+    if (typeof value === 'string' && param.choices.some((choice) => choice.value === value)) return value;
+    return param.default;
 }
 
 const shortNumber = (value: number) => String(Number(value.toFixed(2)));
@@ -429,7 +496,13 @@ const shortNumber = (value: number) => String(Number(value.toFixed(2)));
 export function describeStudy(study: StudyConfig, lang: Lang): string {
     const def = STUDIES[study.id];
     if (!def) return '';
-    const values = def.params.map((param) => arDigits(shortNumber(studiesParam(study, param.key)), lang));
+    const values = def.params.map((param) => {
+        if (isChoice(param)) {
+            const chosen = param.choices.find((choice) => choice.value === studiesChoice(study, param.key));
+            return chosen ? tx(lang, chosen.label) : '';
+        }
+        return arDigits(shortNumber(studiesParam(study, param.key)), lang);
+    });
     const name = tx(lang, def.label);
     return values.length === 0 ? name : `${name} ${values.join(' · ')}`;
 }
@@ -452,9 +525,16 @@ export function parseStudies(value: unknown): StudyConfig[] {
         if (typeof candidate.id !== 'string' || !(candidate.id in STUDIES)) continue;
         const def = STUDIES[candidate.id as StudyId];
         const stored = candidate.params && typeof candidate.params === 'object' ? (candidate.params as Record<string, unknown>) : {};
-        const params: Record<string, number> = {};
+        const params: StudyParams = {};
         for (const param of def.params) {
             const raw = stored[param.key];
+            if (isChoice(param)) {
+                params[param.key] =
+                    typeof raw === 'string' && param.choices.some((choice) => choice.value === raw)
+                        ? raw
+                        : param.default;
+                continue;
+            }
             const number = typeof raw === 'number' && Number.isFinite(raw) ? raw : param.default;
             params[param.key] = clamp(number, param);
         }
