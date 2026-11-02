@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atr, bollinger, ema, macd, rsi, sma, vwap } from '@/lib/indicators';
+import { adx, atr, bollinger, cci, ema, macd, obv, rsi, sma, stochastic, vwap, williamsR } from '@/lib/indicators';
 
 describe('sma', () => {
     it('stays null until the window is full, then averages it', () => {
@@ -120,5 +120,118 @@ describe('atr', () => {
         // TR2 = max(13 − 11, |13 − 11|, |11 − 11|) = 2 → (2.5 · 1 + 2) / 2.
         expect(out[2]).toBeCloseTo(2.25);
         expect(out[0]).toBeNull();
+    });
+});
+
+const bars = (rows: [number, number, number][]) =>
+    rows.map(([high, low, close]) => ({ high, low, close }));
+
+const rising = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({ high: i + 2, low: i, close: i + 1 }));
+
+describe('stochastic', () => {
+    const rows: [number, number, number][] = [
+        [10, 8, 9],
+        [11, 9, 10],
+        [12, 10, 11],
+        [13, 11, 12],
+        [14, 12, 13],
+        [15, 13, 14],
+    ];
+
+    it('reads 100 at a fresh high and 0 at a fresh low', () => {
+        // The close is the window's high on every bar, so the slow %K is pinned at 100.
+        const atHigh = bars([[10, 8, 10], [11, 9, 11], [12, 10, 12]]);
+        expect(stochastic(atHigh, 3, 1, 1).k[2]).toBeCloseTo(100);
+        const atLow = bars([[10, 8, 8], [9, 7, 7], [8, 6, 6]]);
+        expect(stochastic(atLow, 3, 1, 1).k[2]).toBeCloseTo(0);
+    });
+
+    it('smooths %K and reads %D as the average of the last %K values', () => {
+        const { k, d } = stochastic(bars(rows), 3, 1, 2);
+        expect(k[1]).toBeNull();
+        expect(k[2]).not.toBeNull();
+        expect(d[2]).toBeNull();
+        expect(d[3]).toBeCloseTo(((k[2] as number) + (k[3] as number)) / 2);
+        expect(d[4]).toBeCloseTo(((k[3] as number) + (k[4] as number)) / 2);
+    });
+
+    it('stays null when the window is longer than the history', () => {
+        const out = stochastic(bars(rows), 14, 3, 3);
+        expect(out.k.every((value) => value === null)).toBe(true);
+        expect(out.d.every((value) => value === null)).toBe(true);
+    });
+});
+
+describe('williamsR', () => {
+    it('maps the close between the window high (0) and low (-100)', () => {
+        const rows = bars([[10, 8, 9], [11, 9, 10], [12, 10, 11]]);
+        expect(williamsR(rows, 3)[2]).toBeCloseTo(-25); // (12 - 11) / (12 - 8)
+        expect(williamsR(bars([[10, 8, 10]]), 1)[0]).toBeCloseTo(0);
+    });
+
+    it('is null while the window is warming up', () => {
+        const out = williamsR(bars([[10, 8, 9], [11, 9, 10]]), 3);
+        expect(out).toEqual([null, null]);
+    });
+});
+
+describe('cci', () => {
+    it('scales the typical price against its mean deviation', () => {
+        const flat = bars([[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4], [5, 5, 5]]);
+        // Mean 3, mean deviation 1.2 → (5 − 3) / (0.015 × 1.2).
+        expect(cci(flat, 5)[4]).toBeCloseTo(111.11, 1);
+        expect(cci(flat, 5)[3]).toBeNull();
+    });
+
+    it('reports 0 instead of dividing by zero on a flat stretch', () => {
+        const flat = bars([[5, 5, 5], [5, 5, 5], [5, 5, 5]]);
+        expect(cci(flat, 3)[2]).toBe(0);
+    });
+});
+
+describe('adx', () => {
+    it("is Wilder's DI pair and their smoothed DX", () => {
+        const out = adx(rising(60), 14);
+        // The first bar has no previous bar, so the pair starts at index `period` and ADX one
+        // `period` of DX later.
+        expect(out.plusDi[13]).toBeNull();
+        expect(out.plusDi[14]).toBeCloseTo(50);
+        expect(out.minusDi[14]).toBeCloseTo(0);
+        expect(out.adx[26]).toBeNull();
+        expect(out.adx[27]).toBeCloseTo(100);
+        expect(out.adx[59]).toBeCloseTo(100);
+    });
+
+    it('never leaves the 0..100 band', () => {
+        const out = adx(rising(60), 14);
+        for (const series of [out.adx, out.plusDi, out.minusDi]) {
+            for (const value of series) if (value != null) {
+                expect(value).toBeGreaterThanOrEqual(0);
+                expect(value).toBeLessThanOrEqual(100);
+            }
+        }
+    });
+
+    it('is all null before the first window closes', () => {
+        const out = adx(rising(10), 14);
+        expect(out.adx.every((value) => value === null)).toBe(true);
+        expect(out.plusDi.every((value) => value === null)).toBe(true);
+    });
+});
+
+describe('obv', () => {
+    it('adds volume on an up close and subtracts it on a down close', () => {
+        const rows = [
+            { high: 11, low: 9, close: 10, volume: 100 },
+            { high: 12, low: 10, close: 11, volume: 200 },
+            { high: 11, low: 9, close: 10, volume: 300 },
+            { high: 11, low: 9, close: 10, volume: 400 },
+        ];
+        expect(obv(rows)).toEqual([0, 200, -100, -100]);
+    });
+
+    it('answers one value per bar', () => {
+        expect(obv([])).toEqual([]);
     });
 });
