@@ -17,7 +17,10 @@ import {
     stochastic,
     supertrend,
     vwap,
+    vwma,
     williamsR,
+    wma,
+    hma,
 } from '@/lib/indicators';
 
 describe('sma', () => {
@@ -366,5 +369,61 @@ describe('pivots', () => {
         expect(out.r3[1]).toBeCloseTo(12);
         expect(out.s3[1]).toBeCloseTo(6);
         expect(out.pivot[0]).toBeNull();
+    });
+});
+
+describe('wma', () => {
+    it('weights the newest bar the heaviest', () => {
+        // (1·1 + 2·2 + 3·3) / (1 + 2 + 3) = 14 / 6
+        expect(wma([1, 2, 3], 3)[2]).toBeCloseTo(14 / 6);
+        expect(wma([1, 2, 3], 3)[1]).toBeNull();
+    });
+
+    it('returns one value per input', () => {
+        expect(wma([1, 2], 5)).toEqual([null, null]);
+    });
+
+    it('equals the plain average when every value is the same', () => {
+        expect(wma([7, 7, 7, 7], 3)[3]).toBeCloseTo(7);
+    });
+});
+
+describe('hma', () => {
+    const flat = Array.from({ length: 30 }, () => 5);
+    const risingCloses = rising(40).map((bar) => bar.close);
+
+    it('is flat on a flat series and trails a trend closely', () => {
+        expect(hma(flat, 9)[29]).toBeCloseTo(5);
+        const fast = hma(risingCloses, 9);
+        // A Hull average hugs the price: on a straight rise it sits just under it.
+        expect(fast[39] as number).toBeGreaterThan(risingCloses[39] - 3);
+        expect(fast[39] as number).toBeLessThanOrEqual(risingCloses[39] + 0.5);
+    });
+
+    it('waits for the double smoothing before it answers', () => {
+        const out = hma(risingCloses, 9);
+        expect(out[9]).toBeNull();
+        expect(out[10]).not.toBeNull();
+    });
+});
+
+describe('vwma', () => {
+    it('weights the close by volume over the window', () => {
+        const rows = [
+            { high: 11, low: 9, close: 10, volume: 100 },
+            { high: 13, low: 11, close: 12, volume: 300 },
+            { high: 15, low: 13, close: 14, volume: 100 },
+        ];
+        expect(vwma(rows, 2)[1]).toBeCloseTo((10 * 100 + 12 * 300) / 400);
+        expect(vwma(rows, 2)[2]).toBeCloseTo((12 * 300 + 14 * 100) / 400);
+        expect(vwma(rows, 2)[0]).toBeNull();
+    });
+
+    it('stays null when the window has no volume at all', () => {
+        const rows = [
+            { high: 11, low: 9, close: 10, volume: 0 },
+            { high: 13, low: 11, close: 12, volume: 0 },
+        ];
+        expect(vwma(rows, 2)).toEqual([null, null]);
     });
 });

@@ -85,6 +85,9 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('keltner'), 'en')).toBe('Keltner Channel 20 · 2');
         expect(describeStudy(defaultStudy('sar'), 'en')).toBe('Parabolic SAR 0.02 · 0.2');
         expect(describeStudy(defaultStudy('pivots'), 'en')).toBe('Pivot Points');
+        expect(describeStudy(defaultStudy('wma'), 'en')).toBe('WMA 20');
+        expect(describeStudy(defaultStudy('hma'), 'en')).toBe('HMA 9');
+        expect(describeStudy(defaultStudy('vwma'), 'en')).toBe('VWMA 20');
     });
 
     it('follows the parameters the trader actually set', () => {

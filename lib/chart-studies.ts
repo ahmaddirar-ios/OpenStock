@@ -9,6 +9,7 @@ import {
     cci,
     donchian,
     ema,
+    hma,
     ichimoku,
     keltner,
     macd,
@@ -20,7 +21,9 @@ import {
     stochastic,
     supertrend,
     vwap,
+    vwma,
     williamsR,
+    wma,
     type Series,
 } from '@/lib/indicators';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
@@ -47,7 +50,10 @@ export type StudyId =
     | 'donchian'
     | 'keltner'
     | 'sar'
-    | 'pivots';
+    | 'pivots'
+    | 'wma'
+    | 'hma'
+    | 'vwma';
 
 /** Theme tokens a study may paint with; the host resolves them, the legend maps them to classes. */
 export type ColorToken = 'brand' | 'warn' | 'up' | 'down' | 'faint' | 'muted';
@@ -308,6 +314,30 @@ const DEFINITIONS: StudyDef[] = [
         ],
         lines: [{ key: 'value', short: 'SAR', name: 'study.line.sar', color: 'warn', kind: 'line' }],
         compute: (candles, param) => ({ value: parabolicSar(candles, param('step'), param('max')) }),
+    }),
+    define({
+        id: 'wma',
+        label: 'study.wma',
+        group: 'overlay',
+        params: [period(1, 500, 20)],
+        lines: [valueLine('brand')],
+        compute: (candles, param) => ({ value: wma(closes(candles), param('period')) }),
+    }),
+    define({
+        id: 'hma',
+        label: 'study.hma',
+        group: 'overlay',
+        params: [period(2, 500, 9)],
+        lines: [valueLine('warn')],
+        compute: (candles, param) => ({ value: hma(closes(candles), param('period')) }),
+    }),
+    define({
+        id: 'vwma',
+        label: 'study.vwma',
+        group: 'overlay',
+        params: [period(1, 500, 20)],
+        lines: [valueLine('muted')],
+        compute: (candles, param) => ({ value: vwma(candles, param('period')) }),
     }),
     define({
         id: 'pivots',

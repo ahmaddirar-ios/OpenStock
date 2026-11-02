@@ -519,3 +519,69 @@ export function pivots(candles: readonly RangeBar[]): Pivots {
         s3: build((p, h, l) => l - 2 * (h - p)),
     };
 }
+
+/** Weighted moving average: the newest bar carries the heaviest weight (1 … period). */
+export function wma(values: number[], period: number): Series {
+    if (period < 1 || values.length < period) return values.map(() => null);
+    const weight = (period * (period + 1)) / 2;
+    const out: Series = values.map(() => null);
+    for (let i = period - 1; i < values.length; i += 1) {
+        let sum = 0;
+        for (let j = 0; j < period; j += 1) sum += values[i - period + 1 + j] * (j + 1);
+        out[i] = sum / weight;
+    }
+    return out;
+}
+
+/**
+ * Hull moving average: the WMA of `period` pulled forward by the WMA of half of it, then smoothed
+ * over the square root of the period. It hugs the price far closer than an SMA of the same length.
+ */
+export function hma(values: number[], period = 9): Series {
+    if (period < 2) return values.map(() => null);
+    const half = Math.max(1, Math.round(period / 2));
+    const root = Math.max(1, Math.round(Math.sqrt(period)));
+    const full = wma(values, period);
+    const halfLine = wma(values, half);
+    const inner: Series = values.map((_, i) => {
+        const a = full[i];
+        const b = halfLine[i];
+        return a == null || b == null ? null : 2 * b - a;
+    });
+
+    // The final smoothing runs over `inner`, which is still warming up: it only reads once `root`
+    // consecutive real values exist.
+    const out: Series = values.map(() => null);
+    for (let i = 0; i < inner.length; i += 1) {
+        if (i < root - 1) continue;
+        let sum = 0;
+        let weight = 0;
+        let complete = true;
+        for (let j = 0; j < root; j += 1) {
+            const value = inner[i - root + 1 + j];
+            if (value == null) {
+                complete = false;
+                break;
+            }
+            sum += value * (j + 1);
+            weight += j + 1;
+        }
+        if (complete) out[i] = sum / weight;
+    }
+    return out;
+}
+
+/** Volume-weighted moving average: the mean close, where each bar counts by its volume. */
+export function vwma(candles: readonly { close: number; volume: number }[], period = 20): Series {
+    const out: Series = candles.map(() => null);
+    for (let i = period - 1; i < candles.length; i += 1) {
+        let weighted = 0;
+        let volume = 0;
+        for (let j = i - period + 1; j <= i; j += 1) {
+            weighted += candles[j].close * candles[j].volume;
+            volume += candles[j].volume;
+        }
+        out[i] = volume > 0 ? weighted / volume : null;
+    }
+    return out;
+}
