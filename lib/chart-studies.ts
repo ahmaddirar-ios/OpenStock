@@ -7,12 +7,18 @@ import {
     atr,
     bollinger,
     cci,
+    donchian,
     ema,
+    ichimoku,
+    keltner,
     macd,
     obv,
+    parabolicSar,
+    pivots,
     rsi,
     sma,
     stochastic,
+    supertrend,
     vwap,
     williamsR,
     type Series,
@@ -35,7 +41,13 @@ export type StudyId =
     | 'adx'
     | 'wr'
     | 'cci'
-    | 'obv';
+    | 'obv'
+    | 'ichimoku'
+    | 'supertrend'
+    | 'donchian'
+    | 'keltner'
+    | 'sar'
+    | 'pivots';
 
 /** Theme tokens a study may paint with; the host resolves them, the legend maps them to classes. */
 export type ColorToken = 'brand' | 'warn' | 'up' | 'down' | 'faint' | 'muted';
@@ -227,6 +239,91 @@ const DEFINITIONS: StudyDef[] = [
         params: [],
         lines: [valueLine('brand')],
         compute: (candles) => ({ value: obv(candles) }),
+    }),
+    define({
+        id: 'ichimoku',
+        label: 'study.ichimoku',
+        group: 'overlay',
+        params: [
+            { key: 'conversion', label: 'study.param.conversion', min: 1, max: 200, step: 1, default: 9 },
+            { key: 'base', label: 'study.param.base', min: 1, max: 400, step: 1, default: 26 },
+            { key: 'spanB', label: 'study.param.spanB', min: 1, max: 400, step: 1, default: 52 },
+            { key: 'shift', label: 'study.param.shift', min: 0, max: 200, step: 1, default: 26 },
+        ],
+        lines: [
+            { key: 'tenkan', short: 'T', name: 'study.line.tenkan', color: 'brand', kind: 'line' },
+            { key: 'kijun', short: 'K', name: 'study.line.kijun', color: 'warn', kind: 'line' },
+            { key: 'senkouA', short: 'A', name: 'study.line.senkouA', color: 'up', kind: 'line' },
+            { key: 'senkouB', short: 'B', name: 'study.line.senkouB', color: 'down', kind: 'line' },
+            { key: 'chikou', short: 'C', name: 'study.line.chikou', color: 'muted', kind: 'line' },
+        ],
+        compute: (candles, param) =>
+            ichimoku(candles, param('conversion'), param('base'), param('spanB'), param('shift')),
+    }),
+    define({
+        id: 'supertrend',
+        label: 'study.supertrend',
+        group: 'overlay',
+        params: [
+            period(1, 200, 10),
+            { key: 'multiplier', label: 'study.param.multiplier', min: 0.1, max: 10, step: 0.1, default: 3 },
+        ],
+        lines: [{ key: 'value', short: 'ST', name: 'study.line.supertrend', color: 'brand', kind: 'line' }],
+        compute: (candles, param) => ({ value: supertrend(candles, param('period'), param('multiplier')) }),
+    }),
+    define({
+        id: 'donchian',
+        label: 'study.donchian',
+        group: 'overlay',
+        params: [period(1, 500, 20)],
+        lines: [
+            { key: 'upper', short: 'U', name: 'study.line.upper', color: 'faint', kind: 'line' },
+            { key: 'middle', short: 'M', name: 'study.line.middle', color: 'warn', kind: 'line' },
+            { key: 'lower', short: 'L', name: 'study.line.lower', color: 'faint', kind: 'line' },
+        ],
+        compute: (candles, param) => donchian(candles, param('period')),
+    }),
+    define({
+        id: 'keltner',
+        label: 'study.keltner',
+        group: 'overlay',
+        params: [
+            period(1, 200, 20),
+            { key: 'multiplier', label: 'study.param.multiplier', min: 0.1, max: 10, step: 0.1, default: 2 },
+        ],
+        lines: [
+            { key: 'upper', short: 'U', name: 'study.line.upper', color: 'faint', kind: 'line' },
+            { key: 'middle', short: 'M', name: 'study.line.middle', color: 'brand', kind: 'line' },
+            { key: 'lower', short: 'L', name: 'study.line.lower', color: 'faint', kind: 'line' },
+        ],
+        compute: (candles, param) => keltner(candles, param('period'), param('multiplier')),
+    }),
+    define({
+        id: 'sar',
+        label: 'study.sar',
+        group: 'overlay',
+        params: [
+            { key: 'step', label: 'study.param.step', min: 0.001, max: 0.2, step: 0.001, default: 0.02 },
+            { key: 'max', label: 'study.param.max', min: 0.01, max: 1, step: 0.01, default: 0.2 },
+        ],
+        lines: [{ key: 'value', short: 'SAR', name: 'study.line.sar', color: 'warn', kind: 'line' }],
+        compute: (candles, param) => ({ value: parabolicSar(candles, param('step'), param('max')) }),
+    }),
+    define({
+        id: 'pivots',
+        label: 'study.pivots',
+        group: 'overlay',
+        params: [],
+        lines: [
+            { key: 'pivot', short: 'P', name: 'study.line.pivot', color: 'brand', kind: 'line' },
+            { key: 'r1', short: 'R1', name: 'study.line.r1', color: 'down', kind: 'line' },
+            { key: 'r2', short: 'R2', name: 'study.line.r2', color: 'down', kind: 'line' },
+            { key: 'r3', short: 'R3', name: 'study.line.r3', color: 'down', kind: 'line' },
+            { key: 's1', short: 'S1', name: 'study.line.s1', color: 'up', kind: 'line' },
+            { key: 's2', short: 'S2', name: 'study.line.s2', color: 'up', kind: 'line' },
+            { key: 's3', short: 'S3', name: 'study.line.s3', color: 'up', kind: 'line' },
+        ],
+        compute: (candles) => pivots(candles),
     }),
 ];
 

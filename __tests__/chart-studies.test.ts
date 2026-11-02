@@ -7,9 +7,13 @@ import {
     describeStudy,
     parseStudies,
     studiesParam,
+    type StudyId,
 } from '@/lib/chart-studies';
 import { tx } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
+
+/** Studies that answer from the first bars instead of waiting for a window to fill. */
+const IMMEDIATE = new Set<StudyId>(['vwap', 'obv', 'sar', 'pivots']);
 
 const candles: Candle[] = Array.from({ length: 80 }, (_, i) => ({
     time: 1_600_000_000 + i * 86_400,
@@ -55,9 +59,10 @@ describe('the registry', () => {
             for (const series of Object.values(result)) {
                 expect(series).toHaveLength(3);
                 for (const value of series) expect(value === null || Number.isFinite(value)).toBe(true);
-                // A window longer than the history reads nothing. VWAP has no window, so it is the
-                // one study that still has a value on three bars.
-                if (def.params.length > 0) expect(series.every((value) => value === null)).toBe(true);
+                // A window longer than the history reads nothing. These four have no window: VWAP
+                // anchors at the start, OBV accumulates, SAR accelerates from bar 1, and the pivots
+                // come from the previous bar.
+                if (!IMMEDIATE.has(id)) expect(series.every((value) => value === null)).toBe(true);
             }
         }
     });
@@ -74,6 +79,12 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('wr'), 'en')).toBe('Williams %R 14');
         expect(describeStudy(defaultStudy('cci'), 'en')).toBe('CCI 20');
         expect(describeStudy(defaultStudy('obv'), 'en')).toBe('OBV');
+        expect(describeStudy(defaultStudy('ichimoku'), 'en')).toBe('Ichimoku 9 · 26 · 52 · 26');
+        expect(describeStudy(defaultStudy('supertrend'), 'en')).toBe('Supertrend 10 · 3');
+        expect(describeStudy(defaultStudy('donchian'), 'en')).toBe('Donchian Channel 20');
+        expect(describeStudy(defaultStudy('keltner'), 'en')).toBe('Keltner Channel 20 · 2');
+        expect(describeStudy(defaultStudy('sar'), 'en')).toBe('Parabolic SAR 0.02 · 0.2');
+        expect(describeStudy(defaultStudy('pivots'), 'en')).toBe('Pivot Points');
     });
 
     it('follows the parameters the trader actually set', () => {
