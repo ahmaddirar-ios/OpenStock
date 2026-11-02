@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { BellRing, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteAlert } from "@/lib/actions/alert.actions";
-import { alertsEnabled } from "@/lib/market-data";
 import { formatPrice } from "@/lib/utils";
 import { tx, type Lang } from "@/lib/i18n";
 import { arNumberDigits } from '@/lib/i18n';
@@ -23,7 +22,6 @@ type AlertRow = {
 
 const statusOf = (alert: AlertRow, lang: Lang) => {
     if (alert.triggered) return { label: tx(lang, 'alert.triggered'), className: 'pill is-brand' };
-    if (!alertsEnabled) return { label: tx(lang, 'alert.paused'), className: 'pill' };
     if (alert.expiresAt && new Date(alert.expiresAt) < new Date()) return { label: tx(lang, 'alert.expired'), className: 'pill' };
     if (alert.active === false) return { label: tx(lang, 'alert.paused'), className: 'pill' };
     return { label: tx(lang, 'alert.watching'), className: 'pill is-up' };
@@ -46,17 +44,6 @@ export default function AlertsPanel({ alerts, lang }: { alerts: AlertRow[]; lang
         }
     };
 
-    if (alerts.length === 0 && !alertsEnabled) {
-        return (
-            <div className="empty-state py-10">
-                <span className="empty-icon"><BellRing className="size-5" /></span>
-                <h3>{tx(lang, 'alert.cloud')}</h3>
-                <p className="max-w-64 text-[13px]">{tx(lang, 'alert.cloudSub')}</p>
-                <Link href="/#data" className="btn btn-ghost mt-2">{tx(lang, 'alert.cloudBtn')}</Link>
-            </div>
-        );
-    }
-
     if (alerts.length === 0) {
         return (
             <div className="empty-state py-10">
@@ -69,11 +56,6 @@ export default function AlertsPanel({ alerts, lang }: { alerts: AlertRow[]; lang
 
     return (
         <>
-            {!alertsEnabled && (
-                <p className="px-3 pt-3 pb-1 text-[12.5px] text-faint">
-                    {tx(lang, 'alert.pausedNote')}
-                </p>
-            )}
             <ul className="row-list">
                 {alerts.map((alert) => {
                     const status = statusOf(alert, lang);
@@ -101,6 +83,11 @@ export default function AlertsPanel({ alerts, lang }: { alerts: AlertRow[]; lang
                     );
                 })}
             </ul>
+            <div className="px-3 pb-3 pt-1">
+                <Link href="/alerts" className="text-[12.5px] font-semibold text-brand-ink underline">
+                    {tx(lang, 'alerts.title')} →
+                </Link>
+            </div>
         </>
     );
 }

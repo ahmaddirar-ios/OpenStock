@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, CandlestickChart, Code2, FlaskConical, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
+import { BellRing, BookOpen, CandlestickChart, Code2, FlaskConical, Heart, Info, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -68,6 +68,9 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 </Link>
                 <Link href="/strategies" className={cn('side-item', pathname.startsWith('/strategies') && 'is-active')}>
                     <FlaskConical /> {tx(lang, 'nav.strategies')}
+                </Link>
+                <Link href="/alerts" className={cn('side-item', pathname.startsWith('/alerts') && 'is-active')}>
+                    <BellRing /> {tx(lang, 'nav.alerts')}
                 </Link>
             </nav>
 

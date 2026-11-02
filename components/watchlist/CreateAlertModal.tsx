@@ -1,10 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { createAlert } from "@/lib/actions/alert.actions";
-import { alertsEnabled } from "@/lib/market-data";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -60,15 +58,14 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
         <Dialog open={open} onOpenChange={onOpenChange}>
             {children && <DialogTrigger asChild>{children}</DialogTrigger>}
             <DialogContent className="sm:max-w-[420px] gap-5" closeLabel={tx(lang, 'dialog.close')}>
-                {alertsEnabled ? (
-                    <>
-                        <div>
+                <div className="flex flex-col gap-5">
+                    <div>
                             <p className="kicker text-brand-ink">{tx(lang, 'alertModal.kicker')}</p>
                             <DialogTitle className="mt-1 text-xl font-bold tracking-tight mono">{symbol}</DialogTitle>
                             <DialogDescription className="mt-1 text-[13px] text-faint">
                                 {tx(lang, 'alertModal.desc')}
                             </DialogDescription>
-                        </div>
+                    </div>
 
                         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                             <div className="grid grid-cols-2 gap-1 rounded-[12px] bg-page p-1" role="radiogroup" aria-label={tx(lang, 'alertModal.condition')}>
@@ -121,21 +118,7 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                                 {loading ? tx(lang, 'alertModal.setting') : tx(lang, 'alertModal.set')}
                             </button>
                         </form>
-                    </>
-                ) : (
-                    // Alerts are an OpenStock Cloud feature; the free hourly site points people to it
-                    <div>
-                        <p className="kicker text-brand-ink">OpenStock Cloud</p>
-                        <DialogTitle className="mt-1 text-xl font-bold tracking-tight">{tx(lang, 'alertModal.cloudTitle')}</DialogTitle>
-                        <DialogDescription className="mt-2 text-[13.5px] leading-relaxed text-muted-foreground">
-                            {tx(lang, 'alertModal.cloudBody')}
-                        </DialogDescription>
-                        <div className="mt-5 flex gap-2">
-                            <Link href="/#data" className="btn btn-primary h-11 flex-1">{tx(lang, 'alertModal.cloudCta')}</Link>
-                            <Link href="/#self-host" className="btn btn-ghost h-11">{tx(lang, 'alertModal.selfHost')}</Link>
-                        </div>
-                    </div>
-                )}
+                </div>
             </DialogContent>
         </Dialog>
     );

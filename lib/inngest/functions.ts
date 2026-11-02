@@ -7,6 +7,7 @@ import { getFormattedTodayDate } from "@/lib/utils";
 import { callAIProviderWithFallback } from "@/lib/ai-provider";
 import { refreshScreenerSlice, SCREENER_BATCH_LIMIT } from "@/lib/screener-refresh";
 import { SCREENER_TOTAL } from "@/lib/screener-universe";
+import type { AlertCondition } from "@/lib/alerts";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
@@ -96,7 +97,7 @@ export const sendWeeklyNewsSummary = inngest.createFunction(
             try {
                 const subData = await kit.listSubscribers();
                 const subscriberList = subData.subscribers || [];
-                const confirmedCount = subscriberList.filter((s: any) => s.state === 'active').length;
+                const confirmedCount = subscriberList.filter((s: { state?: string }) => s.state === 'active').length;
 
                 console.log(`📋 Target Audience: Found ${subData.total_subscribers} total subscribers in Kit.`);
                 console.log(`✅ Confirmed (Active) Subscribers receiving email: ${confirmedCount}`);
@@ -222,49 +223,78 @@ export const checkStockAlerts = inngest.createFunction(
         }
 
         // Step 2: Group by symbol
-        const symbols = [...new Set(activeAlerts.map((a: any) => a.symbol))];
+        type StoredAlert = {
+            _id: unknown;
+            userId: string;
+            symbol: string;
+            condition: AlertCondition;
+            targetPrice: number;
+            lastPrice?: number | null;
+        };
+        const alerts = activeAlerts as unknown as StoredAlert[];
+        const symbols = [...new Set(alerts.map((alert) => alert.symbol))];
 
-        // Step 3: Fetch prices
+        // Step 3: Price each symbol through the source lib/alerts.ts picked for it — Yahoo for
+        // Tadawul, Finnhub for US stocks and crypto. The same routing the on-visit check uses.
         const prices = await step.run('fetch-prices', async () => {
-            const { getQuote } = await import("@/lib/actions/finnhub.actions");
-            const priceMap: Record<string, number> = {};
+            const { alertSource, alertYahooSymbol } = await import("@/lib/alerts");
+            const { getLiveQuotes } = await import("@/lib/actions/finnhub.actions");
+            const { getYahooDailyQuotes } = await import("@/lib/actions/yahoo.actions");
 
-            // Process in chunks to be safe
-            for (const sym of symbols) {
-                try {
-                    const quote = await getQuote(sym as string);
-                    if (quote && quote.c) {
-                        priceMap[sym as string] = quote.c;
-                    }
-                } catch (e) {
-                    console.error(`Failed to fetch price for ${sym}`, e);
+            const snapshots: Record<string, { price: number; changePercent: number }> = {};
+            const yahoo = symbols.filter((symbol) => alertSource(symbol) === 'yahoo');
+            const finnhub = symbols.filter((symbol) => alertSource(symbol) === 'finnhub');
+
+            if (yahoo.length > 0) {
+                const quotes = await getYahooDailyQuotes(yahoo.map((symbol) => alertYahooSymbol(symbol) ?? symbol));
+                for (const symbol of yahoo) {
+                    const quote = quotes[alertYahooSymbol(symbol) ?? symbol];
+                    if (quote) snapshots[symbol] = { price: quote.price, changePercent: quote.changePercent };
                 }
             }
-            return priceMap;
+            if (finnhub.length > 0) {
+                const quotes = await getLiveQuotes(finnhub);
+                for (const symbol of finnhub) {
+                    const quote = quotes[symbol];
+                    if (quote?.c) snapshots[symbol] = { price: quote.c, changePercent: Number(quote.dp ?? 0) };
+                }
+            }
+            return snapshots;
         });
 
-        // Step 4: Check conditions
-        type TriggeredAlert = { alert: any; currentPrice: number };
-        const triggeredAlerts: TriggeredAlert[] = [];
+        // Step 4: Evaluate every rule with the shared engine, exactly as the alert centre does.
+        const { evaluateAlert } = await import("@/lib/alerts");
+        type Snapshot = { price: number; changePercent: number };
+        const triggeredAlerts: { alert: StoredAlert; snapshot: Snapshot }[] = [];
+        const watching: { id: unknown; price: number }[] = [];
 
-        for (const alert of activeAlerts as any[]) {
-            const currentPrice = prices[alert.symbol];
-            if (!currentPrice) continue;
+        for (const alert of alerts) {
+            const snapshot = (prices as Record<string, Snapshot>)[alert.symbol];
+            if (!snapshot) continue; // a quote that failed is skipped, never read as zero
 
-            let isTriggered = false;
-            // Simple check
-            if (alert.condition === 'ABOVE' && currentPrice >= alert.targetPrice) {
-                isTriggered = true;
-            } else if (alert.condition === 'BELOW' && currentPrice <= alert.targetPrice) {
-                isTriggered = true;
-            }
-
-            if (isTriggered) {
-                triggeredAlerts.push({ alert, currentPrice });
-            }
+            const hit = evaluateAlert(
+                { condition: alert.condition, targetPrice: alert.targetPrice, lastPrice: alert.lastPrice ?? null },
+                snapshot,
+            );
+            if (hit) triggeredAlerts.push({ alert, snapshot });
+            else watching.push({ id: alert._id, price: snapshot.price });
         }
 
-        // Step 5: Email the alert owner, then mark triggered
+        // Remember this check's price, so a cross rule has a previous price next time.
+        if (watching.length > 0) {
+            await step.run('remember-prices', async () => {
+                const { connectToDatabase } = await import("@/database/mongoose");
+                const { Alert } = await import("@/database/models/alert.model");
+                await connectToDatabase();
+                await Alert.bulkWrite(
+                    watching.map(({ id, price }) => ({
+                        updateOne: { filter: { _id: id, triggered: false }, update: { $set: { lastPrice: price } } },
+                    })),
+                );
+            });
+        }
+
+        // Step 5: Claim what fired, email the price rules, and keep the rest in-app.
         if (triggeredAlerts.length > 0) {
             await step.run('process-triggered-alerts', async () => {
                 const { connectToDatabase } = await import("@/database/mongoose");
@@ -273,17 +303,35 @@ export const checkStockAlerts = inngest.createFunction(
                 const db = mongoose.connection.db;
                 if (!db) throw new Error("No DB Connection");
 
-                for (const { alert, currentPrice } of triggeredAlerts) {
+                for (const { alert, snapshot } of triggeredAlerts) {
                     // Claim the alert atomically before emailing. Inngest's concurrency limits steps, not
                     // whole runs, so two overlapping runs can hold the same alert; only one wins this update.
                     const claimed = await Alert.findOneAndUpdate(
                         { _id: alert._id, active: true, triggered: false },
-                        { $set: { triggered: true, active: false } },
+                        {
+                            $set: {
+                                triggered: true,
+                                active: false,
+                                triggeredAt: new Date(),
+                                triggeredPrice: snapshot.price,
+                                lastPrice: snapshot.price,
+                                seen: false,
+                            },
+                        },
                     );
                     if (!claimed) continue;
-                    const release = () => Alert.findByIdAndUpdate(alert._id, { triggered: false, active: true }).catch(() => {});
+                    const release = () => Alert.findByIdAndUpdate(alert._id, {
+                        triggered: false,
+                        active: true,
+                        triggeredAt: null,
+                        triggeredPrice: null,
+                    }).catch(() => {});
 
-                    console.log(`🚀 ALERT FIRED: ${alert.symbol} is ${currentPrice} (${alert.condition} ${alert.targetPrice})`);
+                    console.log(`🚀 ALERT FIRED: ${alert.symbol} is ${snapshot.price} (${alert.condition} ${alert.targetPrice})`);
+
+                    // The mail templates speak in prices; the four newer rules are announced in the
+                    // alert centre only, so an e-mail never quotes a percentage as a price.
+                    if (alert.condition !== 'ABOVE' && alert.condition !== 'BELOW') continue;
 
                     // Per-alert try/catch: a failure releases the claim so the next 5-min run retries it,
                     // and never throws the step (a step retry would re-email alerts already sent in this loop).
@@ -299,7 +347,7 @@ export const checkStockAlerts = inngest.createFunction(
                             const result = await sendStockAlertEmail({
                                 email: user.email,
                                 symbol: alert.symbol,
-                                currentPrice,
+                                currentPrice: snapshot.price,
                                 targetPrice: alert.targetPrice,
                                 condition: alert.condition,
                             });

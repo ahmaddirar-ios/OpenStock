@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { Plus } from 'lucide-react';
 import { getUserWatchlist } from '@/lib/actions/watchlist.actions';
 import { getUserAlerts } from '@/lib/actions/alert.actions';
-import { alertsEnabled } from '@/lib/market-data';
 import { getWatchlistData } from '@/lib/actions/finnhub.actions';
 import { getWatchlistNews } from '@/lib/actions/news.actions';
 import WatchlistTable from '@/components/watchlist/WatchlistTable';
@@ -69,7 +68,7 @@ export default async function WatchlistPage() {
                     </Panel>
                 </div>
 
-                <Panel title={tx(lang, 'wl.alerts')} sub={alertsEnabled ? tx(lang, 'wl.alertsSub').replace('{n}', arDigits(activeAlerts, lang)) : tx(lang, 'wl.alertsCloud')} className="self-start">
+                <Panel title={tx(lang, 'wl.alerts')} sub={tx(lang, 'wl.alertsSub').replace('{n}', arDigits(activeAlerts, lang))} className="self-start">
                     <AlertsPanel alerts={alerts} lang={lang} />
                 </Panel>
             </div>

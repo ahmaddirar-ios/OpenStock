@@ -6,6 +6,7 @@ import { isStockInWatchlist } from "@/lib/actions/watchlist.actions";
 import { getCompanyProfile, getLiveQuotes } from "@/lib/actions/finnhub.actions";
 import { formatNumber, formatPrice, formatSymbolForTradingView } from "@/lib/utils";
 import { hasFinnhubQuotes } from "@/lib/markets";
+import { alertSource } from "@/lib/alerts";
 import { symbolInfoConfig } from "@/lib/constants";
 import { tx, type Lang } from "@/lib/i18n";
 import TradingViewWidget from "@/components/TradingViewWidget";
@@ -42,9 +43,16 @@ async function TradingViewHeader({ symbol, lang }: { symbol: string; lang: Lang 
                 )}
                 <div className="flex items-center gap-2">
                     <WatchlistButton symbol={symbol} company={saudi?.name || symbol} isInWatchlist={isInWatchlist} lang={lang} />
-                    <span className="pill h-9 px-3" title={tx(lang, 'alert.tooltipQuote')}>
-                        <Bell /> {tx(lang, 'stock.alertsTV')}
-                    </span>
+                    {alertSource(symbol) ? (
+                        // Alerts price Saudi listings through Yahoo now, so the modal belongs here too.
+                        <CreateAlertModal symbol={symbol} currentPrice={saudi?.price} currency={saudi?.currency} lang={lang}>
+                            <button type="button" className="btn btn-primary"><Bell /> {tx(lang, 'stock.setAlert')}</button>
+                        </CreateAlertModal>
+                    ) : (
+                        <span className="pill h-9 px-3" title={tx(lang, 'alert.tooltipQuote')}>
+                            <Bell /> {tx(lang, 'stock.alertsTV')}
+                        </span>
+                    )}
                 </div>
             </div>
             {!tadawul && (

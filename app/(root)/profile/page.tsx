@@ -7,7 +7,6 @@ import PasswordForm from "@/components/profile/PasswordForm";
 import { auth, getSession } from "@/lib/better-auth/auth";
 import { getUserWatchlist } from "@/lib/actions/watchlist.actions";
 import { getUserAlerts } from "@/lib/actions/alert.actions";
-import { alertsEnabled } from "@/lib/market-data";
 import { getLang } from "@/lib/i18n-server";
 import { methodLabel, tx, type Lang } from "@/lib/i18n";
 import { arNumberDigits } from '@/lib/i18n';
@@ -42,7 +41,7 @@ export default async function ProfilePage() {
 
     const stats = [
         { label: tx(lang, 'profile.watching'), value: watchlist.length, icon: Star },
-        { label: alertsEnabled ? tx(lang, 'profile.alerts') : tx(lang, 'profile.alertsPaused'), value: activeAlerts, icon: Bell },
+        { label: tx(lang, 'profile.alerts'), value: activeAlerts, icon: Bell },
         { label: tx(lang, 'profile.methods'), value: linked.size, icon: ShieldCheck },
     ];
 
