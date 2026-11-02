@@ -5,10 +5,15 @@ import { ChevronDown, Plus, Search, X } from 'lucide-react';
 import {
     MAX_STUDIES,
     STUDIES,
+    STUDY_COLOR_SOURCES,
+    STUDY_COLOR_TOKENS,
     STUDY_IDS,
+    STUDY_WIDTHS,
     defaultStudy,
     describeStudy,
     studiesParam,
+    studyColor,
+    studyWidth,
     type StudyConfig,
     type StudyId,
 } from '@/lib/chart-studies';
@@ -82,6 +87,11 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                 i === index ? { ...study, params: { ...study.params, [key]: clamped } } : study,
             ),
         );
+    };
+
+    /** Restyles one study: the whole card keeps its place, only the style changes. */
+    const restyle = (index: number, patch: Pick<StudyConfig, 'color' | 'width'>) => {
+        onChange(studies.map((study, i) => (i === index ? { ...study, ...patch } : study)));
     };
 
     /** Drops the draft so the box shows the value that was actually applied. */
@@ -162,6 +172,66 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                         >
                                             <X className="size-3.5" />
                                         </button>
+                                    </div>
+                                    <div className="mt-1 flex items-center gap-2 text-[10.5px] text-faint">
+                                        <span>{t('study.width')}</span>
+                                        <div
+                                            role="group"
+                                            aria-label={t('study.width')}
+                                            className="flex items-center gap-0.5"
+                                        >
+                                            {STUDY_WIDTHS.map((step) => {
+                                                const active = studyWidth(study) === step;
+                                                return (
+                                                    <button
+                                                        key={step}
+                                                        type="button"
+                                                        onClick={() => restyle(index, { width: step })}
+                                                        aria-pressed={active}
+                                                        aria-label={`${t('study.width')} ${arDigits(step, lang)}`}
+                                                        className={cn(
+                                                            'num rounded-[5px] px-1 py-px text-[10.5px] transition-colors',
+                                                            active
+                                                                ? 'bg-hover/60 text-foreground'
+                                                                : 'hover:bg-hover/30',
+                                                        )}
+                                                    >
+                                                        {arDigits(step, lang)}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {/* Colour is offered only where it cannot erase a meaning: on a
+                                            single-line study. Multi-line studies keep their palette. */}
+                                        {def.lines.length === 1 && (
+                                            <div
+                                                role="group"
+                                                aria-label={t('study.colour')}
+                                                className="ms-auto flex items-center gap-1"
+                                            >
+                                                {STUDY_COLOR_TOKENS.map((token) => {
+                                                    const active = studyColor(study, def.lines[0]) === token;
+                                                    const name = t(`study.colour.${token}`);
+                                                    return (
+                                                        <button
+                                                            key={token}
+                                                            type="button"
+                                                            onClick={() => restyle(index, { color: token })}
+                                                            aria-pressed={active}
+                                                            aria-label={name}
+                                                            title={name}
+                                                            style={{
+                                                                background: `var(${STUDY_COLOR_SOURCES[token].token})`,
+                                                            }}
+                                                            className={cn(
+                                                                'size-3 rounded-full ring-1 ring-line transition-shadow',
+                                                                active && 'ring-2 ring-foreground',
+                                                            )}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                     {def.params.length > 0 && (
                                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">

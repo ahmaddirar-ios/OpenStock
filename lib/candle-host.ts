@@ -13,7 +13,15 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
-import { STUDIES, type ColorToken, type StudyConfig } from '@/lib/chart-studies';
+import {
+    STUDIES,
+    STUDY_COLOR_SOURCES,
+    studyColor,
+    studyWidth,
+    type ColorToken,
+    type StudyConfig,
+    type StudyWidth,
+} from '@/lib/chart-studies';
 import type { Series } from '@/lib/indicators';
 import type { CandleSet } from '@/lib/yahoo-candles';
 
@@ -86,21 +94,16 @@ const line = (series: Series, candles: CandleSet['candles']) =>
     });
 
 /** Adds a line series to the price pane (pane 0) — the SMA and EMA overlays. */
-const overlay = (chart: IChartApi, points: { time: UTCTimestamp; value: number }[], color: string) => {
+const overlay = (
+    chart: IChartApi,
+    points: { time: UTCTimestamp; value: number }[],
+    color: string,
+    lineWidth: StudyWidth,
+) => {
     if (points.length === 0) return null;
-    const series = chart.addSeries(LineSeries, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const series = chart.addSeries(LineSeries, { color, lineWidth, priceLineVisible: false, lastValueVisible: false });
     series.setData(points);
     return series;
-};
-
-/** Theme tokens a study may paint with, and the colour to fall back on before the CSS resolves. */
-const STUDY_COLORS: Record<ColorToken, { token: string; fallback: string }> = {
-    brand: { token: '--brand', fallback: '#34d399' },
-    warn: { token: '--warn', fallback: '#f6c76b' },
-    up: { token: '--up', fallback: '#4ade80' },
-    down: { token: '--down', fallback: '#f87171' },
-    faint: { token: '--faint', fallback: '#7d8a84' },
-    muted: { token: '--muted-foreground', fallback: '#94a3b8' },
 };
 
 export function createCandleHost(container: HTMLElement, options: CandleHostOptions = {}): CandleHost {
@@ -148,10 +151,10 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let studies: StudyConfig[] = options.studies ?? [];
     const overlays: ISeriesApi<'Line'>[] = [];
     const colorCache = new Map<ColorToken, string>();
-    const studyColor = (color: ColorToken) => {
+    const resolveColor = (color: ColorToken) => {
         const cached = colorCache.get(color);
         if (cached) return cached;
-        const resolved = token(STUDY_COLORS[color].token, STUDY_COLORS[color].fallback);
+        const resolved = token(STUDY_COLOR_SOURCES[color].token, STUDY_COLOR_SOURCES[color].fallback);
         colorCache.set(color, resolved);
         return resolved;
     };
@@ -235,6 +238,10 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 ownedPanes.push(pane);
             }
 
+            // A study-level stroke applies to all its lines; the colour only where it means nothing
+            // structural — `studyColor` refuses an override on a multi-line study.
+            const width = studyWidth(study);
+
             for (const spec of drawn) {
                 const values = computed[spec.key];
                 // Keyed by list position, not study id: two SMAs must stay distinguishable.
@@ -259,12 +266,17 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                     chart
                         .addSeries(
                             LineSeries,
-                            { color: studyColor(spec.color), lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+                            {
+                                color: resolveColor(studyColor(study, spec)),
+                                lineWidth: width,
+                                priceLineVisible: false,
+                                lastValueVisible: false,
+                            },
                             pane,
                         )
                         .setData(points);
                 } else {
-                    const series = overlay(chart, points, studyColor(spec.color));
+                    const series = overlay(chart, points, resolveColor(studyColor(study, spec)), width);
                     if (series) overlays.push(series);
                 }
             }

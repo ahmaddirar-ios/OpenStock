@@ -58,6 +58,22 @@ export type StudyId =
 /** Theme tokens a study may paint with; the host resolves them, the legend maps them to classes. */
 export type ColorToken = 'brand' | 'warn' | 'up' | 'down' | 'faint' | 'muted';
 
+/** The CSS variable and the pre-resolution fallback behind each token. */
+export const STUDY_COLOR_SOURCES: Record<ColorToken, { token: string; fallback: string }> = {
+    brand: { token: '--brand', fallback: '#34d399' },
+    warn: { token: '--warn', fallback: '#f6c76b' },
+    up: { token: '--up', fallback: '#4ade80' },
+    down: { token: '--down', fallback: '#f87171' },
+    faint: { token: '--faint', fallback: '#7d8a84' },
+    muted: { token: '--muted-foreground', fallback: '#94a3b8' },
+};
+
+export const STUDY_COLOR_TOKENS = Object.keys(STUDY_COLOR_SOURCES) as ColorToken[];
+
+/** Three strokes: a hairline, a normal line, and a deliberately heavier one. */
+export const STUDY_WIDTHS = [1, 2, 3] as const;
+export type StudyWidth = (typeof STUDY_WIDTHS)[number];
+
 export type StudyParam = {
     key: string;
     label: StringKey;
@@ -76,7 +92,12 @@ export type StudyLine = {
     kind: 'line' | 'histogram';
 };
 
-export type StudyConfig = { id: StudyId; params: Record<string, number> };
+/**
+ * One configured study. `color` is only honoured on a single-line study: the multi-line ones use
+ * colour to tell their lines apart, so their palette belongs to the definition. `width` is shared by
+ * every line of the study.
+ */
+export type StudyConfig = { id: StudyId; params: Record<string, number>; color?: ColorToken; width?: StudyWidth };
 
 export type StudyDef = {
     id: StudyId;
@@ -375,6 +396,24 @@ export function defaultStudy(id: StudyId): StudyConfig {
 
 const clamp = (value: number, param: StudyParam) => Number(Math.min(param.max, Math.max(param.min, value)).toFixed(2));
 
+const isColorToken = (value: unknown): value is ColorToken =>
+    typeof value === 'string' && (STUDY_COLOR_TOKENS as string[]).includes(value);
+
+const isWidth = (value: unknown): value is StudyWidth =>
+    typeof value === 'number' && (STUDY_WIDTHS as readonly number[]).includes(value);
+
+/** The stroke to draw the study with, defaulting to a hairline. */
+export function studyWidth(study: StudyConfig): StudyWidth {
+    return isWidth(study.width) ? study.width : 1;
+}
+
+/** The colour a line is drawn with, after the study-level override (single-line studies only). */
+export function studyColor(study: StudyConfig, line: StudyLine): ColorToken {
+    const def = STUDIES[study.id];
+    if (!def || def.lines.length !== 1) return line.color;
+    return isColorToken(study.color) ? study.color : line.color;
+}
+
 /** The value actually used by a computation: the stored one, or the default when it is unusable. */
 export function studiesParam(study: StudyConfig, key: string): number {
     const def = STUDIES[study.id];
@@ -409,7 +448,7 @@ export function parseStudies(value: unknown): StudyConfig[] {
     for (const entry of payload.studies) {
         if (out.length >= MAX_STUDIES) break;
         if (!entry || typeof entry !== 'object') continue;
-        const candidate = entry as { id?: unknown; params?: unknown };
+        const candidate = entry as { id?: unknown; params?: unknown; color?: unknown; width?: unknown };
         if (typeof candidate.id !== 'string' || !(candidate.id in STUDIES)) continue;
         const def = STUDIES[candidate.id as StudyId];
         const stored = candidate.params && typeof candidate.params === 'object' ? (candidate.params as Record<string, unknown>) : {};
@@ -419,7 +458,10 @@ export function parseStudies(value: unknown): StudyConfig[] {
             const number = typeof raw === 'number' && Number.isFinite(raw) ? raw : param.default;
             params[param.key] = clamp(number, param);
         }
-        out.push({ id: def.id, params });
+        const entryOut: StudyConfig = { id: def.id, params };
+        if (isColorToken(candidate.color) && def.lines.length === 1) entryOut.color = candidate.color;
+        if (isWidth(candidate.width)) entryOut.width = candidate.width;
+        out.push(entryOut);
     }
     return out;
 }

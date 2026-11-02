@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import type { StringKey } from '@/lib/i18n';
 import {
     MAX_STUDIES,
     STUDIES,
     STUDY_IDS,
     defaultStudy,
     describeStudy,
+    studyColor,
+    studyWidth,
+    STUDY_COLOR_TOKENS,
+    STUDY_WIDTHS,
     parseStudies,
     studiesParam,
     type StudyId,
@@ -110,6 +115,13 @@ describe('the dictionary', () => {
                 for (const param of def.params) expect(tx(lang, param.label)).not.toBe('');
                 for (const line of def.lines) expect(tx(lang, line.name)).not.toBe('');
                 expect(describeStudy(defaultStudy(id), lang)).toContain(tx(lang, def.label));
+                for (const key of ['study.width', 'study.colour'] as StringKey[]) {
+                    expect(tx(lang, key), `${lang} ${key}`).not.toBe('');
+                }
+                for (const token of STUDY_COLOR_TOKENS) {
+                    const key: StringKey = `study.colour.${token}`;
+                    expect(tx(lang, key), `${lang} ${token}`).not.toBe('');
+                }
             }
         }
     });
@@ -173,5 +185,49 @@ describe('parseStudies', () => {
     it('caps the list at the pane budget', () => {
         const many = Array.from({ length: MAX_STUDIES + 5 }, () => ({ id: 'sma', params: {} }));
         expect(parseStudies(stored(many))).toHaveLength(MAX_STUDIES);
+    });
+});
+
+describe('style', () => {
+    it('defaults to a hairline in the line\'s own colour', () => {
+        const sma = defaultStudy('sma');
+        expect(studyWidth(sma)).toBe(1);
+        expect(studyColor(sma, STUDIES.sma.lines[0])).toBe('brand');
+    });
+
+    it('lets a single-line study change colour', () => {
+        const sma = { ...defaultStudy('sma'), color: 'down' as const };
+        expect(studyColor(sma, STUDIES.sma.lines[0])).toBe('down');
+    });
+
+    it('keeps the definition palette on a multi-line study', () => {
+        // The three Bollinger lines mean upper / middle / lower: a single override would erase that.
+        const bb = { ...defaultStudy('bb'), color: 'down' as const };
+        expect(studyColor(bb, STUDIES.bb.lines[0])).toBe('faint');
+        expect(studyColor(bb, STUDIES.bb.lines[1])).toBe('warn');
+    });
+
+    it('reads any width it is given as one of the three steps', () => {
+        expect(studyWidth({ ...defaultStudy('sma'), width: 3 })).toBe(3);
+        expect(studyWidth({ ...defaultStudy('sma'), width: 2 })).toBe(2);
+        expect(studyWidth({ ...defaultStudy('sma'), width: 7 as 3 })).toBe(1);
+        expect(studyWidth({ ...defaultStudy('sma'), width: -1 as 1 })).toBe(1);
+    });
+
+    it('carries the style through storage, dropping what it cannot draw', () => {
+        const stored = (studies: unknown) => ({ v: 1, studies });
+        const [sma] = parseStudies(stored([{ id: 'sma', params: {}, color: 'up', width: 3 }]));
+        expect(sma).toMatchObject({ id: 'sma', color: 'up', width: 3 });
+
+        const [unknown] = parseStudies(stored([{ id: 'sma', params: {}, color: 'pink', width: 3 }]));
+        expect(unknown.color).toBeUndefined();
+
+        const [wide] = parseStudies(stored([{ id: 'sma', params: {}, width: 99 }]));
+        expect(wide.width).toBeUndefined();
+
+        // A colour stored against a multi-line study is meaningless, so it is not carried.
+        const [bb] = parseStudies(stored([{ id: 'bb', params: {}, color: 'up', width: 2 }]));
+        expect(bb.color).toBeUndefined();
+        expect(bb.width).toBe(2);
     });
 });

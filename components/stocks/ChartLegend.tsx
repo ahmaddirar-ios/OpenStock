@@ -2,7 +2,15 @@
 
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { compactVolume, type BarReadout } from '@/lib/chart-readout';
-import { STUDIES, describeStudy, type ColorToken, type StudyConfig, type StudyId, type StudyLine } from '@/lib/chart-studies';
+import {
+    STUDIES,
+    describeStudy,
+    studyColor,
+    type ColorToken,
+    type StudyConfig,
+    type StudyId,
+    type StudyLine,
+} from '@/lib/chart-studies';
 import { cn } from '@/lib/utils';
 
 // The chart's own reading of the bar under the crosshair: O H L C, the change against the previous
@@ -105,7 +113,7 @@ export default function ChartLegend({ lang, readout, studies, className }: Props
                         if (values.length === 0) return null;
                         return (
                             <span key={`${index}:${study.id}`} className="inline-flex items-baseline gap-1">
-                                <span className={LABEL_TONE[def.lines[0].color]}>{describeStudy(study, lang)}</span>
+                                <span className={LABEL_TONE[studyColor(study, def.lines[0])]}>{describeStudy(study, lang)}</span>
                                 {values.map(({ line, value }) => (
                                     <span
                                         key={line.key}
