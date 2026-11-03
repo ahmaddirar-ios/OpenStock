@@ -57,4 +57,11 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     'ew-count-abc': 'chart.count.correction',
     cycles: 'chart.pat.cycles',
     sine: 'chart.pat.sine',
+    ray: 'chart.tool.ray',
+    extended: 'chart.tool.extended',
+    hray: 'chart.tool.hray',
+    vline: 'chart.tool.vline',
+    cross: 'chart.tool.cross',
+    trendangle: 'chart.tool.trendangle',
+    info: 'chart.tool.info',
 };

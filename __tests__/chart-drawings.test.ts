@@ -80,6 +80,13 @@ describe('the tool registry', () => {
             'channel',
             'arrow',
             'pricetime',
+            'ray',
+            'extended',
+            'hray',
+            'vline',
+            'cross',
+            'trendangle',
+            'info',
         ]);
         expect(toolsInGroup('fib').map((d) => d.tool)).toEqual(['fib']);
         expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual(['text']);

@@ -17,6 +17,13 @@ export type ShapeKind =
     | 'channel'
     | 'arrow'
     | 'pricetime'
+    | 'ray'
+    | 'extended'
+    | 'hray'
+    | 'vline'
+    | 'cross'
+    | 'trendangle'
+    | 'info'
     | 'fib'
     | 'gann'
     | 'text'
@@ -29,6 +36,8 @@ export type ShapeKind =
 export type ShapeTool =
     // lines and boxes
     | 'trend' | 'horizontal' | 'rectangle' | 'xrect' | 'channel' | 'arrow' | 'pricetime' | 'fib' | 'gann' | 'text'
+    // the basic line family
+    | 'ray' | 'extended' | 'hray' | 'vline' | 'cross' | 'trendangle' | 'info'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -116,6 +125,15 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'channel', group: 'lines', kind: 'channel', clicks: 3, defaultColor: 'violet' },
     { tool: 'arrow', group: 'lines', kind: 'arrow', clicks: 2, defaultColor: 'orange' },
     { tool: 'pricetime', group: 'lines', kind: 'pricetime', clicks: 2, defaultColor: 'white' },
+
+    // The basic line family: one segment whose far end the chart's edges decide.
+    { tool: 'ray', group: 'lines', kind: 'ray', clicks: 2, defaultColor: 'blue' },
+    { tool: 'extended', group: 'lines', kind: 'extended', clicks: 2, defaultColor: 'blue' },
+    { tool: 'hray', group: 'lines', kind: 'hray', clicks: 1, defaultColor: 'blue' },
+    { tool: 'vline', group: 'lines', kind: 'vline', clicks: 1, defaultColor: 'white' },
+    { tool: 'cross', group: 'lines', kind: 'cross', clicks: 2, defaultColor: 'white' },
+    { tool: 'trendangle', group: 'lines', kind: 'trendangle', clicks: 2, defaultColor: 'violet' },
+    { tool: 'info', group: 'lines', kind: 'info', clicks: 2, defaultColor: 'white' },
     { tool: 'fib', group: 'fib', kind: 'fib', clicks: 2, defaultColor: 'gold' },
     { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
     { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },
@@ -174,6 +192,47 @@ export function channelRails(a: DrawPoint, b: DrawPoint, c: DrawPoint): { base: 
 /** What a price/time box measures: the move in price and the span in seconds, signed. */
 export function measureSpan(a: DrawPoint, b: DrawPoint): { price: number; seconds: number } {
     return { price: b.price - a.price, seconds: b.time - a.time };
+}
+
+// --- the basic line family -------------------------------------------------
+// Every tool below paints one segment; what differs is where its far end sits and one click
+// count. The helpers return the *ends* of that segment in chart space, so the painter only
+// draws a line between two points and never has to know about the visible range.
+
+/** The price of the line through `a` and `b` at `time` (the pair must not be vertical). */
+const priceAt = (a: DrawPoint, b: DrawPoint, time: number): number =>
+    a.price + ((b.price - a.price) * (time - a.time)) / (b.time - a.time);
+
+/** The far end of a ray drawn from `a` through `b` and continued to the chart's right edge. */
+export function rayEnd(a: DrawPoint, b: DrawPoint, edgeTime: number): DrawPoint {
+    // A vertical pair has no horizontal direction to extend, and an edge behind the second
+    // point means the ray already ends inside the picture.
+    if (b.time === a.time || edgeTime <= b.time) return b;
+    return { time: edgeTime, price: priceAt(a, b, edgeTime) };
+}
+
+/** Both ends of the line through `a` and `b`, extended to the chart's first and last visible bars.
+ *  The result is always in time order, whichever way the two points were clicked. */
+export function extendedEnds(a: DrawPoint, b: DrawPoint, minTime: number, maxTime: number): [DrawPoint, DrawPoint] {
+    if (b.time === a.time) return [a, b];
+    return [
+        { time: minTime, price: priceAt(a, b, minTime) },
+        { time: maxTime, price: priceAt(a, b, maxTime) },
+    ];
+}
+
+/** The angle of the line a→b as the trader reads it: screen pixels above horizontal, signed.
+ *  The scale is the chart's own (pixels per second and pixels per price unit), so the number
+ *  matches the slope the eye sees rather than the raw time/price delta. The line is always
+ *  measured left to right, so the same line clicked backwards reads the same. */
+export function trendAngleDeg(a: DrawPoint, b: DrawPoint, scale: { pxPerTime: number; pxPerPrice: number }): number {
+    let dx = (b.time - a.time) * scale.pxPerTime;
+    let dy = (b.price - a.price) * scale.pxPerPrice;
+    if (dx < 0) {
+        dx = -dx;
+        dy = -dy;
+    }
+    return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
 /** A pointer for an arrow tip, in SVG coordinates: the two barbs of a head that points at `to`. */
