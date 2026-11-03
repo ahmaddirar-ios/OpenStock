@@ -1304,7 +1304,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     return (
         <div className="flex flex-col gap-2">
             {/* The chart itself stays LTR: mirrored axes and prices are the one thing RTL must not touch. */}
-            <div className="flex flex-wrap items-center gap-1.5" dir="ltr">
+            <div className="chart-toolbar" dir="ltr">
                 {timeframes.map((timeframe) => (
                     <button
                         key={timeframe.id}
@@ -1512,7 +1512,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
 
             {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away. */}
             {!replay && (
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="chart-toolbar">
                 <button
                     type="button"
                     onClick={() => startTool('select')}

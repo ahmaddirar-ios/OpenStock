@@ -279,7 +279,7 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
 
     return (
         <div className="flex flex-col gap-2.5">
-            <div className="flex flex-wrap items-center gap-1.5" dir="ltr">
+            <div className="chart-toolbar" dir="ltr">
                 <LayoutPicker value={layout} onChange={chooseLayout} lang={lang} />
                 <span className="mx-1 h-4 w-px bg-line" />
                 {timeframes.map((timeframe) => (
@@ -315,7 +315,7 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
             </div>
 
             {replay && (
-                <div className="flex flex-wrap items-center gap-1.5 rounded-[10px] bg-page/60 px-2.5 py-1.5" dir="ltr">
+                <div className="chart-toolbar" dir="ltr">
                     <button
                         type="button"
                         onClick={() => step(-1)}

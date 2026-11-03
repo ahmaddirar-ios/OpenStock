@@ -60,7 +60,7 @@ export default async function LandingPage() {
 
     return (
         <>
-            <section className="mx-auto grid max-w-[1200px] items-center gap-12 px-5 pt-14 md:pt-20 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <section className="ambient mx-auto grid max-w-[1200px] items-center gap-12 px-5 pt-16 md:pt-24 lg:grid-cols-[minmax(0,1fr)_340px]">
                 <div>
                     <MarketStatus />
                     <h1 className="mt-6 text-[44px] font-bold leading-[1.02] tracking-[-0.05em] md:text-[68px]">

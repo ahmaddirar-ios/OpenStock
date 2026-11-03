@@ -6,7 +6,7 @@ import Sidebar from "@/components/shell/Sidebar";
 import TabBar from "@/components/shell/TabBar";
 import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
-import type { Lang } from "@/lib/i18n";
+import { tx, type Lang } from "@/lib/i18n";
 import UpdateBanner from "@/components/UpdateBanner";
 
 type AppShellProps = {
@@ -30,6 +30,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
 
     return (
         <div className="shell">
+            <a href="#main" className="skip-link">{tx(lang, 'a11y.skip')}</a>
             <div
                 className={cn(
                     'min-h-0 max-lg:fixed max-lg:inset-y-0 max-lg:z-50 max-lg:w-[272px] max-lg:transition-transform max-lg:duration-200',
@@ -47,7 +48,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
             <div className="shell-container">
                 <div className="app">
                     <TabBar onMenu={() => setNavOpen(true)} lang={lang} />
-                    <main ref={workspaceRef} className={cn('workspace', pathname === '/dashboard' && 'is-first-tab')}>
+                    <main id="main" tabIndex={-1} ref={workspaceRef} className={cn('workspace', pathname === '/dashboard' && 'is-first-tab')}>
                         <div className="workspace-inner">
                             <UpdateBanner lang={lang} />
                             {children}

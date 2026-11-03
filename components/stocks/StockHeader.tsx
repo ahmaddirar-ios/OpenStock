@@ -28,20 +28,21 @@ async function TradingViewHeader({ symbol, lang }: { symbol: string; lang: Lang 
     const tvSymbol = formatSymbolForTradingView(symbol);
     return (
         <section className="hatch">
-            <div className="card flex flex-wrap items-center justify-between gap-4 p-4">
+            <div className="card flex flex-wrap items-center justify-between gap-x-6 gap-y-4 p-4">
                 <div className="min-w-0">
-                    <h1 dir="ltr" className="mono truncate text-xl font-bold tracking-[-0.02em]">{symbol}</h1>
-                    <p className="text-[12.5px] text-faint">
+                    <h1 dir="ltr" className="mono text-[22px] font-bold leading-none tracking-[-0.02em]">{symbol}</h1>
+                    <p className="mt-1.5 truncate text-[12.5px] text-faint">
                         {[tvSymbol.split(':')[0], (lang === 'ar' ? saudiSymbolNameAr(symbol) : null) ?? saudi?.name, tadawul ? tx(lang, 'stock.yahooQuote') : tx(lang, 'stock.tvQuote')].filter(Boolean).join(' · ')}
                     </p>
                 </div>
-                {saudi && (
-                    <div className="flex items-center gap-3">
-                        <p className="num text-2xl font-bold tracking-[-0.03em]"><Price value={saudi.price} currency={saudi.currency} lang={lang} /></p>
-                        <ChangePill value={saudi.changePercent} lang={lang} />
-                    </div>
-                )}
-                <div className="flex items-center gap-2">
+                <div className="ms-auto flex items-center gap-5">
+                    {saudi && (
+                        <div className="text-end">
+                            <p className="num text-[30px] font-bold leading-none tracking-[-0.035em]"><Price value={saudi.price} currency={saudi.currency} lang={lang} /></p>
+                            <div className="mt-2 flex justify-end"><ChangePill value={saudi.changePercent} lang={lang} /></div>
+                        </div>
+                    )}
+                    <div className="flex items-center gap-2">
                     <WatchlistButton symbol={symbol} company={saudi?.name || symbol} isInWatchlist={isInWatchlist} lang={lang} />
                     {alertSource(symbol) ? (
                         // Alerts price Saudi listings through Yahoo now, so the modal belongs here too.
@@ -53,6 +54,7 @@ async function TradingViewHeader({ symbol, lang }: { symbol: string; lang: Lang 
                             <Bell /> {tx(lang, 'stock.alertsTV')}
                         </span>
                     )}
+                    </div>
                 </div>
             </div>
             {!tadawul && (

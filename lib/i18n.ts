@@ -198,6 +198,7 @@ const en = {
     // Shared (a11y, boundary pages, currency text)
     'common.loading': 'Loading',
     'common.retry': 'Try again',
+    'a11y.skip': 'Skip to content',
     'currency.sar': 'Saudi riyal',
     'currency.sarShort': 'SAR',
     'notFound.title': 'This page could not be found',
@@ -1039,6 +1040,7 @@ const ar: Record<StringKey, string> = {
     'news.empty': 'لا أخبار حديثة',
     'common.loading': 'جارٍ التحميل',
     'common.retry': 'أعد المحاولة',
+    'a11y.skip': 'تخطَّ إلى المحتوى',
     'currency.sar': 'ريال سعودي',
     'currency.sarShort': 'ر.س',
     'notFound.title': 'لم نجد هذه الصفحة',

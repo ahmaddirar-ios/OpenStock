@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import ChangePill from '@/components/ChangePill';
 import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
 import { tadawulAppSymbol } from '@/lib/yahoo';
@@ -78,19 +77,16 @@ export async function SaudiMovers({ market, count = 8, lang }: { market: Market;
                 const up = quote.changePercent >= 0;
                 return (
                     <li key={symbol}>
-                        <Link href={`/stocks/${tadawulAppSymbol(symbol)}`} className="flex items-center gap-3 rounded-[10px] px-3 py-2 transition-colors hover:bg-hover/60">
-                            <span className={up ? 'text-up' : 'text-down'}>
-                                {up ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-                            </span>
+                        <Link href={`/stocks/${tadawulAppSymbol(symbol)}`} className="row-item flex items-center gap-3">
                             <span className="min-w-0 flex-1">
                                 <span dir="auto" className="block truncate text-[13.5px] font-semibold">
                                     {(lang === 'ar' ? saudiSymbolNameAr(tadawulAppSymbol(symbol) ?? '') : null) ?? name}
                                 </span>
-                                <span dir="ltr" className="mono block text-[11.5px] text-faint">{symbol.replace('TADAWUL:', '')}</span>
+                                <span dir="ltr" className="mono mt-0.5 block text-[11.5px] text-faint">{symbol.replace('TADAWUL:', '')}</span>
                             </span>
-                            <span className="relative h-1.5 w-20 overflow-hidden rounded-full bg-hover">
+                            <span className="relative hidden h-1.5 w-24 overflow-hidden rounded-full bg-hover sm:block">
                                 <span
-                                    className={`absolute inset-y-0 rounded-full ${up ? 'left-0 bg-up' : 'right-0 bg-down'}`}
+                                    className={`absolute inset-y-0 rounded-full ${up ? 'start-0 bg-up' : 'end-0 bg-down'}`}
                                     style={{ width: `${(Math.abs(quote.changePercent) / max) * 100}%` }}
                                 />
                             </span>
