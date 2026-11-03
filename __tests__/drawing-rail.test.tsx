@@ -79,19 +79,57 @@ describe('DrawingRail', () => {
         expect(screen.queryByRole('menu')).toBeNull();
     });
 
+    it('keeps the strip short enough for a chart panel, with the view controls folded in', () => {
+        render(<DrawingRail {...baseProps} />);
+        const strip = screen.getByRole('toolbar');
+        // One button per group plus the three history actions: the magnet, the lock, hide-all and
+        // delete live in the first group's flyout, so a 420px chart panel can hold the whole strip.
+        const buttons = within(strip).getAllByRole('button');
+        expect(buttons).toHaveLength(railGroupsWithTools().length + 4);
+        // Nothing on the strip may sit outside it: the CSS scrolls the strip instead.
+        for (const button of buttons) {
+            expect(strip.contains(button)).toBe(true);
+        }
+    });
+
+    it('folds the cursor and view controls into the first group', () => {
+        const onPick = vi.fn();
+        const onMagnet = vi.fn();
+        render(<DrawingRail {...baseProps} onPick={onPick} onMagnet={onMagnet} />);
+
+        fireEvent.click(screen.getByTitle('Cursor'));
+        const menu = screen.getByRole('menu', { name: 'Cursor' });
+        expect(within(menu).getByText('Magnet')).toBeTruthy();
+        expect(within(menu).getByText('Hide all drawings')).toBeTruthy();
+
+        fireEvent.click(within(menu).getByText('Measure'));
+        expect(onPick).toHaveBeenCalledWith('measure');
+
+        // The toggles stay toggles rather than becoming picks.
+        fireEvent.click(screen.getByTitle('Cursor'));
+        fireEvent.click(within(screen.getByRole('menu', { name: 'Cursor' })).getByText('Magnet'));
+        expect(onMagnet).toHaveBeenCalledWith(true);
+    });
+
+    it('disables the destructive rows when there is nothing to act on', () => {
+        render(<DrawingRail {...baseProps} />);
+        fireEvent.click(screen.getByTitle('Cursor'));
+        const menu = screen.getByRole('menu', { name: 'Cursor' });
+        expect((within(menu).getByText('Delete selected').closest('button') as HTMLButtonElement).disabled).toBe(true);
+        expect((within(menu).getByText('Lock drawing').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    });
+
     it('marks the active tool and enables the actions that have something to act on', () => {
         const isDisabled = (key: Parameters<typeof tx>[1]) =>
             (screen.getByTitle(label(key)) as HTMLButtonElement).disabled;
 
         const { rerender } = render(<DrawingRail {...baseProps} />);
         expect(isDisabled('chart.tool.undo')).toBe(true);
-        expect(isDisabled('chart.tool.delete')).toBe(true);
 
-        rerender(<DrawingRail {...baseProps} tool="trend" canUndo canDelete canLock locked />);
+        rerender(<DrawingRail {...baseProps} tool="trend" canUndo canLock locked />);
         // The group holding the active tool is highlighted, so the rail shows where the pick landed.
         expect(screen.getByTitle('Lines').className).toContain('is-on');
         expect(screen.getByTitle('Fibonacci').className).not.toContain('is-on');
         expect(isDisabled('chart.tool.undo')).toBe(false);
-        expect(isDisabled('chart.tool.delete')).toBe(false);
     });
 });

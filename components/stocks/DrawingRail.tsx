@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
     Brush,
     Circle,
@@ -42,6 +42,9 @@ const GROUP_ICONS: Record<ToolGroup, LucideIcon> = {
     brush: Brush,
 };
 
+/** The strip's own flyout, keyed separately from the tool groups. */
+type RailPanel = ToolGroup | 'cursor';
+
 /** A small swatch that hints at how a tool draws, so a row reads without an icon set. */
 function ToolGlyph({ tool }: { tool: ShapeTool }) {
     const kind = toolDef(tool).kind;
@@ -78,8 +81,13 @@ type Props = {
 
 /**
  * The vertical drawing rail, docked on the plotting area's inline-start edge so it
- * flips to the right in Arabic. Each group icon opens one flyout at a time; the
- * cursor cluster and the undo/clear cluster sit above and below the groups.
+ * flips to the right in Arabic.
+ *
+ * The strip holds one button per group (the first being the cursor and view
+ * controls) plus undo/redo/clear. It scrolls inside its own height rather than
+ * growing past the chart, and the flyouts are positioned against the rail's own
+ * box — not the scrolling strip — so a long flyout is never clipped and never
+ * spills below the panel.
  */
 export default function DrawingRail({
     tool,
@@ -102,8 +110,10 @@ export default function DrawingRail({
     label,
     renderGroupExtra,
 }: Props) {
-    const [open, setOpen] = useState<ToolGroup | null>(null);
+    const [open, setOpen] = useState<RailPanel | null>(null);
+    const [flyoutTop, setFlyoutTop] = useState(4);
     const rootRef = useRef<HTMLDivElement>(null);
+    const flyoutRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!open) return;
@@ -121,112 +131,170 @@ export default function DrawingRail({
         };
     }, [open]);
 
-    const clusterBtn = (
+    // A flyout opens beside the button that asked for it, then slides back inside the rail when
+    // that button sits too close to the panel's edge for the whole flyout to fit below it.
+    useEffect(() => {
+        const root = rootRef.current;
+        const flyout = flyoutRef.current;
+        if (!open || !root || !flyout) return;
+        const button = root.querySelector<HTMLElement>(`[data-rail-group="${open}"]`);
+        if (!button) return;
+        const rootBox = root.getBoundingClientRect();
+        const buttonBox = button.getBoundingClientRect();
+        const room = rootBox.height - flyout.offsetHeight - 4;
+        setFlyoutTop(Math.max(4, Math.min(buttonBox.top - rootBox.top - 4, Math.max(4, room))));
+    }, [open]);
+
+    const toggle = useCallback((panel: RailPanel) => setOpen((current) => (current === panel ? null : panel)), []);
+
+    const stripBtn = (
+        panel: RailPanel,
+        title: string,
+        Icon: LucideIcon,
+        { active = false }: { active?: boolean } = {},
+    ) => (
+        <button
+            key={panel}
+            type="button"
+            data-rail-group={panel}
+            onClick={() => toggle(panel)}
+            aria-expanded={open === panel}
+            aria-haspopup="menu"
+            aria-label={title}
+            title={title}
+            className={cn('draw-rail-btn', (open === panel || active) && 'is-on')}
+        >
+            <Icon className="size-[18px]" />
+        </button>
+    );
+
+    const actionBtn = (
         key: string,
         title: string,
         Icon: LucideIcon,
         onClick: () => void,
-        { active = false, disabled = false, danger = false }: { active?: boolean; disabled?: boolean; danger?: boolean } = {},
+        { disabled = false, danger = false }: { disabled?: boolean; danger?: boolean } = {},
     ) => (
         <button
             key={key}
             type="button"
             onClick={onClick}
             disabled={disabled}
-            aria-pressed={active}
             aria-label={title}
             title={title}
-            className={cn('draw-rail-btn', active && 'is-on', danger && 'is-danger')}
+            className={cn('draw-rail-btn', danger && 'is-danger')}
         >
             <Icon className="size-[18px]" />
         </button>
     );
 
+    const row = (
+        key: string,
+        title: string,
+        Icon: LucideIcon,
+        onClick: () => void,
+        {
+            active = false,
+            disabled = false,
+            danger = false,
+            glyph,
+            checkable = false,
+        }: { active?: boolean; disabled?: boolean; danger?: boolean; glyph?: ShapeTool; checkable?: boolean } = {},
+    ) => (
+        <button
+            key={key}
+            type="button"
+            role={checkable ? 'menuitemcheckbox' : 'menuitem'}
+            aria-checked={checkable ? active : undefined}
+            onClick={onClick}
+            disabled={disabled}
+            className={cn('draw-rail-item', active && 'is-on', danger && 'is-danger')}
+        >
+            {glyph ? <ToolGlyph tool={glyph} /> : <Icon className="size-[16px] shrink-0" />}
+            <span>{title}</span>
+        </button>
+    );
+
+    const cursorActive = tool === 'select' || tool === 'measure' || magnet || locked || hidden;
+
     return (
-        <div ref={rootRef} role="toolbar" aria-orientation="vertical" aria-label={label('chart.group.lines')} className="draw-rail">
-            {/* cursor cluster */}
-            <div className="draw-rail-cluster">
-                {clusterBtn('select', label('chart.tool.select'), MousePointer2, () => onPick('select'), { active: tool === 'select' })}
-                {clusterBtn('measure', label('chart.tool.measure'), Ruler, () => onPick('measure'), { active: tool === 'measure' })}
-                {clusterBtn('magnet', label('chart.tool.magnet'), Magnet, () => onMagnet(!magnet), { active: magnet })}
-                {clusterBtn(locked ? 'unlock' : 'lock', label(locked ? 'chart.tool.unlock' : 'chart.tool.lock'), locked ? Lock : Unlock, onToggleLock, {
-                    active: locked,
-                    disabled: !canLock,
+        <div ref={rootRef} className="draw-rail-root">
+            <div
+                role="toolbar"
+                aria-orientation="vertical"
+                aria-label={label('chart.group.cursor')}
+                className="draw-rail"
+                // A flyout is anchored to the rail, so scrolling the strip would leave it behind.
+                onScroll={() => setOpen(null)}
+            >
+                {stripBtn('cursor', label('chart.group.cursor'), MousePointer2, { active: cursorActive })}
+
+                <span className="draw-rail-sep" />
+
+                {railGroupsWithTools().map(({ group, label: groupLabel }) => {
+                    const Icon = GROUP_ICONS[group];
+                    const groupActive = tool != null && toolsInGroup(group).some((d) => d.tool === tool);
+                    return stripBtn(group, label(groupLabel), Icon, { active: groupActive });
                 })}
-                {clusterBtn('hide', label('chart.tool.hideAll'), hidden ? EyeOff : EyeOff, onHideAll, { active: hidden })}
-                {clusterBtn('delete', label('chart.tool.delete'), Trash2, onDelete, { disabled: !canDelete, danger: true })}
+
+                <span className="draw-rail-sep" />
+
+                {actionBtn('undo', label('chart.tool.undo'), Undo2, onUndo, { disabled: !canUndo })}
+                {actionBtn('redo', label('chart.tool.redo'), Redo2, onRedo, { disabled: !canRedo })}
+                {actionBtn('clear', label('chart.tool.clear'), Eraser, onClear, { disabled: !canClear })}
+                {tool && tool !== 'select' && actionBtn('cancel', label('chart.cancel'), X, () => onPick('select'), { danger: true })}
             </div>
 
-            <span className="draw-rail-sep" />
-
-            {/* the tool groups */}
-            {railGroupsWithTools().map(({ group, label: groupLabel }) => {
-                const Icon = GROUP_ICONS[group];
-                const isOpen = open === group;
-                const groupActive = tool != null && toolsInGroup(group).some((d) => d.tool === tool);
-                return (
-                    <div key={group} className="relative">
-                        <button
-                            type="button"
-                            onClick={() => setOpen((current) => (current === group ? null : group))}
-                            aria-expanded={isOpen}
-                            aria-haspopup="menu"
-                            aria-label={label(groupLabel)}
-                            title={label(groupLabel)}
-                            className={cn('draw-rail-btn', (isOpen || groupActive) && 'is-on')}
-                        >
-                            <Icon className="size-[18px]" />
-                        </button>
-                        {isOpen && (
+            {open && (
+                <>
+                    <div className="fixed inset-0 z-20" onClick={() => setOpen(null)} />
+                    <div
+                        ref={flyoutRef}
+                        role="menu"
+                        aria-label={open === 'cursor' ? label('chart.group.cursor') : label(railGroupsWithTools().find((g) => g.group === open)?.label ?? 'chart.group.lines')}
+                        className="draw-rail-flyout"
+                        style={{ top: flyoutTop }}
+                    >
+                        {open === 'cursor' ? (
                             <>
-                                <div className="fixed inset-0 z-20" onClick={() => setOpen(null)} />
-                                <div role="menu" aria-label={label(groupLabel)} className="draw-rail-flyout">
-                                    {toolsInGroup(group).map((d) => {
-                                        const value = d.tool as ActiveTool;
-                                        const rowActive = tool === d.tool;
-                                        return (
-                                            <button
-                                                key={d.tool}
-                                                type="button"
-                                                role="menuitem"
-                                                onClick={() => {
-                                                    onPick(value);
-                                                    setOpen(null);
-                                                }}
-                                                className={cn('draw-rail-item', rowActive && 'is-on')}
-                                            >
-                                                <ToolGlyph tool={d.tool} />
-                                                <span>{label(TOOL_LABEL_KEYS[d.tool])}</span>
-                                            </button>
-                                        );
-                                    })}
-                                    {renderGroupExtra?.(group)}
-                                </div>
+                                {row('select', label('chart.tool.select'), MousePointer2, () => {
+                                    onPick('select');
+                                    setOpen(null);
+                                }, { active: tool === 'select' })}
+                                {row('measure', label('chart.tool.measure'), Ruler, () => {
+                                    onPick('measure');
+                                    setOpen(null);
+                                }, { active: tool === 'measure' })}
+                                {row('magnet', label('chart.tool.magnet'), Magnet, () => onMagnet(!magnet), { active: magnet, checkable: true })}
+                                {row(locked ? 'unlock' : 'lock', label(locked ? 'chart.tool.unlock' : 'chart.tool.lock'), locked ? Lock : Unlock, onToggleLock, {
+                                    active: locked,
+                                    disabled: !canLock,
+                                    checkable: true,
+                                })}
+                                {row('hide', label('chart.tool.hideAll'), EyeOff, onHideAll, { active: hidden, checkable: true })}
+                                {row('delete', label('chart.tool.delete'), Trash2, onDelete, { disabled: !canDelete, danger: true })}
+                            </>
+                        ) : (
+                            <>
+                                {toolsInGroup(open).map((d) => {
+                                    const value = d.tool as ActiveTool;
+                                    return row(
+                                        d.tool,
+                                        label(TOOL_LABEL_KEYS[d.tool]),
+                                        GROUP_ICONS[open],
+                                        () => {
+                                            onPick(value);
+                                            setOpen(null);
+                                        },
+                                        { active: tool === d.tool, glyph: d.tool },
+                                    );
+                                })}
+                                {renderGroupExtra?.(open)}
                             </>
                         )}
                     </div>
-                );
-            })}
-
-            <span className="draw-rail-sep" />
-
-            {/* undo / clear cluster */}
-            <div className="draw-rail-cluster">
-                {clusterBtn('undo', label('chart.tool.undo'), Undo2, onUndo, { disabled: !canUndo })}
-                {clusterBtn('redo', label('chart.tool.redo'), Redo2, onRedo, { disabled: !canRedo })}
-                {clusterBtn('clear', label('chart.tool.clear'), Eraser, onClear, { disabled: !canClear })}
-                {tool && tool !== 'select' && (
-                    <button
-                        type="button"
-                        onClick={() => onPick('select')}
-                        aria-label={label('chart.cancel')}
-                        title={label('chart.cancel')}
-                        className="draw-rail-btn is-danger"
-                    >
-                        <X className="size-[18px]" />
-                    </button>
-                )}
-            </div>
+                </>
+            )}
         </div>
     );
 }
