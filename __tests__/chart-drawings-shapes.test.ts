@@ -32,6 +32,13 @@ describe('rayEnd', () => {
         const vertical: DrawPoint = { time: 1000, price: 130 };
         expect(rayEnd(a, vertical, 4000)).toEqual(vertical);
     });
+
+    it('follows the ray leftwards when the second point is to the left', () => {
+        // A ray always runs away from its first point, so a leftward one reaches the left edge.
+        expect(rayEnd({ time: 2000, price: 120 }, { time: 1000, price: 100 }, 500)).toEqual({ time: 500, price: 90 });
+        // An edge behind that second point leaves the segment as it was clicked.
+        expect(rayEnd({ time: 2000, price: 120 }, { time: 1000, price: 100 }, 1500)).toEqual({ time: 1000, price: 100 });
+    });
 });
 
 describe('extendedEnds', () => {

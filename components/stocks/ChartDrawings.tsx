@@ -10,16 +10,19 @@ import {
     arrowHeadPoints,
     channelRails,
     dashOf,
+    extendedEnds,
     handleIndex,
     measureSpan,
     hitTest,
     labelsFor,
     nearestTime,
     newDrawingId,
+    rayEnd,
     strokeWidthOf,
     pointsNeeded,
     sinePoints,
     toolDef,
+    trendAngleDeg,
     type DrawPoint,
     type Drawing,
     type ScreenPoint,
@@ -559,6 +562,97 @@ export default function ChartDrawings({
                         </g>
                     ))}
                     {selected && !locked && screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
+        // --- the basic line family ---------------------------------------------
+        // One segment whose far end the visible range decides. Where that end sits is chart maths
+        // (rayEnd / extendedEnds), then only its *price* is asked of the scale: the chart's own
+        // time→pixel lookup stops at the last bar, and a line has to reach the panel's edge.
+        const edgeX = svgRef.current?.clientWidth ?? 0;
+        const edgeY = svgRef.current?.clientHeight ?? 0;
+        const priceY = (time: number, price: number): number | null => toScreen({ time, price })?.y ?? null;
+        const selectionHandles = (points: ScreenPoint[]) =>
+            selected && !locked
+                ? points.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)
+                : null;
+
+        if (kind === 'ray' || kind === 'extended') {
+            const [p0, p1] = drawing.points;
+            let from: ScreenPoint = screen[0];
+            let to: ScreenPoint = screen[1] ?? screen[0];
+            if (p1 && p1.time !== p0.time) {
+                const rightward = p1.time > p0.time;
+                if (kind === 'ray') {
+                    const edgeTime = fromScreen(rightward ? edgeX : 0, 0)?.time;
+                    const end = edgeTime == null ? p1 : rayEnd(p0, p1, edgeTime);
+                    const y = priceY(p0.time, end.price);
+                    if (y != null) to = { x: rightward ? edgeX : 0, y };
+                } else {
+                    const leftTime = fromScreen(0, 0)?.time;
+                    const rightTime = fromScreen(edgeX, 0)?.time;
+                    if (leftTime != null && rightTime != null) {
+                        const [left, right] = extendedEnds(p0, p1, leftTime, rightTime);
+                        const leftY = priceY(p0.time, left.price);
+                        const rightY = priceY(p0.time, right.price);
+                        if (leftY != null && rightY != null) {
+                            from = { x: 0, y: leftY };
+                            to = { x: edgeX, y: rightY };
+                        }
+                    }
+                }
+            }
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        // A horizontal ray, a vertical line and a cross are each fixed by the one point they were
+        // placed with, so the missing direction comes from the panel rather than from a second click.
+        if (kind === 'hray' || kind === 'vline' || kind === 'cross') {
+            const at = screen[0];
+            const across = kind === 'hray' || kind === 'cross';
+            const down = kind === 'vline' || kind === 'cross';
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {across && (
+                        <line x1={kind === 'hray' ? at.x : 0} y1={at.y} x2={edgeX} y2={at.y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    )}
+                    {down && <line x1={at.x} y1={0} x2={at.x} y2={edgeY} stroke={color} strokeWidth={width} opacity={opacity} />}
+                    {dot(at.x, at.y, `${drawing.id}-p`, color, opacity, TEXT_DOT)}
+                    {selectionHandles([at])}
+                </g>
+            );
+        }
+
+        // Both readouts hang off the segment they belong to: the angle the line looks like, or what
+        // the move along it was worth.
+        if (kind === 'trendangle' || kind === 'info') {
+            const [p0, p1] = drawing.points;
+            const span = measureSpan(p0, p1);
+            const percent = p0.price === 0 ? 0 : (span.price / p0.price) * 100;
+            const signed = (value: number, suffix = '') => `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}${suffix}`;
+            const readout =
+                kind === 'trendangle'
+                    ? `${trendAngleDeg(p0, p1, {
+                          pxPerTime: p1.time === p0.time ? 0 : (screen[1].x - screen[0].x) / (p1.time - p0.time),
+                          pxPerPrice: p1.price === p0.price ? 0 : -(screen[1].y - screen[0].y) / (p1.price - p0.price),
+                      }).toFixed(1)}°`
+                    : `${signed(span.price)} (${signed(percent, '%')})`;
+            const middle = { x: (screen[0].x + screen[1].x) / 2, y: (screen[0].y + screen[1].y) / 2 };
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    <text x={middle.x} y={middle.y - 8} textAnchor="middle" fontSize={12} className="mono" fill={color} opacity={opacity}>
+                        {readout}
+                    </text>
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
                 </g>
             );
         }

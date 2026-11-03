@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOOL_DEFS, toolsInGroup, type ToolGroup } from '@/lib/chart-drawings';
-import { RAIL_GROUPS, railGroupsWithTools } from '@/lib/drawing-groups';
+import { RAIL_GROUPS, TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/drawing-groups';
 import { tx } from '@/lib/i18n';
 
 const TEN_GROUPS: ToolGroup[] = [
@@ -33,6 +33,16 @@ describe('drawing rail groups', () => {
             expect(toolsInGroup(group).length).toBeGreaterThan(0);
             expect(tx('en', label).length).toBeGreaterThan(0);
             expect(tx('ar', label).length).toBeGreaterThan(0);
+        }
+    });
+
+    it('labels every tool in both languages', () => {
+        // The rail prints TOOL_LABEL_KEYS, so a tool without a key would render an empty row.
+        expect(Object.keys(TOOL_LABEL_KEYS).sort()).toEqual(TOOL_DEFS.map((d) => d.tool).sort());
+        for (const def of TOOL_DEFS) {
+            const key = TOOL_LABEL_KEYS[def.tool];
+            expect(tx('en', key).length, `en:${def.tool}`).toBeGreaterThan(0);
+            expect(tx('ar', key).length, `ar:${def.tool}`).toBeGreaterThan(0);
         }
     });
 

@@ -203,11 +203,15 @@ export function measureSpan(a: DrawPoint, b: DrawPoint): { price: number; second
 const priceAt = (a: DrawPoint, b: DrawPoint, time: number): number =>
     a.price + ((b.price - a.price) * (time - a.time)) / (b.time - a.time);
 
-/** The far end of a ray drawn from `a` through `b` and continued to the chart's right edge. */
+/** The far end of a ray drawn from `a` through `b` and continued to the edge of the visible range.
+ *  `edgeTime` is the time at the edge the ray is heading for, so a ray aimed leftwards takes the
+ *  left edge and one aimed rightwards the right edge. A vertical pair has no direction to extend,
+ *  and an edge that is already behind the second point leaves the segment as it was clicked. */
 export function rayEnd(a: DrawPoint, b: DrawPoint, edgeTime: number): DrawPoint {
-    // A vertical pair has no horizontal direction to extend, and an edge behind the second
-    // point means the ray already ends inside the picture.
-    if (b.time === a.time || edgeTime <= b.time) return b;
+    if (b.time === a.time) return b;
+    const rightward = b.time > a.time;
+    const edgeIsBehind = rightward ? edgeTime <= b.time : edgeTime >= b.time;
+    if (edgeIsBehind) return b;
     return { time: edgeTime, price: priceAt(a, b, edgeTime) };
 }
 
