@@ -61,7 +61,7 @@ import {
 import StrategyMenu from '@/components/stocks/StrategyMenu';
 import ReplayPanel from '@/components/stocks/ReplayPanel';
 import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { CANDLE_INTERVALS, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, eventLabel, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
 import {
     MIN_WARMUP_BARS,
     buy as paperBuy,
@@ -227,6 +227,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     // Strategy markers live on the price series; the plugin is rebuilt with every host, so the
     // markers to draw are kept in a ref and re-applied to whichever series is standing.
     const markersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
+    /** The dividends and splits of the symbol, drawn beside whatever a strategy marks. */
+    const eventMarkersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
     const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     // The candle host is kept so a replay step can replace the candles in place: rebuilding the
     // chart on every bar would throw away the trader's zoom, which is exactly what a replay needs.
@@ -799,7 +801,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
                 seriesRef.current = series;
-                markersApiRef.current = createSeriesMarkers(series, markersRef.current);
+                // Both lists from the start: the events are already known when the chart is built.
+                markersApiRef.current = createSeriesMarkers(
+                    series,
+                    [...eventMarkersRef.current, ...markersRef.current].sort((a, b) => Number(a.time) - Number(b.time)),
+                );
             },
             extend,
             onRangeChange: () => setFrame((frame) => frame + 1),
@@ -910,10 +916,42 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         else host.fit();
     }, [replay, intervalId, displayData]);
 
-    const applyStrategyMarkers = useCallback((markers: SeriesMarker<UTCTimestamp>[] | null) => {
-        markersRef.current = markers ?? [];
-        markersApiRef.current?.setMarkers(markersRef.current);
+    /** Both lists on one series: the events sit under whatever the strategy is marking. */
+    const syncMarkers = useCallback(() => {
+        const all = [...eventMarkersRef.current, ...markersRef.current].sort((a, b) => Number(a.time) - Number(b.time));
+        markersApiRef.current?.setMarkers(all);
     }, []);
+    const applyStrategyMarkers = useCallback(
+        (markers: SeriesMarker<UTCTimestamp>[] | null) => {
+            markersRef.current = markers ?? [];
+            syncMarkers();
+        },
+        [syncMarkers],
+    );
+
+    // A dividend or a split is a fact about a bar, so it is marked on the bar it happened at. Only the
+    // daily-and-lower intervals carry them: Yahoo reports them against days, and a five-minute chart
+    // would print the same marker dozens of times inside one session.
+    useEffect(() => {
+        const events = data?.events ?? [];
+        const candles = data?.candles ?? [];
+        if (events.length === 0 || candles.length === 0 || intervalId === '1m' || intervalId === '5m' || intervalId === '15m' || intervalId === '30m' || intervalId === '60m' || intervalId === '2h' || intervalId === '4h') {
+            eventMarkersRef.current = [];
+            syncMarkers();
+            return;
+        }
+        const first = candles[0].time;
+        eventMarkersRef.current = events
+            .filter((event) => event.time >= first)
+            .map((event) => ({
+                time: event.time as UTCTimestamp,
+                position: event.kind === 'dividend' ? 'belowBar' : 'aboveBar',
+                shape: event.kind === 'dividend' ? 'circle' : 'square',
+                color: event.kind === 'dividend' ? '#EAB308' : '#00BCD4',
+                text: eventLabel(event),
+            }));
+        syncMarkers();
+    }, [data, intervalId, syncMarkers]);
 
     useEffect(() => {
         if (!expanded) return;

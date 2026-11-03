@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, aggregateCandles, candlesFromChart, intervalById, isCandleIntervalId, openingInterval, strategyRange, type Candle } from '@/lib/yahoo-candles';
+import {
+    CANDLE_INTERVALS,
+    DEFAULT_CANDLE_INTERVAL,
+    aggregateCandles,
+    candlesFromChart,
+    eventLabel,
+    eventsFromChart,
+    intervalById,
+    isCandleIntervalId,
+    openingInterval,
+    strategyRange,
+    type Candle,
+} from '@/lib/yahoo-candles';
 
 const payload = (overrides: Record<string, unknown> = {}) => ({
     chart: {
@@ -270,5 +282,76 @@ describe('the interval a chart opens on', () => {
         // A guessed id ("1h" instead of "60m") must not become the chart's interval.
         expect(openingInterval('1h')).toBe(DEFAULT_CANDLE_INTERVAL);
         expect(openingInterval('nonsense')).toBe(DEFAULT_CANDLE_INTERVAL);
+    });
+});
+
+describe('the corporate events Yahoo sends with the bars', () => {
+    const chart = (events: unknown) => ({
+        chart: {
+            result: [
+                {
+                    meta: { currency: 'SAR' },
+                    timestamp: [1700000000, 1700086400],
+                    events,
+                    indicators: { quote: [{ open: [1, 2], high: [2, 3], low: [0.5, 1.5], close: [1.5, 2.5], volume: [10, 20] }] },
+                },
+            ],
+        },
+    });
+
+    it('reads a dividend and a split from the same response as the candles', () => {
+        const set = candlesFromChart(
+            chart({
+                dividends: { '1700000000': { amount: 0.51, date: 1700000000 } },
+                splits: { '1700086400': { date: 1700086400, numerator: 2, denominator: 1, splitRatio: '2:1' } },
+            }),
+        );
+        expect(set?.candles).toHaveLength(2);
+        expect(set?.events).toEqual([
+            { time: 1700000000, kind: 'dividend', amount: 0.51 },
+            { time: 1700086400, kind: 'split', ratio: '2:1' },
+        ]);
+    });
+
+    it('leaves the set without an events key when the feed reports none', () => {
+        const set = candlesFromChart(chart(undefined));
+        expect(set).not.toBeNull();
+        expect(set && 'events' in set).toBe(false);
+    });
+
+    it('drops an event it cannot read rather than drawing an empty marker', () => {
+        const set = candlesFromChart(
+            chart({
+                dividends: { '1700000000': { amount: 0 }, '1700086400': { amount: 0.4, date: 1700086400 } },
+                splits: { '1700086400': { date: 1700086400 } },
+            }),
+        );
+        expect(set?.events).toEqual([{ time: 1700086400, kind: 'dividend', amount: 0.4 }]);
+    });
+
+    it('names an event the way a marker prints it', () => {
+        expect(eventLabel({ time: 1, kind: 'dividend', amount: 0.51 })).toBe('D 0.51');
+        expect(eventLabel({ time: 1, kind: 'split', ratio: '2:1' })).toBe('2:1');
+        // A split without a ratio still says what it is rather than printing nothing.
+        expect(eventLabel({ time: 1, kind: 'split' })).toBe('Split');
+    });
+
+    it('keeps one event of each kind per moment, oldest first', () => {
+        const events = eventsFromChart({
+            chart: {
+                result: [
+                    {
+                        events: {
+                            dividends: {
+                                '1700000000': { amount: 0.5, date: 1700000000 },
+                                '1600000000': { amount: 0.4, date: 1600000000 },
+                            },
+                            splits: { '1700000000': { date: 1700000000, splitRatio: '3:1' } },
+                        },
+                    },
+                ],
+            },
+        });
+        expect(events.map((event) => `${event.kind}@${event.time}`)).toEqual(['dividend@1600000000', 'dividend@1700000000', 'split@1700000000']);
     });
 });

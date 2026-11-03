@@ -26,11 +26,13 @@ async function fetchCandles(
 
     try {
         const res = await fetch(
-            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}`,
+            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}&events=div,splits`,
             { headers: { 'User-Agent': 'Mozilla/5.0' }, next: { revalidate: options.revalidate ?? 60 } },
         );
         if (!res.ok) return null;
-        const set = candlesFromChart(await res.json());
+        // The same request that carries the bars carries the dividends and splits inside the range.
+        const json = await res.json();
+        const set = candlesFromChart(json);
         if (!set) {
             console.error('Yahoo returned no candles for', yahooSymbol, id);
             return null;

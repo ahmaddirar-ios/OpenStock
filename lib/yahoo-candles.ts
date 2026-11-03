@@ -14,10 +14,28 @@ export type Candle = {
     volume: number;
 };
 
+/** A corporate event Yahoo reports alongside the bars: a dividend paid, or a split. */
+export type CandleEvent = {
+    time: number;
+    kind: 'dividend' | 'split';
+    /** The cash amount for a dividend, in the chart's currency. */
+    amount?: number;
+    /** The ratio a split applied, e.g. "2:1". */
+    ratio?: string;
+};
+
 export type CandleSet = {
     candles: Candle[];
     currency: string;
+    /** Dividends and splits inside the range, oldest first. Absent when the feed reported none. */
+    events?: CandleEvent[];
 };
+
+/** What an event reads as on the chart: a dividend's cash amount, or a split's ratio. */
+export function eventLabel(event: CandleEvent): string {
+    if (event.kind === 'dividend') return `D ${event.amount == null ? '' : event.amount.toFixed(2)}`.trim();
+    return event.ratio ?? 'Split';
+}
 
 // Yahoo uses the same exchange suffix the app's symbols already carry (2222.SR, VOD.L, 0700.HK,
 // 7203.T), so a symbol needs no translation — but only a symbol that has one is worth asking for.
@@ -146,6 +164,10 @@ type YahooChartJson = {
         result?: Array<{
             meta?: { currency?: string };
             timestamp?: number[];
+            events?: {
+                dividends?: Record<string, { amount?: number; date?: number }>;
+                splits?: Record<string, { date?: number; numerator?: number; denominator?: number; splitRatio?: string }>;
+            };
             indicators?: {
                 quote?: Array<{
                     open?: (number | null)[];
@@ -160,6 +182,47 @@ type YahooChartJson = {
 };
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+
+/**
+ * The dividends and splits Yahoo reports for the same request as the candles. They arrive keyed by
+ * timestamp; a row without a usable date, amount or ratio is dropped rather than drawn as "D" with
+ * nothing behind it. Oldest first, the order the chart walks.
+ */
+export function eventsFromChart(json: unknown): CandleEvent[] {
+    const result = (json as YahooChartJson)?.chart?.result?.[0];
+    const events = result?.events;
+    if (!events) return [];
+    const out: CandleEvent[] = [];
+
+    for (const [key, value] of Object.entries(events.dividends ?? {})) {
+        const time = finite(value?.date) ? value.date : Number(key);
+        if (!finite(time) || !finite(value?.amount) || value.amount <= 0) continue;
+        out.push({ time: Math.trunc(time), kind: 'dividend', amount: value.amount });
+    }
+    for (const [key, value] of Object.entries(events.splits ?? {})) {
+        const time = finite(value?.date) ? value.date : Number(key);
+        if (!finite(time)) continue;
+        const ratio =
+            typeof value?.splitRatio === 'string' && value.splitRatio.length > 0
+                ? value.splitRatio
+                : finite(value?.numerator) && finite(value?.denominator) && value.denominator > 0
+                  ? `${value.numerator}:${value.denominator}`
+                  : null;
+        if (!ratio) continue;
+        out.push({ time: Math.trunc(time), kind: 'split', ratio });
+    }
+
+    // A timestamp can appear as both a key and a date; keep one of each kind at each moment.
+    const seen = new Set<string>();
+    return out
+        .sort((a, b) => a.time - b.time)
+        .filter((event) => {
+            const key = `${event.kind}:${event.time}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
 
 /**
  * A /v8/finance/chart response as candles. Yahoo pads closed hours and holidays with nulls, and the
@@ -184,9 +247,10 @@ export function candlesFromChart(json: unknown): CandleSet | null {
         if (!finite(times[i]) || !finite(open) || !finite(high) || !finite(low) || !finite(close)) continue;
         candles.push({ time: times[i], open, high, low, close, volume: finite(volume) ? volume : 0 });
     }
+    const events = eventsFromChart(json);
     if (candles.length === 0) return null;
 
     // Yahoo occasionally repeats a timestamp; a chart wants each time exactly once.
     const unique = candles.filter((candle, i) => i === 0 || candle.time > candles[i - 1].time);
-    return { candles: unique, currency: result.meta?.currency || '' };
+    return { candles: unique, currency: result.meta?.currency || '', ...(events.length > 0 ? { events } : {}) };
 }
