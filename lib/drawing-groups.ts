@@ -64,4 +64,10 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     cross: 'chart.tool.cross',
     trendangle: 'chart.tool.trendangle',
     info: 'chart.tool.info',
+    longpos: 'chart.tool.longpos',
+    shortpos: 'chart.tool.shortpos',
+    pricerange: 'chart.tool.pricerange',
+    daterange: 'chart.tool.daterange',
+    dprange: 'chart.tool.dprange',
+    projection: 'chart.tool.projection',
 };

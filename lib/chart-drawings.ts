@@ -24,6 +24,12 @@ export type ShapeKind =
     | 'cross'
     | 'trendangle'
     | 'info'
+    | 'longpos'
+    | 'shortpos'
+    | 'pricerange'
+    | 'daterange'
+    | 'dprange'
+    | 'projection'
     | 'fib'
     | 'gann'
     | 'text'
@@ -38,6 +44,8 @@ export type ShapeTool =
     | 'trend' | 'horizontal' | 'rectangle' | 'xrect' | 'channel' | 'arrow' | 'pricetime' | 'fib' | 'gann' | 'text'
     // the basic line family
     | 'ray' | 'extended' | 'hray' | 'vline' | 'cross' | 'trendangle' | 'info'
+    // forecasts: positions, ranges and a projected move
+    | 'longpos' | 'shortpos' | 'pricerange' | 'daterange' | 'dprange' | 'projection'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -134,6 +142,14 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'cross', group: 'lines', kind: 'cross', clicks: 2, defaultColor: 'white' },
     { tool: 'trendangle', group: 'lines', kind: 'trendangle', clicks: 2, defaultColor: 'violet' },
     { tool: 'info', group: 'lines', kind: 'info', clicks: 2, defaultColor: 'white' },
+
+    // Forecasts: a position sizes a trade, a range measures one, a projection repeats a move.
+    { tool: 'longpos', group: 'forecast', kind: 'longpos', clicks: 3, defaultColor: 'teal' },
+    { tool: 'shortpos', group: 'forecast', kind: 'shortpos', clicks: 3, defaultColor: 'red' },
+    { tool: 'pricerange', group: 'forecast', kind: 'pricerange', clicks: 2, defaultColor: 'blue' },
+    { tool: 'daterange', group: 'forecast', kind: 'daterange', clicks: 2, defaultColor: 'blue' },
+    { tool: 'dprange', group: 'forecast', kind: 'dprange', clicks: 2, defaultColor: 'blue' },
+    { tool: 'projection', group: 'forecast', kind: 'projection', clicks: 2, defaultColor: 'orange' },
     { tool: 'fib', group: 'fib', kind: 'fib', clicks: 2, defaultColor: 'gold' },
     { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
     { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },

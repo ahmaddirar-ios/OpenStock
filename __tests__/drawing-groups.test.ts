@@ -36,6 +36,20 @@ describe('drawing rail groups', () => {
         }
     });
 
+    it('offers the forecast group once it holds tools', () => {
+        // The group exists on the rail already; it must stay hidden while empty and appear with the
+        // position and range tools in it.
+        expect(toolsInGroup('forecast').map((d) => d.tool)).toEqual([
+            'longpos',
+            'shortpos',
+            'pricerange',
+            'daterange',
+            'dprange',
+            'projection',
+        ]);
+        expect(railGroupsWithTools().map((g) => g.group)).toContain('forecast');
+    });
+
     it('labels every tool in both languages', () => {
         // The rail prints TOOL_LABEL_KEYS, so a tool without a key would render an empty row.
         expect(Object.keys(TOOL_LABEL_KEYS).sort()).toEqual(TOOL_DEFS.map((d) => d.tool).sort());
