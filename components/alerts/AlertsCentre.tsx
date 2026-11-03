@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import { BellRing, Check, Loader2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { checkAlerts, createAlert, deleteAlert, markAlertsSeen, rearmAlert, updateAlert } from '@/lib/actions/alert.actions';
-import { alertSource, PARAM_BOUNDS, needsCandles, type AlertCondition } from '@/lib/alerts';
+import { alertSource, hasSecondNumber, PARAM_BOUNDS, needsCandles, type AlertCondition } from '@/lib/alerts';
 import { cn } from '@/lib/utils';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
-import { ALERT_CONDITIONS, alertConditionLabel, alertParamsLabel, alertTargetLabel, isPercentAlert, measureLabel } from '@/lib/alert-labels';
+import { ALERT_CONDITIONS, alertConditionLabel, alertParamsLabel, alertTargetLabel, alertTargetPlaceholder, alertTargetUnit, measureLabel } from '@/lib/alert-labels';
 import PushToggle from '@/components/alerts/PushToggle';
 import { alertPushPayload } from '@/lib/push';
 import type { FiredAlert } from '@/lib/actions/alert.actions';
@@ -36,6 +36,7 @@ const paramObject = (condition: AlertCondition, value: string) => {
     const number = Number(value);
     if (condition === 'RSI_BELOW' || condition === 'RSI_ABOVE') return { period: number };
     if (condition === 'VOLUME_SPIKE') return { window: number };
+    if (condition === 'ATR_ABOVE') return { period: number };
     return {};
 };
 
@@ -43,6 +44,7 @@ const paramObject = (condition: AlertCondition, value: string) => {
 const paramFor = (condition: AlertCondition, row?: AlertRow): string => {
     if (condition === 'RSI_BELOW' || condition === 'RSI_ABOVE') return String(row?.params?.period ?? PARAM_BOUNDS.rsiPeriod.default);
     if (condition === 'VOLUME_SPIKE') return String(row?.params?.window ?? PARAM_BOUNDS.volumeWindow.default);
+    if (condition === 'ATR_ABOVE') return String(row?.params?.period ?? PARAM_BOUNDS.atrPeriod.default);
     return '';
 };
 
@@ -249,6 +251,8 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                             const next = event.target.value as AlertCondition;
                             setCondition(next);
                             setParam(paramFor(next));
+                            // A breakout rule always needs a lookback, so start it on the conventional year.
+                            if (next === 'CROSS_52W_HIGH' || next === 'CROSS_52W_LOW') setTarget(String(PARAM_BOUNDS.breakoutLookback.default));
                         }}
                         aria-label={t('alerts.condition')}
                         className="h-9 rounded-[9px] bg-page px-2 text-[12.5px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -262,15 +266,13 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                             value={target}
                             onChange={(event) => setTarget(event.target.value)}
                             inputMode="decimal"
-                            placeholder={isPercentAlert(condition) || condition === 'VOLUME_SPIKE' ? t('alerts.targetPercent') : t('alerts.targetPrice')}
+                            placeholder={t(alertTargetPlaceholder(condition))}
                             aria-label={t('alerts.target')}
                             className="num h-full w-20 bg-transparent text-[12.5px] outline-none placeholder:text-faint"
                         />
-                        <span className="pe-2 text-[12px] text-faint">
-                            {isPercentAlert(condition) || condition === 'VOLUME_SPIKE' ? (condition === 'VOLUME_SPIKE' ? '×' : '%') : ''}
-                        </span>
+                        <span className="pe-2 text-[12px] text-faint">{alertTargetUnit(condition)}</span>
                     </div>
-                    {needsCandles(condition) && condition !== 'PRICE_CROSS_UP_SMA' && condition !== 'PRICE_CROSS_DOWN_SMA' && (
+                    {hasSecondNumber(condition) && (
                         <div className="flex h-9 items-center gap-1.5 rounded-[9px] bg-page px-2.5 shadow-[inset_0_0_0_1px_var(--line)] focus-within:ring-2 focus-within:ring-ring">
                             <label htmlFor="alert-param" className="text-[12px] text-faint">{t(condition === 'VOLUME_SPIKE' ? 'alerts.param.window' : 'alerts.param.period')}</label>
                             <input
@@ -342,7 +344,7 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                                             aria-label={t('alerts.target')}
                                             className="num h-7 w-20 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
                                         />
-                                        {needsCandles(alert.condition) && alert.condition !== 'PRICE_CROSS_UP_SMA' && alert.condition !== 'PRICE_CROSS_DOWN_SMA' && (
+                                        {hasSecondNumber(alert.condition) && (
                                             <input
                                                 value={editParam}
                                                 onChange={(event) => setEditParam(event.target.value)}

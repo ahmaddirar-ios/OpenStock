@@ -188,8 +188,8 @@ describe('needsCandles', () => {
         }
     });
 
-    it('lists all eleven conditions', () => {
-        expect(ALERT_CONDITIONS).toHaveLength(11);
+    it('lists all fourteen conditions', () => {
+        expect(ALERT_CONDITIONS).toHaveLength(14);
     });
 });
 
@@ -345,5 +345,88 @@ describe('planCheck with candles', () => {
         expect(plan.checked).toBe(2);
         expect(plan.skipped).toBe(0);
         expect(plan.fires.map((fire) => fire.id).sort()).toEqual(['quote', 'series']);
+    });
+});
+
+// --- volatility and breakout rules ---------------------------------------------------------
+
+describe('the ATR and 52-week rules', () => {
+    const ruleOf = (condition: AlertCondition, targetPrice = 3, params = {}) => ({ condition, targetPrice, params });
+    // Every bar spans `range` points around its close, so ATR has something to average.
+    const ranged = (closes: number[], range = 2) =>
+        closes.map((close, i) => ({ time: i * 86_400, open: close, high: close + range / 2, low: close - range / 2, close, volume: 1_000 }));
+
+    it('are series rules, not quote rules', () => {
+        for (const condition of ['ATR_ABOVE', 'CROSS_52W_HIGH', 'CROSS_52W_LOW'] as AlertCondition[]) {
+            expect(needsCandles(condition)).toBe(true);
+        }
+    });
+
+    it('bounds the ATR percentage, its period, and the breakout lookback', () => {
+        expect(validateAlertTarget('ATR_ABOVE', 3)).toBe(true);
+        expect(validateAlertTarget('ATR_ABOVE', 0.05)).toBe(false);
+        expect(validateAlertTarget('ATR_ABOVE', 51)).toBe(false);
+        expect(validateAlertTarget('CROSS_52W_HIGH', 252)).toBe(true);
+        expect(validateAlertTarget('CROSS_52W_HIGH', 19)).toBe(false);
+        expect(validateAlertTarget('CROSS_52W_LOW', 401)).toBe(false);
+
+        expect(validateAlertParams('ATR_ABOVE', { period: 14 })).toBe(true);
+        expect(validateAlertParams('ATR_ABOVE', { period: 1 })).toBe(false);
+        expect(validateAlertParams('CROSS_52W_HIGH', {})).toBe(true);
+        expect(validateAlertParams('CROSS_52W_HIGH', { period: 20 })).toBe(false);
+
+        expect(normalizeAlertParams('ATR_ABOVE')).toEqual({ period: 14 });
+        expect(normalizeAlertParams('ATR_ABOVE', { period: 21 })).toEqual({ period: 21 });
+        expect(normalizeAlertParams('CROSS_52W_HIGH')).toEqual({});
+    });
+
+    it('reads ATR as a percentage of the close', () => {
+        // fifteen flat 100 closes, each spanning 2 points: ATR 2 on a 100 close is 2%
+        const measure = measureRule(ruleOf('ATR_ABOVE', 1.5, { period: 14 }), ranged(Array(15).fill(100)));
+        expect(measure?.value).toBeCloseTo(2, 6);
+        expect(measure?.display).toBeCloseTo(2, 6);
+        expect(measure?.previous).toBeNull();
+        expect(evaluateMeasure(ruleOf('ATR_ABOVE', 1.5), measure!)).toBe(true);
+        expect(evaluateMeasure(ruleOf('ATR_ABOVE', 2.5), measure!)).toBe(false);
+    });
+
+    it('returns no measure when the series is shorter than the ATR period', () => {
+        expect(measureRule(ruleOf('ATR_ABOVE', 3, { period: 14 }), ranged(Array(13).fill(100)))).toBeNull();
+        expect(measureRule(ruleOf('ATR_ABOVE', 3, { period: 14 }), [])).toBeNull();
+    });
+
+    it('never divides by a zero close', () => {
+        expect(measureRule(ruleOf('ATR_ABOVE', 3, { period: 14 }), ranged(Array(15).fill(0)))).toBeNull();
+    });
+
+    it('measures a 52-week break as the distance to the highest close before today', () => {
+        const closes = [...Array(20).fill(100), 99, 101];
+        const measure = measureRule(ruleOf('CROSS_52W_HIGH', 20), series(closes));
+        expect(measure?.value).toBeCloseTo(1, 6);      // 101 versus the 100 high of the 20 bars before it
+        expect(measure?.previous).toBeCloseTo(-1, 6);  // 99 versus the same 100 high
+        expect(measure?.display).toBe(101);
+        expect(evaluateMeasure(ruleOf('CROSS_52W_HIGH', 20), measure!)).toBe(true);
+        expect(evaluateMeasure(ruleOf('CROSS_52W_LOW', 20), measure!)).toBe(false);
+    });
+
+    it('measures a 52-week low break as the distance below the lowest close before today', () => {
+        const closes = [...Array(20).fill(100), 101, 99];
+        const measure = measureRule(ruleOf('CROSS_52W_LOW', 20), series(closes));
+        expect(measure?.value).toBeCloseTo(-1, 6);     // 99 versus the 100 low of the window
+        expect(measure?.previous).toBeCloseTo(1, 6);   // 101 versus the same 100 low
+        expect(evaluateMeasure(ruleOf('CROSS_52W_LOW', 20), measure!)).toBe(true);
+        expect(evaluateMeasure(ruleOf('CROSS_52W_HIGH', 20), measure!)).toBe(false);
+    });
+
+    it('needs the lookback plus a previous bar before it can report a break', () => {
+        expect(measureRule(ruleOf('CROSS_52W_HIGH', 20), series(Array(21).fill(100)))).toBeNull();
+        expect(measureRule(ruleOf('CROSS_52W_HIGH', 20), series(Array(20).fill(100)))).toBeNull();
+    });
+
+    it('does not fire a break that only touches the old high', () => {
+        const closes = [...Array(20).fill(100), 99, 100];
+        const measure = measureRule(ruleOf('CROSS_52W_HIGH', 20), series(closes));
+        expect(measure?.value).toBeCloseTo(0, 6);
+        expect(evaluateMeasure(ruleOf('CROSS_52W_HIGH', 20), measure!)).toBe(false);
     });
 });

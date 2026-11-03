@@ -4,7 +4,7 @@
 
 import { hasFinnhubQuotes } from '@/lib/markets';
 import { normalizeYahooSymbol } from '@/lib/yahoo';
-import { rsi, sma } from '@/lib/indicators';
+import { atr, rsi, sma } from '@/lib/indicators';
 import type { Candle } from '@/lib/yahoo-candles';
 
 export type AlertCondition =
@@ -18,7 +18,10 @@ export type AlertCondition =
     | 'RSI_ABOVE'
     | 'PRICE_CROSS_UP_SMA'
     | 'PRICE_CROSS_DOWN_SMA'
-    | 'VOLUME_SPIKE';
+    | 'VOLUME_SPIKE'
+    | 'ATR_ABOVE'
+    | 'CROSS_52W_HIGH'
+    | 'CROSS_52W_LOW';
 
 export const ALERT_CONDITIONS: readonly AlertCondition[] = [
     'ABOVE',
@@ -32,6 +35,9 @@ export const ALERT_CONDITIONS: readonly AlertCondition[] = [
     'PRICE_CROSS_UP_SMA',
     'PRICE_CROSS_DOWN_SMA',
     'VOLUME_SPIKE',
+    'ATR_ABOVE',
+    'CROSS_52W_HIGH',
+    'CROSS_52W_LOW',
 ];
 
 export const isAlertCondition = (value: unknown): value is AlertCondition =>
@@ -59,6 +65,12 @@ export const PARAM_BOUNDS = {
     volumeMultiple: { min: 1, max: 20 },
     /** `params.window` for VOLUME_SPIKE. */
     volumeWindow: { min: 5, max: 100, default: 20 },
+    /** `targetPrice` for ATR_ABOVE: the ATR as a percentage of the close. */
+    atrPercent: { min: 0.1, max: 50 },
+    /** `params.period` for ATR_ABOVE. */
+    atrPeriod: { min: 2, max: 50, default: 14 },
+    /** `targetPrice` for the 52-week rules: how many bars the high or low looks back over. */
+    breakoutLookback: { min: 20, max: 400, default: 252 },
 } as const;
 
 /** The rules that read a series instead of a quote: the checker's one routing rule. */
@@ -68,9 +80,16 @@ const SERIES_CONDITIONS: readonly AlertCondition[] = [
     'PRICE_CROSS_UP_SMA',
     'PRICE_CROSS_DOWN_SMA',
     'VOLUME_SPIKE',
+    'ATR_ABOVE',
+    'CROSS_52W_HIGH',
+    'CROSS_52W_LOW',
 ];
 
 export const needsCandles = (condition: AlertCondition): boolean => SERIES_CONDITIONS.includes(condition);
+
+/** The rules whose form asks for a second number on top of the target. */
+export const hasSecondNumber = (condition: AlertCondition): boolean =>
+    condition === 'RSI_BELOW' || condition === 'RSI_ABOVE' || condition === 'VOLUME_SPIKE' || condition === 'ATR_ABOVE';
 
 const within = (value: number, range: { min: number; max: number }): boolean =>
     Number.isFinite(value) && value >= range.min && value <= range.max;
@@ -83,6 +102,9 @@ export function normalizeAlertParams(condition: AlertCondition, params?: AlertPa
     if (condition === 'VOLUME_SPIKE') {
         return { window: Math.round(Number(params?.window ?? PARAM_BOUNDS.volumeWindow.default)) };
     }
+    if (condition === 'ATR_ABOVE') {
+        return { period: Math.round(Number(params?.period ?? PARAM_BOUNDS.atrPeriod.default)) };
+    }
     return {};
 }
 
@@ -93,6 +115,9 @@ export function validateAlertParams(condition: AlertCondition, params?: AlertPar
     }
     if (condition === 'VOLUME_SPIKE') {
         return params?.window == null || within(Number(params.window), PARAM_BOUNDS.volumeWindow);
+    }
+    if (condition === 'ATR_ABOVE') {
+        return params?.period == null || within(Number(params.period), PARAM_BOUNDS.atrPeriod);
     }
     return params?.period == null && params?.window == null;
 }
@@ -186,6 +211,8 @@ export function validateAlertTarget(condition: AlertCondition, target: number): 
     if (condition === 'RSI_BELOW' || condition === 'RSI_ABOVE') return within(target, PARAM_BOUNDS.rsiLevel);
     if (condition === 'VOLUME_SPIKE') return within(target, PARAM_BOUNDS.volumeMultiple);
     if (condition === 'PRICE_CROSS_UP_SMA' || condition === 'PRICE_CROSS_DOWN_SMA') return within(target, PARAM_BOUNDS.smaPeriod);
+    if (condition === 'ATR_ABOVE') return within(target, PARAM_BOUNDS.atrPercent);
+    if (condition === 'CROSS_52W_HIGH' || condition === 'CROSS_52W_LOW') return within(target, PARAM_BOUNDS.breakoutLookback);
     return true;
 }
 
@@ -254,6 +281,33 @@ export function measureRule(rule: AlertRule, candles?: Candle[] | null): Measure
             if (!Number.isFinite(multiple)) return null;
             return { value: multiple, previous: null, display: multiple };
         }
+        case 'ATR_ABOVE': {
+            const period = Math.round(Number(rule.params?.period ?? PARAM_BOUNDS.atrPeriod.default));
+            const close = Number(bars[last].close);
+            // ATR over a zero close has no percentage to compare.
+            if (!Number.isFinite(close) || close <= 0) return null;
+            const value = atr(bars, period)[last];
+            if (value == null || !Number.isFinite(value)) return null;
+            const percent = (value / close) * 100;
+            return { value: percent, previous: null, display: percent };
+        }
+        case 'CROSS_52W_HIGH':
+        case 'CROSS_52W_LOW': {
+            const lookback = Math.round(Number(rule.targetPrice));
+            // The window is the bars *before* the one being judged, and a cross needs the bar before it too.
+            if (last < lookback + 1) return null;
+            const window = (index: number) => bars.slice(index - lookback, index).map((bar) => Number(bar.close));
+            const current = window(last);
+            const previousWindow = window(last - 1);
+            if (current.some((c) => !Number.isFinite(c)) || previousWindow.some((c) => !Number.isFinite(c))) return null;
+            const level = rule.condition === 'CROSS_52W_HIGH' ? Math.max(...current) : Math.min(...current);
+            const previousLevel = rule.condition === 'CROSS_52W_HIGH' ? Math.max(...previousWindow) : Math.min(...previousWindow);
+            return {
+                value: Number(bars[last].close) - level,
+                previous: Number(bars[last - 1].close) - previousLevel,
+                display: Number(bars[last].close),
+            };
+        }
         default:
             return null;
     }
@@ -278,6 +332,17 @@ export function evaluateMeasure(rule: AlertRule, measure: Measure): boolean {
         case 'PRICE_CROSS_DOWN_SMA': {
             const previous = measure.previous == null ? null : Number(measure.previous);
             return previous != null && Number.isFinite(previous) && previous > 0 && value <= 0;
+        }
+        case 'ATR_ABOVE':
+            return Number.isFinite(target) && value >= target;
+        // A breakout means the close has gone *past* the old high or low, so merely touching it is not one.
+        case 'CROSS_52W_HIGH': {
+            const previous = measure.previous == null ? null : Number(measure.previous);
+            return previous != null && Number.isFinite(previous) && previous <= 0 && value > 0;
+        }
+        case 'CROSS_52W_LOW': {
+            const previous = measure.previous == null ? null : Number(measure.previous);
+            return previous != null && Number.isFinite(previous) && previous >= 0 && value < 0;
         }
         default:
             return false;
