@@ -13,7 +13,7 @@ import { arNumberDigits } from '@/lib/i18n';
 
 export const generateMetadata = async () => {
     const lang = await getLang();
-    return { title: `${tx(lang, 'profile.title')} | OpenStock` };
+    return { title: tx(lang, 'profile.title') };
 };
 
 // Google and GitHub keep their brand names, so only credentials are looked up in the dictionary.

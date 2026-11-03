@@ -29,7 +29,7 @@ export const sendSignUpEmail = inngest.createFunction(
                 return await callAIProviderWithFallback(prompt);
             } catch (error) {
                 console.error("⚠️ All AI providers failed for welcome email", error);
-                return 'Thanks for joining Openstock. You now have the tools to track markets and make smarter moves.';
+                return 'Thanks for joining Rovex. You now have the tools to track markets and make smarter moves.';
             }
         });
 
@@ -112,8 +112,7 @@ export const sendWeeklyNewsSummary = inngest.createFunction(
             const subject = `📈 Weekly Market Summary - ${date}`;
 
             // --- HTML EMAIL TEMPLATE ---
-            // Using inline styles for compatibility. Accent Color: Teal (#20c997)
-            const logoUrl = "https://raw.githubusercontent.com/ravixalgorithm/OpenStock/main/public/assets/images/logo.png";
+            // Using inline styles for compatibility. Accent Color: Teal (#C9F36A)
 
             const content = `
             <!DOCTYPE html>
@@ -131,7 +130,7 @@ export const sendWeeklyNewsSummary = inngest.createFunction(
                         <td align="center">
                             
                             <!-- Content Wrapper with Teal Border -->
-                            <div style="max-width: 600px; width: 100%; border: 2px dashed #20c997; border-radius: 4px; padding: 2px;"> 
+                            <div style="max-width: 600px; width: 100%; border: 2px dashed #C9F36A; border-radius: 4px; padding: 2px;"> 
                                 <div style="background-color: #000000; padding: 30px 20px;">
                                     
                                     <!-- Header / Logo -->
@@ -139,7 +138,7 @@ export const sendWeeklyNewsSummary = inngest.createFunction(
                                         <tr>
                                             <td style="border-bottom: 1px dashed #333; padding-bottom: 20px;">
                                                  <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #ffffff; display: flex; align-items: center;">
-                                                    <span style="color: #20c997; margin-right: 10px;">📊</span> OpenStock
+                                                    <span style="color: #C9F36A; margin-right: 10px;">📊</span> Rovex
                                                  </h2>
                                             </td>
                                         </tr>
@@ -160,9 +159,9 @@ export const sendWeeklyNewsSummary = inngest.createFunction(
                     .replace(/<ul/g, '<ul style="padding-left: 0; list-style-type: none; margin: 0 0 15px 0;"')
                     .replace(/<li/g, '<li style="margin-bottom: 12px; color: #cccccc; font-size: 16px; line-height: 1.6; display: flex;"')
                     .replace(/class="dark-text-secondary"/g, '')
-                    .replace(/•/g, '<span style="color: #20c997; font-weight: bold; margin-right: 10px; font-size: 18px;">•</span>') // Teal bullets
-                    .replace(/<strong style="color: #FDD458;">/g, '<strong style="color: #20c997;">') // Teal strong text
-                    .replace(/<a /g, '<a style="color: #20c997; text-decoration: none; font-weight: 600;" ') // Teal links
+                    .replace(/•/g, '<span style="color: #C9F36A; font-weight: bold; margin-right: 10px; font-size: 18px;">•</span>') // Teal bullets
+                    .replace(/<strong style="color: #C9F36A;">/g, '<strong style="color: #C9F36A;">') // Teal strong text
+                    .replace(/<a /g, '<a style="color: #C9F36A; text-decoration: none; font-weight: 600;" ') // Teal links
                 }
                                     </div>
 
@@ -170,13 +169,13 @@ export const sendWeeklyNewsSummary = inngest.createFunction(
                                     <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 40px; border-top: 1px dashed #333; padding-top: 20px;">
                                         <tr>
                                             <td align="center" style="color: #666666; font-size: 14px; line-height: 1.5;">
-                                                <p style="margin: 0 0 10px 0;">You're receiving this email because you signed up for OpenStock.</p>
+                                                <p style="margin: 0 0 10px 0;">You're receiving this email because you signed up for Rovex.</p>
                                                 <p style="margin: 0;">
-                                                    <a href="{{ unsubscribe_url }}" style="color: #20c997; text-decoration: underline;">Unsubscribe</a>
+                                                    <a href="{{ unsubscribe_url }}" style="color: #C9F36A; text-decoration: underline;">Unsubscribe</a>
                                                     <span style="margin: 0 10px;">•</span>
-                                                    <a href="https://openstock-ods.vercel.app" style="color: #20c997; text-decoration: underline;">Visit OpenStock</a>
+                                                    <a href="https://openstock.rovexjo.com" style="color: #C9F36A; text-decoration: underline;">Visit Rovex</a>
                                                 </p>
-                                                <p style="margin: 20px 0 0 0; font-size: 12px;">&copy; ${new Date().getFullYear()} OpenStock</p>
+                                                <p style="margin: 20px 0 0 0; font-size: 12px;">&copy; ${new Date().getFullYear()} Rovex · Powered by Rovex · AGPL-3.0</p>
                                             </td>
                                         </tr>
                                     </table>
@@ -472,12 +471,12 @@ export const checkInactiveUsers = inngest.createFunction(
                     <table width="100%" border="0" cellspacing="0" cellpadding="0" style="padding: 20px;">
                         <tr>
                             <td align="center">
-                                <div style="max-width: 600px; width: 100%; border: 2px dashed #20c997; border-radius: 4px; padding: 2px;">
+                                <div style="max-width: 600px; width: 100%; border: 2px dashed #C9F36A; border-radius: 4px; padding: 2px;">
                                     <div style="background-color: #111; padding: 40px 30px; text-align: left;">
                                         
                                         <!-- Logo -->
                                         <h2 style="margin: 0 0 30px 0; font-size: 24px; color: #ffffff; display: flex; align-items: center;">
-                                            <span style="color: #20c997; margin-right: 10px;">📊</span> OpenStock
+                                            <span style="color: #C9F36A; margin-right: 10px;">📊</span> Rovex
                                         </h2>
 
                                         <!-- Title -->
@@ -485,12 +484,12 @@ export const checkInactiveUsers = inngest.createFunction(
 
                                         <p style="color: #cccccc; font-size: 16px; line-height: 1.6;">
                                             Hi ${firstName},<br><br>
-                                            We noticed you haven't visited OpenStock in a while. The markets have been moving, and there might be some opportunities you don't want to miss!
+                                            We noticed you haven't visited Rovex in a while. The markets have been moving, and there might be some opportunities you don't want to miss!
                                         </p>
 
                                         <!-- Card -->
                                         <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin: 30px 0;">
-                                            <h3 style="color: #20c997; margin: 0 0 10px 0; font-size: 18px;">Market Update</h3>
+                                            <h3 style="color: #C9F36A; margin: 0 0 10px 0; font-size: 18px;">Market Update</h3>
                                             <p style="color: #cccccc; margin: 0; font-size: 14px; line-height: 1.5;">
                                                 Markets have been active lately! Major indices have seen significant movements, and there might be opportunities in your tracked stocks that you don't want to miss.
                                             </p>
@@ -504,18 +503,18 @@ export const checkInactiveUsers = inngest.createFunction(
                                         <table border="0" cellspacing="0" cellpadding="0" width="100%">
                                             <tr>
                                                 <td align="center">
-                                                    <a href="https://openstock.app" style="display: inline-block; background-color: #20c997; color: #000000; font-weight: bold; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-size: 16px;">Return to Dashboard</a>
+                                                    <a href="https://openstock.rovexjo.com" style="display: inline-block; background-color: #C9F36A; color: #000000; font-weight: bold; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-size: 16px;">Return to Dashboard</a>
                                                 </td>
                                             </tr>
                                         </table>
 
                                         <p style="margin-top: 40px; color: #666; font-size: 14px;">
-                                            Stay sharp,<br>OpenStock Team
+                                            Stay sharp,<br>Rovex Team
                                         </p>
 
                                         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px dashed #333; text-align: center; font-size: 12px; color: #666;">
-                                            <p>You received this because you are an OpenStock user.</p>
-                                            <a href="#" style="color: #20c997;">Unsubscribe</a>
+                                            <p>You received this because you are an Rovex user.</p>
+                                            <a href="#" style="color: #C9F36A;">Unsubscribe</a>
                                         </div>
 
                                     </div>

@@ -35,7 +35,7 @@ const FEED_TIMEOUT_MS = 6000;
 const MAX_SYMBOLS = 6;
 // Per symbol we keep only the freshest few; mergeNews trims the combined list again.
 const PER_SYMBOL = 4;
-const USER_AGENT = 'Mozilla/5.0 (compatible; OpenStock/1.0; +https://github.com/Open-Dev-Society/OpenStock)';
+const USER_AGENT = 'Mozilla/5.0 (compatible; Rovex/1.0; +https://github.com/Open-Dev-Society/OpenStock)';
 
 async function fetchFeed(query: string, related: string, limit: number, lang: Lang): Promise<RssNewsItem[]> {
     const edition = EDITIONS[lang];

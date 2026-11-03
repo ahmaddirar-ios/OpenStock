@@ -11,16 +11,15 @@ import { adjacentTickers, findTicker, relatedTickers, tickerIntro, tickerPath, U
 
 describe('isPublicPath', () => {
     it('lets crawlers and the new public sections through', () => {
-        for (const path of ['/', '/about', '/robots.txt', '/sitemap.xml', '/s', '/s/AAPL', '/s/BRK.B', '/compare', '/compare/self-hosted-stock-tracker']) {
+        for (const path of ['/', '/about', '/help', '/terms', '/api-docs', '/robots.txt', '/sitemap.xml', '/favicon.ico', '/opengraph-image', '/manifest.webmanifest', '/s', '/s/AAPL', '/s/BRK.B', '/compare', '/compare/self-hosted-stock-tracker']) {
             expect(isPublicPath(path), path).toBe(true);
         }
     });
 
     it('keeps the signed-in app private, including paths that share a prefix', () => {
-        for (const path of ['/stocks', '/stocks/AAPL', '/dashboard', '/watchlist', '/profile', '/sign-in', '/something']) {
+        for (const path of ['/stocks', '/stocks/AAPL', '/dashboard', '/watchlist', '/profile', '/sign-in', '/something', '/sponsor']) {
             expect(isPublicPath(path), path).toBe(false);
         }
-        expect(isPublicPath('/sponsor')).toBe(true);
     });
 });
 

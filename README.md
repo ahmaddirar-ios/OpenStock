@@ -1,4 +1,6 @@
-
+> **Rovex** is a deployment of OpenStock: an Arabic-first, bilingual trading terminal built on
+> this source under the AGPL-3.0. Everything below describes the upstream project this fork
+> tracks; the app itself is branded Rovex.
 
 <p align="center"><sub><a href="#sponsors">SPONSORED BY</a></sub></p>
 

@@ -8,7 +8,7 @@ import { signInWithEmail } from "@/lib/actions/auth.actions";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import OpenDevSocietyBranding from "@/components/OpenDevSocietyBranding";
+import FooterCredit from "@/components/brand/FooterCredit";
 import SocialAuthButtons from "@/components/forms/SocialAuthButtons";
 import LangToggle, { useLang } from "@/components/LangToggle";
 import { tx } from "@/lib/i18n";
@@ -94,7 +94,7 @@ const SignIn = () => {
                 </Button>
 
                 <FooterLink text={tx(lang, 'auth.noAccount')} linkText={tx(lang, 'auth.signUpLink')} href="/sign-up" />
-                <OpenDevSocietyBranding outerClassName="mt-10 flex justify-center"  text={tx(lang, 'auth.brandCredit')} />
+                <FooterCredit lang={lang} className="mt-10 text-center" />
             </form>
         </>
     );

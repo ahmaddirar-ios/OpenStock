@@ -60,7 +60,7 @@ describe('validateSubscription', () => {
 describe('alertPushPayload', () => {
     it('names the symbol and carries the rule with the value that tripped it', () => {
         expect(alertPushPayload({ symbol: '2222.SR', label: 'RSI at or below 70', value: '57.5' })).toEqual({
-            title: 'OpenStock · 2222.SR',
+            title: 'Rovex · 2222.SR',
             body: 'RSI at or below 70: 57.5',
             url: '/alerts',
         });

@@ -4,8 +4,8 @@ import PageHero from '@/components/marketing/PageHero';
 import { GUIDES } from '@/lib/seo/comparisons';
 import { siteUrl } from '@/lib/seo/site';
 
-const title = 'Guides | OpenStock';
-const description = 'What OpenStock is and is not: an open-source stock tracker with TradingView charts, a watchlist, email alerts, and self-hosting. Honest comparisons, no account required.';
+const title = 'Guides';
+const description = 'What Rovex is and is not: an open-source stock tracker with TradingView charts, a watchlist, email alerts, and self-hosting. Honest comparisons, no account required.';
 
 export function generateMetadata(): Metadata {
     const url = `${siteUrl()}/compare`;
@@ -13,7 +13,7 @@ export function generateMetadata(): Metadata {
         title,
         description,
         alternates: { canonical: url },
-        openGraph: { title, description, url, siteName: 'OpenStock', type: 'website' },
+        openGraph: { title, description, url, siteName: 'Rovex', type: 'website' },
         twitter: { card: 'summary', title, description },
     };
 }
@@ -23,7 +23,7 @@ export default function GuideIndexPage() {
         <>
             <PageHero
                 kicker="Guides"
-                title="What OpenStock is for."
+                title="What Rovex is for."
                 sub="Short, factual pages for the questions people actually ask. Charts on this site are TradingView widgets. The signed-in app is free to try."
             />
             <section className="mx-auto mt-12 grid max-w-[1200px] gap-3 px-5 md:grid-cols-2">

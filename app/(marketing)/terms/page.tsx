@@ -2,9 +2,10 @@ import { Metadata } from 'next';
 import { AlertTriangle, Check, X } from 'lucide-react';
 import PageHero from '@/components/marketing/PageHero';
 import SectionHead from '@/components/marketing/SectionHead';
+import { REPO_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
-    title: 'Terms of Service | OpenStock',
+    title: 'Terms of Service',
     description: 'Fair, transparent, and open terms for our community.',
 };
 
@@ -17,7 +18,7 @@ const PROMISES = [
 
 const RULES = {
     do: ['Share knowledge freely', 'Use the API for personal projects', 'Respect other members'],
-    dont: ['Scrape data excessively', 'Share API keys', 'Use OpenStock for high-frequency trading'],
+    dont: ['Scrape data excessively', 'Share API keys', 'Use Rovex for high-frequency trading'],
 };
 
 export default function TermsPage() {
@@ -36,7 +37,7 @@ export default function TermsPage() {
                         <div>
                             <h2 className="font-bold text-warn">Investment disclaimer</h2>
                             <p className="mt-2 max-w-3xl leading-relaxed text-muted-foreground">
-                                <strong className="text-foreground">OpenStock is an educational and analysis tool, not a financial advisor.</strong>{' '}
+                                <strong className="text-foreground">Rovex is an educational and analysis tool, not a financial advisor.</strong>{' '}
                                 Data is provided as is, for information only. Never invest money you cannot afford to lose. Always do your own
                                 research or consult a certified professional before making financial decisions.
                             </p>
@@ -79,7 +80,7 @@ export default function TermsPage() {
                     ))}
                 </div>
                 <p className="mt-8 text-muted-foreground">
-                    Questions about these terms? Email <a href="mailto:opendevsociety@gmail.com" className="font-semibold text-brand-ink hover:underline">opendevsociety@gmail.com</a>.
+                    Questions about these terms? Open an issue on the <a href={`${REPO_URL}/issues`} className="font-semibold text-brand-ink hover:underline">source repository</a>.
                 </p>
             </section>
         </>

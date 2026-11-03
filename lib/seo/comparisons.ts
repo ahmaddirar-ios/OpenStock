@@ -9,33 +9,33 @@ export type Guide = {
 };
 
 // Honest comparison pages. Names of other products appear because that is the search,
-// and the copy says what OpenStock does and does not do.
+// and the copy says what Rovex does and does not do.
 export const GUIDES: Guide[] = [
     {
         slug: 'free-tradingview-alternative',
         kicker: 'Compare',
         title: 'Free TradingView alternative (open source)',
-        description: 'OpenStock is a free, open-source stock tracker. Charts are TradingView widgets with their branding left intact. Watchlists and email alerts are OpenStock’s own.',
-        lede: 'If you want Pine Script, a broker login or TradingView’s social network, stay on TradingView. If you want a free watchlist, charts and email alerts you can run yourself, OpenStock is the open-source app built around those charts.',
+        description: 'Rovex is a free, open-source stock tracker. Charts are TradingView widgets with their branding left intact. Watchlists and email alerts are Rovex’s own.',
+        lede: 'If you want Pine Script, a broker login or TradingView’s social network, stay on TradingView. If you want a free watchlist, charts and email alerts you can run yourself, Rovex is the open-source app built around those charts.',
         sections: [
             {
                 heading: 'What you actually get',
                 paragraphs: [
-                    'OpenStock is an AGPL-3.0 web app. The hosted site is free: create an account, search a company, and open a chart. Candle charts, drawing tools, financials, technicals and the company profile come from TradingView’s embeddable widgets. Their logo and “by TradingView” link stay on the page.',
-                    'Around the chart, OpenStock adds an account, a watchlist of up to 50 symbols, browser-style tabs, and a dashboard for US, India, Germany, Canada, Australia, crypto and forex. A weekly email can summarise news for the symbols you watch when email and an AI provider are configured.',
+                    'Rovex is an AGPL-3.0 web app. The hosted site is free: create an account, search a company, and open a chart. Candle charts, drawing tools, financials, technicals and the company profile come from TradingView’s embeddable widgets. Their logo and “by TradingView” link stay on the page.',
+                    'Around the chart, Rovex adds an account, a watchlist of up to 50 symbols, browser-style tabs, and a dashboard for US, India, Germany, Canada, Australia, crypto and forex. A weekly email can summarise news for the symbols you watch when email and an AI provider are configured.',
                 ],
             },
             {
                 heading: 'What this is not',
                 paragraphs: [
-                    'OpenStock does not replace a TradingView subscription. There is no Pine Script, no strategy tester, no options chain, and no way to place a trade. Indicators you can pin on every chart are the common set: SMA, EMA, Bollinger Bands, VWAP, RSI, MACD, Stochastic and ATR. Anything beyond that lives inside the TradingView widget for that visit.',
+                    'Rovex does not replace a TradingView subscription. There is no Pine Script, no strategy tester, no options chain, and no way to place a trade. Indicators you can pin on every chart are the common set: SMA, EMA, Bollinger Bands, VWAP, RSI, MACD, Stochastic and ATR. Anything beyond that lives inside the TradingView widget for that visit.',
                     'Public company pages on this site show the TradingView chart and SEC filings only. They do not show a price quote. Quotes inside the signed-in app come from a separate provider and are not republished here.',
                 ],
             },
             {
                 heading: 'What it costs',
                 paragraphs: [
-                    'The community site is free. Quotes there refresh about once an hour, and email price alerts are off. OpenStock Cloud, which is not on sale yet, is planned at $5 a month for live quotes and email alerts. Self-hosting is free: you bring your own market-data key and can turn on realtime mode, which checks alerts every five minutes.',
+                    'The community site is free. Quotes there refresh about once an hour, and email price alerts are off. Rovex Cloud, which is not on sale yet, is planned at $5 a month for live quotes and email alerts. Self-hosting is free: you bring your own market-data key and can turn on realtime mode, which checks alerts every five minutes.',
                 ],
             },
         ],
@@ -46,11 +46,11 @@ export const GUIDES: Guide[] = [
             },
             {
                 question: 'Can I publish a script or set an alert the way TradingView does?',
-                answer: 'Not on the chart. OpenStock alerts are an email when a US stock or crypto price crosses a number you set, and only in realtime mode (self-hosted, or Cloud when it launches).',
+                answer: 'Not on the chart. Rovex alerts are an email when a US stock or crypto price crosses a number you set, and only in realtime mode (self-hosted, or Cloud when it launches).',
             },
             {
                 question: 'Is the source code actually available?',
-                answer: 'Yes. The repository is Open-Dev-Society/OpenStock under AGPL-3.0. You can read it, run it, and modify it. If you offer a modified version as a network service, the AGPL requires you to share your source.',
+                answer: 'Yes. The repository is Open-Dev-Society/Rovex under AGPL-3.0. You can read it, run it, and modify it. If you offer a modified version as a network service, the AGPL requires you to share your source.',
             },
         ],
     },
@@ -58,8 +58,8 @@ export const GUIDES: Guide[] = [
         slug: 'self-hosted-stock-tracker',
         kicker: 'Self-host',
         title: 'Self-hosted stock tracker',
-        description: 'Run OpenStock on your own server with Docker or the prebuilt image. Your database, your market-data key, and email price alerts when you turn on realtime mode.',
-        lede: 'OpenStock is a Next.js app with MongoDB, built to run on a small VPS. The hosted site is the convenient version. The same code is what you run if you want the data and the alerts under your own keys.',
+        description: 'Run Rovex on your own server with Docker or the prebuilt image. Your database, your market-data key, and email price alerts when you turn on realtime mode.',
+        lede: 'Rovex is a Next.js app with MongoDB, built to run on a small VPS. The hosted site is the convenient version. The same code is what you run if you want the data and the alerts under your own keys.',
         sections: [
             {
                 heading: 'What you run',
@@ -101,8 +101,8 @@ export const GUIDES: Guide[] = [
         slug: 'free-stock-watchlist',
         kicker: 'Watchlist',
         title: 'Free stock watchlist with email alerts',
-        description: 'A free watchlist for up to 50 symbols, saved to your OpenStock account. Email alerts currently need a self-hosted instance in realtime mode. They are off on the hosted site.',
-        lede: 'The watchlist is a list of companies you actually follow, not a feed. Add a symbol from search and keep the chart. Email alerts currently need a self-hosted instance; the hosted site does not send them, and OpenStock Cloud is not on sale.',
+        description: 'A free watchlist for up to 50 symbols, saved to your Rovex account. Email alerts currently need a self-hosted instance in realtime mode. They are off on the hosted site.',
+        lede: 'The watchlist is a list of companies you actually follow, not a feed. Add a symbol from search and keep the chart. Email alerts currently need a self-hosted instance; the hosted site does not send them, and Rovex Cloud is not on sale.',
         sections: [
             {
                 heading: 'On the free hosted site',
@@ -114,7 +114,7 @@ export const GUIDES: Guide[] = [
             {
                 heading: 'When the email actually sends',
                 paragraphs: [
-                    'Alerts are checked every five minutes, and only in realtime mode. That is a self-hosted OpenStock with your own market-data key and NEXT_PUBLIC_OPENSTOCK_DATA_MODE=realtime, or OpenStock Cloud once it is on sale (planned at $5 a month). The email goes to the address on your account. An alert is an upper or lower target: greater than, or less than, a price you type.',
+                    'Alerts are checked every five minutes, and only in realtime mode. That is a self-hosted Rovex with your own market-data key and NEXT_PUBLIC_OPENSTOCK_DATA_MODE=realtime, or Rovex Cloud once it is on sale (planned at $5 a month). The email goes to the address on your account. An alert is an upper or lower target: greater than, or less than, a price you type.',
                     'Alerts run for US stocks and crypto. Other markets can sit on the watchlist, but the free quote source used for alerts does not price them, so the alert will not fire.',
                 ],
             },
@@ -144,11 +144,11 @@ export const GUIDES: Guide[] = [
         slug: 'open-source-bloomberg-alternative',
         kicker: 'Compare',
         title: 'Open-source alternatives to a Bloomberg-style terminal',
-        description: 'OpenStock is a free, open-source stock tracker for charts, a watchlist and SEC filings. It is not a professional market terminal and does not replace one.',
-        lede: 'A professional terminal is a newsroom, a chat system, a bond desk and a pricing engine sold for a four-figure monthly fee. OpenStock is none of those. It is a free way for an individual to follow listed companies, read a chart, and open the filings.',
+        description: 'Rovex is a free, open-source stock tracker for charts, a watchlist and SEC filings. It is not a professional market terminal and does not replace one.',
+        lede: 'A professional terminal is a newsroom, a chat system, a bond desk and a pricing engine sold for a four-figure monthly fee. Rovex is none of those. It is a free way for an individual to follow listed companies, read a chart, and open the filings.',
         sections: [
             {
-                heading: 'The slice OpenStock covers',
+                heading: 'The slice Rovex covers',
                 paragraphs: [
                     'US, Indian, German, Canadian and Australian stock pages, plus crypto and forex. TradingView charts with drawing tools. A watchlist, email price alerts in realtime mode, and a short weekly news summary. For the S&P 500 and Nasdaq-100, public pages link the latest annual and quarterly reports on SEC EDGAR.',
                     'The source is public (AGPL-3.0), so a developer can see how a quote moves from the provider to the screen. That is the part a closed terminal will not show you.',
@@ -157,8 +157,8 @@ export const GUIDES: Guide[] = [
             {
                 heading: 'The slice it does not cover',
                 paragraphs: [
-                    'No real-time news wire, no messenger, no order routing, no fixed income, no derivatives analytics, no Excel add-in, and no compliance archive. Prices in the signed-in app come from Finnhub on a personal-use plan and can be delayed. Nothing in OpenStock is a bid or an offer.',
-                    'If your work is trading on behalf of other people, or marking a book to market, you need a vendor that sells a commercial display licence. OpenStock is a personal and educational tool. The public pages deliberately avoid republishing that quote feed.',
+                    'No real-time news wire, no messenger, no order routing, no fixed income, no derivatives analytics, no Excel add-in, and no compliance archive. Prices in the signed-in app come from Finnhub on a personal-use plan and can be delayed. Nothing in Rovex is a bid or an offer.',
+                    'If your work is trading on behalf of other people, or marking a book to market, you need a vendor that sells a commercial display licence. Rovex is a personal and educational tool. The public pages deliberately avoid republishing that quote feed.',
                 ],
             },
             {
@@ -170,12 +170,12 @@ export const GUIDES: Guide[] = [
         ],
         faqs: [
             {
-                question: 'Is OpenStock a Bloomberg alternative?',
+                question: 'Is Rovex a Bloomberg alternative?',
                 answer: 'Only for the narrow job of tracking stocks and reading charts and filings at no charge. It is not a substitute for a professional terminal.',
             },
             {
-                question: 'Can a company put OpenStock on an office floor?',
-                answer: 'The code is AGPL-3.0, so you may run it, with the AGPL’s source-sharing duties if you modify it and provide it as a service. The market-data key most people use is a personal-use plan. A business that displays those quotes needs a commercial licence from a data vendor. OpenStock does not grant one.',
+                question: 'Can a company put Rovex on an office floor?',
+                answer: 'The code is AGPL-3.0, so you may run it, with the AGPL’s source-sharing duties if you modify it and provide it as a service. The market-data key most people use is a personal-use plan. A business that displays those quotes needs a commercial licence from a data vendor. Rovex does not grant one.',
             },
             {
                 question: 'Where do the public company pages get their facts?',
@@ -188,7 +188,7 @@ export const GUIDES: Guide[] = [
         kicker: 'Students',
         title: 'Stock market app for students',
         description: 'A free stock tracker students can use without a card: charts, a watchlist, SEC filings for large US companies, and source code you can read for a project.',
-        lede: 'OpenStock is free to sign up for, and the code is free to read. It is built for learning how a market screen fits together, not for telling you what to buy.',
+        lede: 'Rovex is free to sign up for, and the code is free to read. It is built for learning how a market screen fits together, not for telling you what to buy.',
         sections: [
             {
                 heading: 'What a student can do on the site',
@@ -206,7 +206,7 @@ export const GUIDES: Guide[] = [
             {
                 heading: 'Please don’t use it as advice',
                 paragraphs: [
-                    'OpenStock is not a broker and not an advisor. Filing facts and charts are information. A student portfolio assignment should cite the company’s filing and say which number came from where. The public company pages say when a figure is an EDGAR fact and when the chart is TradingView’s.',
+                    'Rovex is not a broker and not an advisor. Filing facts and charts are information. A student portfolio assignment should cite the company’s filing and say which number came from where. The public company pages say when a figure is an EDGAR fact and when the chart is TradingView’s.',
                 ],
             },
         ],
@@ -216,8 +216,8 @@ export const GUIDES: Guide[] = [
                 answer: 'No. The community site is free. A paid cloud plan with live quotes and email alerts has been announced and is not on sale yet.',
             },
             {
-                question: 'Can I cite OpenStock in homework?',
-                answer: 'Cite the primary source. For a US company’s revenue or risk factors, that is the 10-K on EDGAR, which these pages link. For a chart, say the chart is a TradingView widget embedded by OpenStock.',
+                question: 'Can I cite Rovex in homework?',
+                answer: 'Cite the primary source. For a US company’s revenue or risk factors, that is the 10-K on EDGAR, which these pages link. For a chart, say the chart is a TradingView widget embedded by Rovex.',
             },
             {
                 question: 'Is there a mobile app?',
@@ -229,8 +229,8 @@ export const GUIDES: Guide[] = [
         slug: 'track-nse-stocks',
         kicker: 'India',
         title: 'Track NSE stocks free',
-        description: 'How OpenStock shows Indian stocks: BSE charts and end-of-day quotes in the signed-in app. This release does not include Indian ticker pages or EDGAR mappings.',
-        lede: 'You can follow Indian names on OpenStock without paying. The signed-in app uses BSE symbols, because free TradingView embeds do not license NSE charts. The public directory on this site is US-only for now.',
+        description: 'How Rovex shows Indian stocks: BSE charts and end-of-day quotes in the signed-in app. This release does not include Indian ticker pages or EDGAR mappings.',
+        lede: 'You can follow Indian names on Rovex without paying. The signed-in app uses BSE symbols, because free TradingView embeds do not license NSE charts. The public directory on this site is US-only for now.',
         sections: [
             {
                 heading: 'What works after you sign in',
@@ -248,14 +248,14 @@ export const GUIDES: Guide[] = [
             {
                 heading: 'A practical way to track one',
                 paragraphs: [
-                    'Sign up, open search, and type the company. Pin it to the watchlist. The chart is end of day, the profile and financials come from the TradingView widget, and the page is yours. For a corporate action or a result, read the filing on the exchange or the company’s own investor page. OpenStock is not a broker and does not place orders on NSE or BSE.',
+                    'Sign up, open search, and type the company. Pin it to the watchlist. The chart is end of day, the profile and financials come from the TradingView widget, and the page is yours. For a corporate action or a result, read the filing on the exchange or the company’s own investor page. Rovex is not a broker and does not place orders on NSE or BSE.',
                 ],
             },
         ],
         faqs: [
             {
                 question: 'Why not an NSE chart?',
-                answer: 'TradingView’s free embeds refuse NSE symbols. OpenStock maps an NSE ticker onto the BSE listing of the same company so the chart still loads. That limit is in the app today, and it is a licensing limit, not a bug we can style away.',
+                answer: 'TradingView’s free embeds refuse NSE symbols. Rovex maps an NSE ticker onto the BSE listing of the same company so the chart still loads. That limit is in the app today, and it is a licensing limit, not a bug we can style away.',
             },
             {
                 question: 'Are Indian prices live?',

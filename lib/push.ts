@@ -81,7 +81,7 @@ export function validateSubscription(input: unknown): PushSubscriptionInput | nu
  */
 export function alertPushPayload({ symbol, label, value }: { symbol: string; label: string; value: string }): PushPayload {
     return {
-        title: `OpenStock · ${symbol}`,
+        title: `Rovex · ${symbol}`,
         body: `${label}: ${value}`,
         url: '/alerts',
     };

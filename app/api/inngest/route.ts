@@ -5,6 +5,6 @@ import { sendWeeklyNewsSummary, sendSignUpEmail, checkStockAlerts, checkInactive
 
 export const { GET, POST, PUT } = serve({
     client: inngest,
-    // Price alerts are an OpenStock Cloud feature, so the checker only runs where they are on
+    // Price alerts are an Rovex Cloud feature, so the checker only runs where they are on
     functions: [sendSignUpEmail, sendWeeklyNewsSummary, checkInactiveUsers, refreshScreener, ...(alertsEnabled ? [checkStockAlerts] : [])],
 })

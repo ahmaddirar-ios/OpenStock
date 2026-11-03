@@ -11,7 +11,7 @@ import FooterLink from "@/components/forms/FooterLink";
 import { signUpWithEmail } from "@/lib/actions/auth.actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import OpenDevSocietyBranding from "@/components/OpenDevSocietyBranding";
+import FooterCredit from "@/components/brand/FooterCredit";
 import SocialAuthButtons from "@/components/forms/SocialAuthButtons";
 import LangToggle, { useLang } from "@/components/LangToggle";
 import { choiceLabel, tx } from "@/lib/i18n";
@@ -132,7 +132,7 @@ const SignUp = () => {
                     <FooterLink text={tx(lang, 'auth.haveAccount')} linkText={tx(lang, 'auth.signInLink')} href="/sign-in" />
                 </div>
 
-                <OpenDevSocietyBranding outerClassName="flex justify-center"  text={tx(lang, 'auth.brandCredit')} />
+                <FooterCredit lang={lang} className="flex justify-center" />
             </form>
         </>
     )

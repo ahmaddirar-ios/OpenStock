@@ -940,7 +940,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         const scale = shot.width / Math.max(1, hostRef.current?.clientWidth ?? shot.width);
         ctx.font = `600 ${Math.round(13 * scale)}px ui-sans-serif, system-ui, sans-serif`;
         ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
-        ctx.fillText(`${symbol} · ${intervalId} · OpenStock`, 12 * scale, 20 * scale);
+        ctx.fillText(`${symbol} · ${intervalId} · Rovex`, 12 * scale, 20 * scale);
 
         const link = document.createElement('a');
         link.download = `openstock-${symbol.replace(/[^A-Za-z0-9]/g, '')}-${intervalId}.png`;

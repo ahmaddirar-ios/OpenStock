@@ -2,7 +2,7 @@ import { cache } from 'react';
 
 // SEC fair-access rules: https://www.sec.gov/os/accessing-edgar-data
 // Declare a User-Agent with a contact address, and stay under 10 requests per second.
-export const SEC_USER_AGENT = 'OpenStock (opendevsociety@gmail.com)';
+export const SEC_USER_AGENT = 'Rovex (opendevsociety@gmail.com)';
 
 const ANNUAL_FORMS = ['10-K', '20-F', '40-F', '10-K/A', '20-F/A', '40-F/A'];
 const QUARTERLY_FORMS = ['10-Q', '10-Q/A'];

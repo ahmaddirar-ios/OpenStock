@@ -24,16 +24,16 @@ type Params = { ticker: string };
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
     const { ticker: raw } = await params;
     const ticker = findTicker(raw);
-    if (!ticker) return { title: 'Stock not found | OpenStock', robots: { index: false, follow: false } };
+    if (!ticker) return { title: 'Stock not found', robots: { index: false, follow: false } };
 
-    const title = `${ticker.name} (${ticker.symbol}) stock chart and SEC filings | OpenStock`;
+    const title = `${ticker.name} (${ticker.symbol}) stock chart and SEC filings`;
     const description = tickerIntro(ticker);
     const url = `${siteUrl()}${tickerPath(ticker.symbol)}`;
     return {
         title,
         description,
         alternates: { canonical: url },
-        openGraph: { title, description, url, siteName: 'OpenStock', type: 'website' },
+        openGraph: { title, description, url, siteName: 'Rovex', type: 'website' },
         twitter: { card: 'summary', title, description },
         robots: { index: true, follow: true },
     };
@@ -82,7 +82,7 @@ export default async function PublicTickerPage({ params }: { params: Promise<Par
             <JsonLd data={structuredData({ ticker, origin, url, title, description: tickerIntro(ticker) })} />
 
             <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold text-muted-foreground">
-                <Link href="/" className="hover:text-foreground">OpenStock</Link>
+                <Link href="/" className="hover:text-foreground">Rovex</Link>
                 <span aria-hidden>/</span>
                 <Link href="/s" className="hover:text-foreground">US stocks</Link>
                 <span aria-hidden>/</span>
@@ -204,7 +204,7 @@ export default async function PublicTickerPage({ params }: { params: Promise<Par
                                 <ChevronDown className="size-4 flex-none text-faint transition-transform group-open:rotate-180" />
                             </summary>
                             <p className="max-w-3xl px-5 pb-5 text-[15px] leading-relaxed text-muted-foreground">
-                                The number you see in the chart is rendered by TradingView’s widget in your browser. OpenStock does not print a quote of its own on this page. A free account adds {ticker.symbol} to a watchlist; email alerts, when that deployment has them, run inside the app.
+                                The number you see in the chart is rendered by TradingView’s widget in your browser. Rovex does not print a quote of its own on this page. A free account adds {ticker.symbol} to a watchlist; email alerts, when that deployment has them, run inside the app.
                             </p>
                         </details>
                         <details className="group">
@@ -213,7 +213,7 @@ export default async function PublicTickerPage({ params }: { params: Promise<Par
                                 <ChevronDown className="size-4 flex-none text-faint transition-transform group-open:rotate-180" />
                             </summary>
                             <p className="max-w-3xl px-5 pb-5 text-[15px] leading-relaxed text-muted-foreground">
-                                From the SEC’s EDGAR submissions feed for CIK {ticker.cik || 'this company'}. The link opens the filing on sec.gov. OpenStock is not affiliated with the SEC.
+                                From the SEC’s EDGAR submissions feed for CIK {ticker.cik || 'this company'}. The link opens the filing on sec.gov. Rovex is not affiliated with the SEC.
                             </p>
                         </details>
                     </div>
@@ -228,8 +228,8 @@ export default async function PublicTickerPage({ params }: { params: Promise<Par
 
             <div className="mt-10">
                 <SignUpCta
-                    title={`Track ${ticker.symbol} free on OpenStock`}
-                    body="Save it to a watchlist, keep the chart open in a tab, and read the filings from one place. OpenStock is not a broker, and nothing here is investment advice."
+                    title={`Track ${ticker.symbol} free on Rovex`}
+                    body="Save it to a watchlist, keep the chart open in a tab, and read the filings from one place. Rovex is not a broker, and nothing here is investment advice."
                     href={signedIn ? `/stocks/${encodeURIComponent(ticker.symbol)}` : '/sign-up'}
                     label={signedIn ? `Open ${ticker.symbol}` : `Track ${ticker.symbol} free`}
                 />
@@ -245,7 +245,7 @@ function structuredData({ ticker, origin, url, title, description }: { ticker: U
             {
                 '@type': 'BreadcrumbList',
                 itemListElement: [
-                    { '@type': 'ListItem', position: 1, name: 'OpenStock', item: `${origin}/` },
+                    { '@type': 'ListItem', position: 1, name: 'Rovex', item: `${origin}/` },
                     { '@type': 'ListItem', position: 2, name: 'US stocks', item: `${origin}/s` },
                     { '@type': 'ListItem', position: 3, name: ticker.sector, item: `${origin}/s#${sectorAnchor(ticker.sector)}` },
                     { '@type': 'ListItem', position: 4, name: `${ticker.name} (${ticker.symbol})`, item: url },
@@ -263,7 +263,7 @@ function structuredData({ ticker, origin, url, title, description }: { ticker: U
                 name: title,
                 description,
                 url,
-                isPartOf: { '@type': 'WebSite', name: 'OpenStock', url: origin },
+                isPartOf: { '@type': 'WebSite', name: 'Rovex', url: origin },
             },
         ],
     };

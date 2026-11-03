@@ -5,7 +5,7 @@ import JsonLd from '@/components/seo/JsonLd';
 import { siteUrl } from '@/lib/seo/site';
 import { sectorAnchor, tickerPath, tickersBySector, US_TICKERS } from '@/lib/seo/tickers';
 
-const title = 'US stock charts and SEC filings | OpenStock';
+const title = 'US stock charts and SEC filings';
 const description = `Public pages for ${US_TICKERS.length} S&P 500 and Nasdaq-100 companies: a TradingView chart and links to recent SEC EDGAR filings. No account required.`;
 
 export function generateMetadata(): Metadata {
@@ -14,7 +14,7 @@ export function generateMetadata(): Metadata {
         title,
         description,
         alternates: { canonical: url },
-        openGraph: { title, description, url, siteName: 'OpenStock', type: 'website' },
+        openGraph: { title, description, url, siteName: 'Rovex', type: 'website' },
         twitter: { card: 'summary', title, description },
     };
 }
@@ -66,7 +66,7 @@ export default function StockDirectoryPage() {
                 name: title,
                 description,
                 url: `${origin}/s`,
-                isPartOf: { '@type': 'WebSite', name: 'OpenStock', url: origin },
+                isPartOf: { '@type': 'WebSite', name: 'Rovex', url: origin },
             }} />
         </>
     );

@@ -1,4 +1,4 @@
-// OpenStock's service worker: it exists for one job — showing an alert notification and
+// Rovex's service worker: it exists for one job — showing an alert notification and
 // landing a tap on the alert centre. No caching, no offline shell: the app is dynamic and a
 // stale shell would be worse than none.
 
@@ -10,7 +10,7 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(self.clients.claim());
 });
 
-const FALLBACK = { title: 'OpenStock', body: 'An alert fired.', url: '/alerts' };
+const FALLBACK = { title: 'Rovex', body: 'An alert fired.', url: '/alerts' };
 
 self.addEventListener('push', (event) => {
     let payload = FALLBACK;

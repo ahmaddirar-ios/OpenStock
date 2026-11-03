@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import InputField from '@/components/forms/InputField';
 import FooterLink from '@/components/forms/FooterLink';
-import OpenDevSocietyBranding from '@/components/OpenDevSocietyBranding';
+import FooterCredit from '@/components/brand/FooterCredit';
 import LangToggle, { useLang } from '@/components/LangToggle';
 import { tx } from '@/lib/i18n';
 import { requestPasswordResetEmail } from '@/lib/actions/auth.actions';
@@ -78,7 +78,7 @@ const ForgotPasswordPage = () => {
                 </Button>
 
                 <FooterLink text={tx(lang, 'auth.remembered')} linkText={tx(lang, 'auth.signInLink')} href="/sign-in" />
-                <OpenDevSocietyBranding outerClassName="mt-10 flex justify-center"  text={tx(lang, 'auth.brandCredit')} />
+                <FooterCredit lang={lang} className="mt-10 text-center" />
             </form>
         </>
     );
