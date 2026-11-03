@@ -3,6 +3,7 @@ import { Github } from "lucide-react";
 import { getSession } from "@/lib/better-auth/auth";
 import RovexLogo from "@/components/brand/RovexLogo";
 import FooterCredit from "@/components/brand/FooterCredit";
+import { MotionProvider } from "@/components/motion";
 import { REPO_URL } from "@/lib/constants";
 
 const FOOTER_LINKS = [
@@ -22,6 +23,7 @@ export default async function MarketingLayout({ children }: { children: React.Re
     const signedIn = !!session?.user;
 
     return (
+        <MotionProvider>
         <div lang="en" dir="ltr" className="min-h-dvh bg-page">
             <header className="sticky top-0 z-40 border-b border-transparent bg-page/80 backdrop-blur-md">
                 <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-6 px-5">
@@ -67,5 +69,6 @@ export default async function MarketingLayout({ children }: { children: React.Re
                 </nav>
             </footer>
         </div>
+        </MotionProvider>
     );
 }

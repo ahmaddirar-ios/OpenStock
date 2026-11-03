@@ -7,6 +7,7 @@ import IconCard from "@/components/marketing/IconCard";
 import { getSession } from "@/lib/better-auth/auth";
 import { cn } from "@/lib/utils";
 import { REPO_URL } from "@/lib/constants";
+import { Reveal, Stagger, StaggerItem, Tilt, Magnetic } from "@/components/motion";
 
 const FEATURES = [
     { icon: CandlestickChart, title: 'Charts that move', body: 'TradingView candles, technicals and financials for any listed company, full screen when you need room.' },
@@ -63,23 +64,23 @@ export default async function LandingPage() {
             <section className="ambient mx-auto grid max-w-[1200px] items-center gap-12 px-5 pt-16 md:pt-24 lg:grid-cols-[minmax(0,1fr)_340px]">
                 <div>
                     <MarketStatus />
-                    <h1 className="mt-6 text-[44px] font-bold leading-[1.02] tracking-[-0.05em] md:text-[68px]">
+                    <h1 className="rise-in mt-6 text-[44px] font-bold leading-[1.02] tracking-[-0.05em] md:text-[68px]" style={{ animationDelay: '0.04s' }}>
                         The market,<br />unfiltered.
                     </h1>
-                    <p className="mt-5 max-w-xl text-[17px] leading-relaxed text-muted-foreground">
+                    <p className="rise-in mt-5 max-w-xl text-[17px] leading-relaxed text-muted-foreground" style={{ animationDelay: '0.10s' }}>
                         Rovex is a trading terminal for the exchanges the big platforms leave out. Professional charts, studies,
                         alerts and a paper-trading desk — in Arabic and English, on the markets you actually trade.
                     </p>
-                    <div className="mt-8 flex flex-wrap items-center gap-2">
-                        <Link href={start.href} className="btn btn-primary h-11 px-5 text-[15px]">{start.label}</Link>
+                    <div className="rise-in mt-8 flex flex-wrap items-center gap-2" style={{ animationDelay: '0.16s' }}>
+                        <Magnetic><Link href={start.href} className="btn btn-primary h-11 px-5 text-[15px]">{start.label}</Link></Magnetic>
                         <a href={REPO_URL} target="_blank" rel="noreferrer" className="btn btn-ghost h-11 px-5 text-[15px]">
                             <Github /> Source
                         </a>
                     </div>
                 </div>
-                <div className="hatch">
+                <Tilt className="hatch" max={4}>
                     <div className="card px-6 pb-5 pt-6"><MarketDial /></div>
-                </div>
+                </Tilt>
             </section>
 
             <section className="mx-auto mt-16 max-w-[1200px] px-5">
@@ -88,11 +89,11 @@ export default async function LandingPage() {
 
             <section id="inside" className="mx-auto mt-28 max-w-[1200px] scroll-mt-24 px-5">
                 <SectionHead kicker="What's inside" title="A terminal for people who aren't at a bank." sub="Everything you need to follow the market, in one place, without a subscription." />
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {FEATURES.map(({ icon, title, body }) => (
-                        <IconCard key={title} icon={icon} title={title}>{body}</IconCard>
+                <Stagger className="mt-0 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {FEATURES.map(({ icon, title, body }, i) => (
+                        <StaggerItem key={title} delay={i * 0.05}><IconCard icon={icon} title={title}>{body}</IconCard></StaggerItem>
                     ))}
-                </div>
+                </Stagger>
             </section>
 
             <section id="data" className="mx-auto mt-28 max-w-[1200px] scroll-mt-24 px-5">
@@ -101,9 +102,11 @@ export default async function LandingPage() {
                     title="Pick how fresh your numbers are."
                     sub="Charts always stream live from TradingView. Quotes, watchlists and alerts come from Finnhub, and this is how often they update."
                 />
-                <div className="grid gap-3 lg:grid-cols-3">
-                    {TIERS.map((tier) => (
-                        <div key={tier.name} className="hatch">
+                <Stagger className="grid gap-3 lg:grid-cols-3">
+                    {TIERS.map((tier, i) => (
+                        <StaggerItem key={tier.name} className="h-full" delay={i * 0.06}>
+                        <Tilt className="h-full" max={4}>
+                        <div className="hatch h-full">
                             <div className="card flex h-full flex-col gap-4 p-5">
                                 <div className="flex items-center justify-between gap-3">
                                     <h3 className="text-[18px] font-bold tracking-[-0.02em]">{tier.name}</h3>
@@ -127,20 +130,22 @@ export default async function LandingPage() {
                                 </Link>
                             </div>
                         </div>
+                        </Tilt>
+                        </StaggerItem>
                     ))}
-                </div>
+                </Stagger>
             </section>
 
             <section id="self-host" className="mx-auto mt-28 grid max-w-[1200px] scroll-mt-24 items-start gap-10 px-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-                <div>
+                <Reveal>
                     <SectionHead
                         kicker="Self-host"
                         title="Your server, your keys, live quotes."
                         sub="Add as many free Finnhub keys as you like: each one adds 60 requests a minute. Switch the data mode to realtime and prices refresh every 15 seconds."
                     />
                     <a href={`${REPO_URL}#docker-setup`} target="_blank" rel="noreferrer" className="btn btn-ghost">Full setup in the README</a>
-                </div>
-                <div className="hatch">
+                </Reveal>
+                <Reveal className="hatch" delay={0.08}>
                     <pre className="card mono overflow-x-auto p-5 text-[13px] leading-7 text-muted-foreground">
                         <span className="text-faint">$ </span><span className="text-foreground">git clone {REPO_URL}.git rovex</span>{'\n'}
                         <span className="text-faint">$ </span><span className="text-foreground">cd rovex</span>{'\n\n'}
@@ -149,11 +154,11 @@ export default async function LandingPage() {
                         <span className="text-brand-ink">NEXT_PUBLIC_OPENSTOCK_DATA_MODE</span>=realtime{'\n\n'}
                         <span className="text-faint">$ </span><span className="text-foreground">docker compose up -d --build</span>
                     </pre>
-                </div>
+                </Reveal>
             </section>
 
             <section className="mx-auto mt-28 max-w-[1200px] px-5">
-                <div className="hatch">
+                <Reveal className="hatch">
                     <div className="card grid gap-10 p-8 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:p-12">
                         <div>
                             <p className="kicker text-brand-ink">Rovex</p>
@@ -166,7 +171,7 @@ export default async function LandingPage() {
                             </div>
                         </div>
                     </div>
-                </div>
+                </Reveal>
             </section>
         </>
     );

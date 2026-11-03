@@ -7,6 +7,7 @@ import TabBar from "@/components/shell/TabBar";
 import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { tx, type Lang } from "@/lib/i18n";
+import { MotionProvider } from "@/components/motion";
 
 type AppShellProps = {
     user: User;
@@ -28,6 +29,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
     }, [pathname]);
 
     return (
+        <MotionProvider>
         <div className="shell">
             <a href="#main" className="skip-link">{tx(lang, 'a11y.skip')}</a>
             <div
@@ -57,6 +59,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
 
             <SearchCommand initialStocks={initialStocks} lang={lang} />
         </div>
+        </MotionProvider>
     );
 };
 
