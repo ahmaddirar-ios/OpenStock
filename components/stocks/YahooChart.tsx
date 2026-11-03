@@ -14,6 +14,9 @@ import {
 } from 'lightweight-charts';
 import {
     Bell,
+    Bookmark,
+    BookmarkCheck,
+    BringToFront,
     Camera,
     ChevronDown,
     ClipboardPaste,
@@ -31,6 +34,7 @@ import {
     Pencil,
     Plus,
     RefreshCw,
+    SendToBack,
     Trash2,
     Upload,
     X,
@@ -56,7 +60,7 @@ import {
 import StrategyMenu from '@/components/stocks/StrategyMenu';
 import ReplayPanel from '@/components/stocks/ReplayPanel';
 import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
 import {
     MIN_WARMUP_BARS,
     buy as paperBuy,
@@ -94,6 +98,7 @@ import {
     DRAWING_WIDTHS,
     cloneDrawing,
     carriesText,
+    layerDrawings,
     loadDrawings,
     mergeDrawings,
     nearestTime,
@@ -104,13 +109,26 @@ import {
     toolDef,
     withPoint,
     withText,
+    type ColorKey,
     type CountDegree,
     type CountKind,
     type Drawing,
+    type DrawingDash,
+    type DrawingWidth,
     type DrawPoint,
+    type LayerMove,
     type ScreenPoint,
+    type ShapeTool,
 } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import {
+    loadDrawingStyles,
+    saveDrawingStyles,
+    styleFor,
+    withDrawingStyle,
+    withoutDrawingStyle,
+    type DrawingStyleMap,
+} from '@/lib/drawing-styles';
 import DrawingRail from '@/components/stocks/DrawingRail';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
@@ -584,6 +602,25 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setTransfer(null);
     }, [symbol, resetDrawings]);
 
+    // The strokes the trader saved as a tool's default ("template"). A preference, so it is read once
+    // and kept, not reset with the symbol's drawings.
+    const [drawingStyles, setDrawingStyles] = useState<DrawingStyleMap>({});
+    useEffect(() => {
+        setDrawingStyles(loadDrawingStyles());
+    }, []);
+    const rememberStyle = (tool: ShapeTool | undefined, style: { color?: ColorKey; width?: DrawingWidth; dash?: DrawingDash }) => {
+        if (!tool) return;
+        const next = withDrawingStyle(drawingStyles, tool, style);
+        saveDrawingStyles(next);
+        setDrawingStyles(next);
+    };
+    const forgetStyle = (tool: ShapeTool | undefined) => {
+        if (!tool) return;
+        const next = withoutDrawingStyle(drawingStyles, tool);
+        saveDrawingStyles(next);
+        setDrawingStyles(next);
+    };
+
     const saved = useRef(false);
     useEffect(() => {
         if (!saved.current) {
@@ -825,7 +862,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setTool((current) => (current === next && !labels ? null : next));
     };
 
-    const commit = (drawing: Drawing) => setDrawings((list) => [...list, drawing]);
+    const commit = (drawing: Drawing) => setDrawings((list) => [...list, { ...styleFor(drawing.tool, drawingStyles), ...drawing }]);
 
     /**
      * Numbers the waves on the candles that are loaded. One shot, like a normal tool: the result is
@@ -863,6 +900,25 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         )}`;
     const hasCandles = (data?.candles.length ?? 0) > 0;
     const selectedDrawing = selectedId ? drawings.find((drawing) => drawing.id === selectedId) ?? null : null;
+    // The stroke the selected tool's new drawings start with, and whether the trader has saved one.
+    const selectedTool = selectedDrawing?.tool;
+    const defaultStyle = selectedTool ? styleFor(selectedTool, drawingStyles) : {};
+    const hasDefaultStyle = Object.keys(defaultStyle).length > 0;
+    const styleIsSet =
+        !!selectedDrawing && (selectedDrawing.color !== undefined || selectedDrawing.width !== undefined || selectedDrawing.dash !== undefined);
+    /** Saves the selected drawing's stroke as its tool's default, or clears that default again. */
+    const toggleDefaultStyle = () => {
+        if (!selectedTool) return;
+        if (hasDefaultStyle) {
+            forgetStyle(selectedTool);
+            return;
+        }
+        rememberStyle(selectedTool, {
+            color: selectedDrawing?.color,
+            width: selectedDrawing?.width,
+            dash: selectedDrawing?.dash,
+        });
+    };
 
     // The rail passes a plain tool id; the manual counts still need the degree's glyphs.
     const railPick = (next: ActiveTool) => {
@@ -935,6 +991,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         );
     const toggleLock = (id: string) =>
         setDrawings((list) => list.map((d) => (d.id === id ? { ...d, locked: !d.locked } : d)));
+    /** Which end of the pile the selected drawing sits on. The list's order is the stacking order. */
+    const layerSelected = (move: LayerMove) => {
+        if (!selectedId) return;
+        setDrawings((list) => layerDrawings(list, selectedId, move));
+    };
     const removeDrawing = (id: string) => {
         setDrawings((list) => list.filter((d) => d.id !== id));
         setSelectedId((current) => (current === id ? null : current));
@@ -1643,6 +1704,17 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         );
                     })}
                 </div>
+                <button
+                    type="button"
+                    onClick={toggleDefaultStyle}
+                    disabled={!selectedId || (!styleIsSet && !hasDefaultStyle)}
+                    aria-pressed={hasDefaultStyle}
+                    title={t(hasDefaultStyle ? 'chart.style.clear' : 'chart.style.save')}
+                    aria-label={t(hasDefaultStyle ? 'chart.style.clear' : 'chart.style.save')}
+                    className={cn('icon-btn', hasDefaultStyle && 'text-brand')}
+                >
+                    {hasDefaultStyle ? <BookmarkCheck /> : <Bookmark />}
+                </button>
                 <button type="button" onClick={copySelected} disabled={!selectedId} className="icon-btn" title={t('chart.tool.copy')} aria-label={t('chart.tool.copy')}>
                     <Copy />
                 </button>
@@ -1651,6 +1723,26 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 </button>
                 <button type="button" onClick={duplicateSelected} disabled={!selectedId} className="icon-btn" title={t('chart.tool.duplicate')} aria-label={t('chart.tool.duplicate')}>
                     <CopyPlus />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => layerSelected('front')}
+                    disabled={!selectedId}
+                    className="icon-btn"
+                    title={t('chart.layer.front')}
+                    aria-label={t('chart.layer.front')}
+                >
+                    <BringToFront />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => layerSelected('back')}
+                    disabled={!selectedId}
+                    className="icon-btn"
+                    title={t('chart.layer.back')}
+                    aria-label={t('chart.layer.back')}
+                >
+                    <SendToBack />
                 </button>
                 {tool && tool !== 'select' && (
                     <button type="button" onClick={() => startTool(null)} className="pill h-7 px-2.5 text-[12px] gap-1.5">

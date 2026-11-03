@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import ChartDrawings from '@/components/stocks/ChartDrawings';
-import type { DrawPoint, Drawing, ScreenPoint, ShapeTool } from '@/lib/chart-drawings';
+import { layerDrawings, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool } from '@/lib/chart-drawings';
 
 // The panel the SVG fills; jsdom has no layout, so the size is declared rather than measured.
 // It has to sit on Element.prototype: the drawing layer is an <svg>, which is not an HTMLElement.
@@ -638,5 +638,45 @@ describe('a fan that has to reach the panel edge', () => {
         const extended = renderTool('extended', [a, b], [], undefined, { fromScreen: stopsBeforeTheEdge });
         // Both ends move out past the two clicks: (0, …) to (640, …).
         expect(extended.lines.some((line) => line.x1 === 0 && line.x2 === 640)).toBe(true);
+    });
+});
+
+describe('the pile the drawings are painted in', () => {
+    const under: Drawing = { id: 'under', tool: 'rectangle', points: [{ time: 1000, price: 100 }, { time: 1500, price: 110 }] };
+    const over: Drawing = { id: 'over', tool: 'rectangle', points: [{ time: 1000, price: 100 }, { time: 1800, price: 110 }] };
+
+    const renderList = (drawings: Drawing[]) => {
+        const { container } = render(
+            <ChartDrawings
+                drawings={drawings}
+                selectedId={null}
+                tool={null}
+                text=""
+                barTimes={[]}
+                toScreen={toScreen}
+                fromScreen={fromScreen}
+                onCommit={() => {}}
+                onSelect={() => {}}
+                onMoveHandle={() => {}}
+                onEditText={() => {}}
+                onToolConsumed={() => {}}
+                onGestureStart={() => {}}
+                onGestureEnd={() => {}}
+                label={(key) => key}
+            />,
+        );
+        const svg = container.querySelector('svg[role="application"]');
+        if (!svg) throw new Error('the drawing layer did not render');
+        // 50px and 80px wide on this scale: which one comes first tells the stacking order.
+        return Array.from(svg.querySelectorAll('g rect')).map((rect) => Number(rect.getAttribute('width')));
+    };
+
+    it('paints the drawings in the order it is given, last on top', () => {
+        expect(renderList([under, over])).toEqual([50, 80]);
+    });
+
+    it('follows a move to the front, so the drawing the trader raised is painted last', () => {
+        expect(renderList(layerDrawings([under, over], 'under', 'front'))).toEqual([80, 50]);
+        expect(renderList(layerDrawings([under, over], 'over', 'back'))).toEqual([80, 50]);
     });
 });

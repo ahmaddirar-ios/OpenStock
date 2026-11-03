@@ -104,7 +104,7 @@ export type Drawing = {
     points: DrawPoint[];
     /** Glyphs beside the points; patterns have defaults, counts supply their degree's set. */
     labels?: string[];
-    /** Only for the label tool. */
+    /** The trader's own words, for the tools that carry them: the note and the annotation family. */
     text?: string;
     /** Palette key, not a raw colour, so the stored value cannot drift from the theme. */
     color?: ColorKey;
@@ -315,6 +315,23 @@ export const MAX_STROKE_POINTS = 240;
 
 /** The tools a flyout offers. A retired tool is skipped here but still paints and still parses. */
 export const toolsInGroup = (group: ToolGroup): ToolDef[] => TOOL_DEFS.filter((d) => d.group === group && !d.hidden);
+
+/** Which end of the pile a drawing is moved to. The list's order *is* the stacking: see layerDrawings. */
+export type LayerMove = 'front' | 'back';
+
+/**
+ * Moves a drawing to the top or the bottom of the pile and returns the new list. The SVG paints its
+ * children in order, so the end of the list is what the trader sees on top. A move that would change
+ * nothing returns the same array, so the caller's history does not record an empty step.
+ */
+export function layerDrawings(list: Drawing[], id: string, move: LayerMove): Drawing[] {
+    const index = list.findIndex((d) => d.id === id);
+    if (index === -1) return list;
+    const last = list.length - 1;
+    if ((move === 'front' && index === last) || (move === 'back' && index === 0)) return list;
+    const drawing = list[index];
+    return move === 'front' ? [...list.filter((d) => d.id !== id), drawing] : [drawing, ...list.filter((d) => d.id !== id)];
+}
 
 export const newDrawingId = (): string => Math.random().toString(36).slice(2, 10);
 
