@@ -1101,7 +1101,10 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 .draw-rail::-webkit-scrollbar { display: none; }
 .draw-rail-sep { flex: 0 0 auto; width: 18px; height: 1px; background: var(--line); margin: 2px 0; }
 .draw-rail-btn {
-    flex: 0 0 auto;
+    /* The strip never clips a button: when the panel is short the buttons give up a few pixels of
+       height rather than pushing the last one out of sight. 30px is the comfortable size. */
+    flex: 0 1 auto;
+    min-height: 22px;
     width: 30px;
     height: 30px;
     display: grid;

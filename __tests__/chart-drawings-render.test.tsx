@@ -69,7 +69,13 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
     const paths = Array.from(svg.querySelectorAll('path')).map((node) => node.getAttribute('d') ?? '');
     const dashes = Array.from(svg.querySelectorAll('line')).map((line) => line.getAttribute('stroke-dasharray'));
     const texts = Array.from(svg.querySelectorAll('text')).map((node) => node.textContent ?? '');
-    return { lines, rects, dashes, ellipses, circles, polygons, paths, texts };
+    // Every painted path with the weight and opacity it was given, for the freehand brushes.
+    const strokes = Array.from(svg.querySelectorAll('path')).map((node) => ({
+        d: node.getAttribute('d') ?? '',
+        width: Number(node.getAttribute('stroke-width')),
+        opacity: Number(node.getAttribute('opacity')),
+    }));
+    return { lines, rects, dashes, ellipses, circles, polygons, paths, strokes, texts };
 };
 
 /** The same layer, but with a tool armed, so a drawing gesture can be played against it. */
@@ -199,6 +205,56 @@ describe('the geometric shapes on the chart', () => {
         expect(onCommit).toHaveBeenCalledTimes(1);
         expect(onCommit.mock.calls[0][0].tool).toBe('polyline');
         expect(onCommit.mock.calls[0][0].points).toHaveLength(3);
+    });
+});
+
+describe('the freehand brush on the chart', () => {
+    it('draws a stroke through every point it was given', () => {
+        const { paths } = renderTool('brush', [
+            { time: 1000, price: 100 },
+            { time: 1200, price: 104 },
+            { time: 1500, price: 100 },
+        ]);
+        expect(paths).toContain('M100,500 L120,480 L150,500');
+    });
+
+    it('paints the highlighter wide and see-through', () => {
+        const { strokes } = renderTool('highlighter', [
+            { time: 1000, price: 100 },
+            { time: 1300, price: 106 },
+        ]);
+        const marker = strokes.find((s) => s.d === 'M100,500 L130,470');
+        expect(marker).toBeTruthy();
+        // Much wider than the brush's own stroke, and translucent, so the candles stay readable.
+        expect(marker!.width).toBeGreaterThan(8);
+        expect(marker!.opacity).toBeLessThan(0.5);
+    });
+
+    it('collects the stroke as the pointer is dragged, and commits it on release', () => {
+        const onCommit = vi.fn();
+        const { svg } = renderDrawing({ tool: 'brush' }, onCommit);
+
+        fireEvent.pointerDown(svg, { clientX: 100, clientY: 500, pointerId: 5 });
+        // A drag: each move adds a point, but a nudge of a pixel or two is noise, not a point.
+        fireEvent.pointerMove(svg, { clientX: 120, clientY: 480, pointerId: 5 });
+        fireEvent.pointerMove(svg, { clientX: 121, clientY: 481, pointerId: 5 });
+        fireEvent.pointerMove(svg, { clientX: 150, clientY: 500, pointerId: 5 });
+        expect(onCommit).not.toHaveBeenCalled();
+
+        fireEvent.pointerUp(svg, { clientX: 150, clientY: 500, pointerId: 5 });
+        expect(onCommit).toHaveBeenCalledTimes(1);
+        const stroke = onCommit.mock.calls[0][0];
+        expect(stroke.tool).toBe('brush');
+        expect(stroke.points).toHaveLength(3);
+    });
+
+    it('throws the stroke away when the tool is dropped without a drag', () => {
+        const onCommit = vi.fn();
+        const { svg } = renderDrawing({ tool: 'brush' }, onCommit);
+        fireEvent.pointerDown(svg, { clientX: 100, clientY: 500, pointerId: 6 });
+        fireEvent.pointerUp(svg, { clientX: 100, clientY: 500, pointerId: 6 });
+        // A single tap is a dot, and a dot is not worth a drawing.
+        expect(onCommit).not.toHaveBeenCalled();
     });
 });
 

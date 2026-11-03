@@ -44,6 +44,8 @@ export type ShapeKind =
     | 'arc'
     | 'curve'
     | 'dcurve'
+    | 'brush'
+    | 'highlighter'
     | 'fib'
     | 'gann'
     | 'text'
@@ -64,6 +66,8 @@ export type ShapeTool =
     | 'fibext' | 'fibtrendext' | 'fibfan' | 'fibchannel' | 'fibtime' | 'fibarc' | 'fibspeed'
     // geometric shapes (a polyline is open-ended: it takes clicks until it is finished)
     | 'ellipse' | 'circle' | 'tri' | 'polyline' | 'arc' | 'curve' | 'dcurve'
+    // freehand strokes (drawn by dragging, not by clicking)
+    | 'brush' | 'highlighter'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -189,6 +193,10 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'arc', group: 'shapes', kind: 'arc', clicks: 3, defaultColor: 'cyan' },
     { tool: 'curve', group: 'shapes', kind: 'curve', clicks: 3, defaultColor: 'cyan' },
     { tool: 'dcurve', group: 'shapes', kind: 'dcurve', clicks: 4, defaultColor: 'cyan' },
+
+    // Freehand: open-ended like the polyline, but drawn by dragging rather than clicking.
+    { tool: 'brush', group: 'brush', kind: 'brush', clicks: 0, defaultColor: 'white' },
+    { tool: 'highlighter', group: 'brush', kind: 'highlighter', clicks: 0, defaultColor: 'gold' },
     { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
     { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },
 
@@ -227,6 +235,9 @@ export const toolDef = (tool: ShapeTool): ToolDef => TOOL_BY_ID[tool];
  *  open-ended tool (a polyline, a freehand stroke) reports 0 because it takes points until the
  *  trader finishes it. */
 export const pointsNeeded = (tool: ShapeTool): number => toolDef(tool).clicks;
+
+/** Freehand tools are drawn by dragging the pointer, not by clicking point after point. */
+export const isFreehand = (tool: ShapeTool): boolean => toolDef(tool).kind === 'brush' || toolDef(tool).kind === 'highlighter';
 
 /** The most points an open-ended stroke keeps, so a freehand line cannot fill the storage quota. */
 export const MAX_STROKE_POINTS = 240;
@@ -649,7 +660,7 @@ export function hitTest(
             if (points.some((p) => isNearPoint(cursor, p, tolerance))) return drawing;
             continue;
         }
-        if (kind === 'poly' || kind === 'hs' || kind === 'triangle' || kind === 'polyline' || kind === 'tri') {
+        if (kind === 'poly' || kind === 'hs' || kind === 'triangle' || kind === 'polyline' || kind === 'tri' || kind === 'brush' || kind === 'highlighter') {
             for (let s = 0; s + 1 < points.length; s += 1) {
                 if (distanceToSegment(cursor, points[s], points[s + 1]) <= tolerance) return drawing;
             }

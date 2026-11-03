@@ -22,6 +22,7 @@ import {
     fibFanEnds,
     fibTimeMultiples,
     handleIndex,
+    isFreehand,
     measureSpan,
     hitTest,
     labelsFor,
@@ -86,6 +87,10 @@ type Props = {
 const HANDLE = 5;
 const GRAB = 9;
 const TEXT_DOT = 3;
+/** How far the pointer must travel before a freehand stroke keeps another point. */
+const STROKE_STEP = 3;
+/** A highlighter marks, it does not draw: much wider than the brush and always translucent. */
+const HIGHLIGHTER_WIDTH = 12;
 
 // An SVG layer over the chart. It only takes pointer events while a tool is active, so panning and
 // zooming the chart underneath keep working exactly as they do without drawings.
@@ -109,7 +114,9 @@ export default function ChartDrawings({
     onToolConsumed,
     label,
 }: Props) {
-    const svgRef = useRef<SVGSVGElement>(null);    const [draft, setDraft] = useState<DrawPoint[]>([]);
+    const svgRef = useRef<SVGSVGElement>(null);
+    /** True between a freehand stroke's pointerdown and its pointerup. */
+    const strokingRef = useRef(false);    const [draft, setDraft] = useState<DrawPoint[]>([]);
     const [preview, setPreview] = useState<DrawPoint | null>(null);
     const [dragging, setDragging] = useState<{ id: string; index: number } | null>(null);
     // The measure box lives only while the measure tool is on: it is a reading, not a drawing.
@@ -162,6 +169,15 @@ export default function ChartDrawings({
         if (tool === 'measure') {
             const point = fromScreen(cursor.x, cursor.y);
             if (point) setMeasure({ from: point, to: point });
+            return;
+        }
+        // A freehand tool draws by dragging: the stroke starts here and every move adds to it.
+        if (shapeTool && isFreehand(shapeTool)) {
+            const raw = fromScreen(cursor.x, cursor.y);
+            if (!raw) return;
+            strokingRef.current = true;
+            setDraft([snapPoint ? snapPoint(raw) : raw]);
+            setPreview(null);
             return;
         }
         const drawn = drawings.map(screenOf);
@@ -231,6 +247,20 @@ export default function ChartDrawings({
 
     const onPointerMove = (event: React.PointerEvent) => {
         const cursor = cursorOf(event);
+        // A stroke follows the pointer while the button is down: the point is kept only once the
+        // pointer has travelled far enough to be a stroke rather than a jitter.
+        if (strokingRef.current) {
+            const raw = fromScreen(cursor.x, cursor.y);
+            if (!raw) return;
+            const point = snapPoint ? snapPoint(raw) : raw;
+            setDraft((current) => {
+                if (current.length >= MAX_STROKE_POINTS) return current;
+                const last = toScreen(current[current.length - 1]);
+                if (last && Math.hypot(last.x - cursor.x, last.y - cursor.y) < STROKE_STEP) return current;
+                return [...current, point];
+            });
+            return;
+        }
         if (tool === 'measure' && measure) {
             const point = fromScreen(cursor.x, cursor.y);
             if (point) setMeasure({ from: measure.from, to: point });
@@ -248,6 +278,18 @@ export default function ChartDrawings({
     };
 
     const onPointerUp = () => {
+        // Releasing the button ends a stroke: two points make a line, one is just a dot.
+        if (strokingRef.current) {
+            strokingRef.current = false;
+            const points = draft.slice(0, MAX_STROKE_POINTS);
+            setDraft([]);
+            setPreview(null);
+            if (shapeTool && points.length >= 2) {
+                onCommit({ id: newDrawingId(), tool: shapeTool, points });
+                onToolConsumed();
+            }
+            return;
+        }
         if (dragging) onGestureEnd();
         setDragging(null);
     };
@@ -1026,6 +1068,27 @@ export default function ChartDrawings({
             );
         }
 
+        if (kind === 'brush' || kind === 'highlighter') {
+            const marker = kind === 'highlighter';
+            return (
+                <g key={drawing.id}>
+                    <path
+                        d={polylinePath(screen)}
+                        fill="none"
+                        stroke={color}
+                        // A highlighter marks rather than draws: wide, soft and see-through, so the
+                        // candles it covers stay readable.
+                        strokeWidth={marker ? Math.max(HIGHLIGHTER_WIDTH, width * 4) : width}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={marker ? 0.28 : opacity}
+                        style={marker ? { mixBlendMode: 'screen' } : undefined}
+                    />
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
         // trend: a segment between its two points
         return (
             <g key={drawing.id} strokeDasharray={dash}>
@@ -1046,6 +1109,8 @@ export default function ChartDrawings({
         return points.length >= 2 ? polylinePath(points) : null;
     })();
     const lastDraftAt = draft.length > 0 ? toScreen(draft[draft.length - 1]) : null;
+    // A stroke ends when the button is released, so only a click-driven tool asks for a double click.
+    const draftHint = draftPath && draft.length >= 2 && shapeTool != null && !isFreehand(shapeTool) ? label('chart.tool.finish') : null;
 
     // The note editor sits over the chart at the note's own position, as the interface promised.
     const editorTarget = editing ? drawings.find((drawing) => drawing.id === editing.id) : null;
@@ -1069,9 +1134,9 @@ export default function ChartDrawings({
                 {shapes.map((drawing) => shapeFor(drawing))}
                 {tool === 'measure' && measureBox}
                 {draftPath && <path d={draftPath} fill="none" stroke="var(--brand)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />}
-                {draftPath && draft.length >= 2 && lastDraftAt && (
+                {draftPath && draft.length >= 2 && lastDraftAt && draftHint && (
                     <text x={lastDraftAt.x + 8} y={lastDraftAt.y - 8} fontSize={11} className="mono" fill="var(--brand)" opacity={0.9}>
-                        {label('chart.tool.finish')}
+                        {draftHint}
                     </text>
                 )}
                 {/* Dots already placed, while a multi-click shape is being drawn. */}
