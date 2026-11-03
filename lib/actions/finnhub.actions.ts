@@ -9,6 +9,8 @@ import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
 import { isTadawulSymbol } from '@/lib/yahoo';
 import { getSession } from '@/lib/better-auth/auth';
 import { searchSaudiSymbols } from '@/lib/saudi-symbols';
+import { searchSaudiIndices } from '@/lib/saudi-indices';
+import { finnhubCanAnswer, mergeSearchResults } from '@/lib/search';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 // Key pool: each free key has its own 60 req/min, so N keys = N x the quota. Rotated per request.
@@ -351,13 +353,23 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             __exchange: 'SR',
         }));
 
+        // The indices are neither companies nor known to Finnhub, and a trader looks for the index
+        // in either script: their matches lead the list, whichever half answers the query.
+        const indices: SearchStockCandidate[] = searchSaudiIndices(trimmed).map(({ symbol, name }) => ({
+            symbol,
+            description: name,
+            displaySymbol: symbol,
+            type: 'Index',
+            __exchange: 'SR',
+        }));
+
         if (FINNHUB_KEYS.length === 0) {
-            if (local.length === 0) {
+            if (local.length === 0 && indices.length === 0) {
                 // If no token, log and return empty to avoid throwing per requirements
                 console.error('Error in stock search:', new Error('FINNHUB API key is not configured'));
                 return [];
             }
-            // The Arabic table needs no key, so it still answers when the feed is not configured.
+            // The local tables need no key, so they still answer when the feed is not configured.
         }
 
         let results: SearchStockCandidate[] = [];
@@ -376,15 +388,27 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             if (!(await getSession())?.user) return [];
             if (/[\u0600-\u06FF]/.test(trimmed)) {
                 // Finnhub cannot match Arabic, so asking it would only spend a call on an empty answer.
-                results = local;
+                results = [...indices, ...local];
             } else {
-                const url = `${FINNHUB_BASE_URL}/search?q=${encodeURIComponent(trimmed)}`;
-                const data = await fetchJSON<FinnhubSearchResponse>(url, 1800);
-                results = Array.isArray(data?.result) ? data.result : [];
+                // A query longer than the feed accepts, or a feed call that fails, must still answer
+                // with what the local tables found: that is how "Tadawul All Shares Index" used to
+                // come back as "Nothing matches" while the index directory had matched it.
+                let found: SearchStockCandidate[] = [];
+                if (finnhubCanAnswer(trimmed)) {
+                    try {
+                        const url = `${FINNHUB_BASE_URL}/search?q=${encodeURIComponent(trimmed)}`;
+                        const data = await fetchJSON<FinnhubSearchResponse>(url, 1800);
+                        found = Array.isArray(data?.result) ? data.result : [];
+                    } catch (err) {
+                        console.error('Finnhub search failed:', err);
+                    }
+                }
+                results = [...indices, ...local, ...found];
             }
         }
 
-        const mapped: StockWithWatchlistStatus[] = results
+        // A symbol may arrive from both halves (Finnhub lists Saudi stocks too): keep the first.
+        const mapped: StockWithWatchlistStatus[] = mergeSearchResults(results, [])
             .map((r) => {
                 const upper = (r.symbol || '').toUpperCase();
                 const name = r.description || upper;

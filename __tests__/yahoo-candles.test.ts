@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, aggregateCandles, candlesFromChart, intervalById, isCandleIntervalId, strategyRange, type Candle } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, aggregateCandles, candlesFromChart, intervalById, isCandleIntervalId, openingInterval, strategyRange, type Candle } from '@/lib/yahoo-candles';
 
 const payload = (overrides: Record<string, unknown> = {}) => ({
     chart: {
@@ -255,5 +255,20 @@ describe('strategyRange', () => {
 
     it('falls back to the daily range for an unknown id', () => {
         expect(strategyRange('wat')).toBe(strategyRange('1d'));
+    });
+});
+
+describe('the interval a chart opens on', () => {
+    it('uses the default when the page expresses no preference', () => {
+        expect(openingInterval()).toBe(DEFAULT_CANDLE_INTERVAL);
+        expect(openingInterval(null)).toBe(DEFAULT_CANDLE_INTERVAL);
+    });
+
+    it('uses the page preference only when it names a real interval', () => {
+        // The Saudi index has no daily series in this feed, so its page opens on the hour.
+        expect(openingInterval('60m')).toBe('60m');
+        // A guessed id ("1h" instead of "60m") must not become the chart's interval.
+        expect(openingInterval('1h')).toBe(DEFAULT_CANDLE_INTERVAL);
+        expect(openingInterval('nonsense')).toBe(DEFAULT_CANDLE_INTERVAL);
     });
 });

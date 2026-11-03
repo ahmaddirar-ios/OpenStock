@@ -72,7 +72,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                     ) : yahooCandleSymbol(symbol) ? (
                         // TradingView will not embed this exchange, so the chart is drawn from Yahoo's candles
                         <Panel title={tx(lang, 'stock.chart')} sub={tx(lang, 'stock.chartYahoo')}>
-                            <YahooChart symbol={symbol} tvSymbol={tvSymbol} lang={lang} />
+                            <YahooChart symbol={symbol} tvSymbol={tvSymbol} lang={lang} preferredInterval={isIndex ? '60m' : undefined} />
                         </Panel>
                     ) : (
                         // TradingView refuses this exchange's chart in embeds; say so instead of showing its error

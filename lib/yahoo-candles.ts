@@ -60,6 +60,12 @@ export const CANDLE_INTERVALS: readonly CandleInterval[] = [
 
 export const DEFAULT_CANDLE_INTERVAL = '1d';
 
+/** The interval a chart opens on: the page's preference when it names a real interval, else the
+ *  default. A page can express a preference because some symbols have no series on the default — the
+ *  Saudi index has no daily bars in this feed, so its page opens on the hour. */
+export const openingInterval = (preferred?: string | null): string =>
+    isCandleIntervalId(preferred) ? preferred : DEFAULT_CANDLE_INTERVAL;
+
 /** The interval a request asked for, falling back to the daily one by name rather than by position. */
 export const intervalById = (id: string): CandleInterval =>
     CANDLE_INTERVALS.find((interval) => interval.id === id) ??

@@ -56,7 +56,7 @@ import {
 import StrategyMenu from '@/components/stocks/StrategyMenu';
 import ReplayPanel from '@/components/stocks/ReplayPanel';
 import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, type CandleSet } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, DEFAULT_CANDLE_INTERVAL, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
 import {
     MIN_WARMUP_BARS,
     buy as paperBuy,
@@ -179,6 +179,8 @@ type Props = {
     /** The TradingView symbol, for the "open on TradingView" escape hatch. */
     tvSymbol: string;
     lang: Lang;
+    /** Interval the page opens on, for a symbol whose usual default has no data (the Saudi index). */
+    preferredInterval?: string;
 };
 
 /**
@@ -186,7 +188,7 @@ type Props = {
  * Saudi quotes use), the indicators are computed here, and the drawings are kept in this browser.
  * Nothing about it depends on a paid provider or an API key.
  */
-export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
+export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }: Props) {
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
 
     const hostRef = useRef<HTMLDivElement>(null);
@@ -204,7 +206,7 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     const replayPanelRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    const [intervalId, setIntervalId] = useState<string>(DEFAULT_CANDLE_INTERVAL);
+    const [intervalId, setIntervalId] = useState<string>(openingInterval(preferredInterval));
     // The chart type is this browser's, like the interval: read after mount, saved on change. The
     // host is built with it through a ref, so switching type never rebuilds the whole chart.
     const [chartType, setChartType] = useState<ChartType>('candles');
@@ -421,7 +423,9 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     useEffect(() => {
         try {
             const stored = window.localStorage.getItem(INTERVAL_STORAGE_KEY);
-            if (isCandleIntervalId(stored)) setIntervalId(stored);
+            // A page that dictates the interval knows something the stored choice cannot: the index
+            // has no daily series in this feed, so its page opens on an hour and stays there.
+            if (!preferredInterval && isCandleIntervalId(stored)) setIntervalId(stored);
         } catch {
             /* private mode: the daily interval is a fine default */
         }
