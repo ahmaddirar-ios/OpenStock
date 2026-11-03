@@ -24,7 +24,7 @@ afterEach(cleanup);
 const toScreen = (point: DrawPoint): ScreenPoint => ({ x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 });
 const fromScreen = (x: number, y: number): DrawPoint => ({ time: 1000 + (x - 100) * 10, price: 100 + (500 - y) / 5 });
 
-const renderTool = (tool: ShapeTool, points: DrawPoint[]) => {
+const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = []) => {
     const drawing: Drawing = { id: 'd1', tool, points };
     const { container } = render(
         <ChartDrawings
@@ -32,7 +32,7 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[]) => {
             selectedId={null}
             tool={null}
             text=""
-            barTimes={[]}
+            barTimes={barTimes}
             toScreen={toScreen}
             fromScreen={fromScreen}
             onCommit={() => {}}
@@ -53,8 +53,10 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[]) => {
         x2: Number(line.getAttribute('x2')),
         y2: Number(line.getAttribute('y2')),
     }));
+    const rects = Array.from(svg.querySelectorAll('rect'));
+    const dashes = Array.from(svg.querySelectorAll('line')).map((line) => line.getAttribute('stroke-dasharray'));
     const texts = Array.from(svg.querySelectorAll('text')).map((node) => node.textContent ?? '');
-    return { lines, texts };
+    return { lines, rects, dashes, texts };
 };
 
 // A shallow line: (1000, 100) → (2000, 105), i.e. 100px right and 25px up on this scale.
@@ -122,5 +124,69 @@ describe('the basic line tools on the chart', () => {
         expect(lines[0].x2).toBeCloseTo(200, 5);
         expect(texts.join(' ')).toContain('+5.00');
         expect(texts.join(' ')).toContain('+5.00%');
+    });
+});
+
+describe('the forecast tools on the chart', () => {
+    // Entry 100, target 110, stop 96: ten up, four down, R:R 2.5 and 4% at risk.
+    const position: DrawPoint[] = [
+        { time: 1000, price: 100 },
+        { time: 2000, price: 110 },
+        { time: 1500, price: 96 },
+    ];
+
+    it('paints the two zones of a long position and its reward to risk', () => {
+        const { rects, texts } = renderTool('longpos', position);
+        expect(rects).toHaveLength(2);
+        const joined = texts.join(' ');
+        expect(joined).toContain('+10.00');
+        expect(joined).toContain('2.50');
+        expect(joined).toContain('4.00');
+    });
+
+    it('paints a short as the mirror of the long, not a rotated copy', () => {
+        const short: DrawPoint[] = [
+            { time: 1000, price: 100 },
+            { time: 2000, price: 90 },
+            { time: 1500, price: 104 },
+        ];
+        const { rects, texts } = renderTool('shortpos', short);
+        expect(rects).toHaveLength(2);
+        // The target (profit) sits below the entry and the stop above it, and the ratio is the same.
+        expect(texts.join(' ')).toContain('2.50');
+    });
+
+    it('reads a price range as the move it covers', () => {
+        const { rects, texts } = renderTool('pricerange', rise);
+        expect(rects).toHaveLength(1);
+        expect(texts.join(' ')).toContain('+5.00');
+        expect(texts.join(' ')).toContain('+5.00%');
+    });
+
+    it('counts the bars and the time a date range covers', () => {
+        // One bar a minute over 1000 seconds is 17 bars, which is under a day so it reads in hours.
+        const { rects, texts } = renderTool('daterange', rise, [1000, 1060]);
+        expect(rects).toHaveLength(1);
+        const joined = texts.join(' ');
+        expect(joined).toContain('17');
+        expect(joined).toContain('0.3H');
+    });
+
+    it('shows both readings on a date and price range', () => {
+        const { texts } = renderTool('dprange', rise, [1000, 1060]);
+        const joined = texts.join(' ');
+        expect(joined).toContain('+5.00');
+        expect(joined).toContain('17');
+    });
+
+    it('draws a projection as the drawn move plus one dotted repeat', () => {
+        const { lines, dashes } = renderTool('projection', rise);
+        expect(lines).toHaveLength(2);
+        // The repeat starts where the drawn move ended and is dotted, so it reads as a forecast.
+        expect(lines[1].x1).toBeCloseTo(200, 5);
+        expect(lines[1].x2).toBeCloseTo(300, 5);
+        expect(lines[1].y2).toBeCloseTo(450, 5);
+        expect(dashes[1]).toBeTruthy();
+        expect(dashes[0]).toBeFalsy();
     });
 });

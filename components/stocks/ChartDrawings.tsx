@@ -17,6 +17,9 @@ import {
     labelsFor,
     nearestTime,
     newDrawingId,
+    positionZones,
+    projectionEnds,
+    rangeReadout,
     rayEnd,
     strokeWidthOf,
     pointsNeeded,
@@ -106,8 +109,7 @@ export default function ChartDrawings({
     }, [editing]);
 
     // The drawings list can open a note's editor by id; the nonce makes a repeated request work.
-    const editNonce = editRequest?.nonce ?? 0;
-    useEffect(() => {
+    const editNonce = editRequest?.nonce ?? 0;    useEffect(() => {
         if (!editRequest) return;
         const note = drawingsRef.current.find((drawing) => drawing.id === editRequest.id);
         if (note) setEditing({ id: note.id, value: note.text ?? '' });
@@ -124,6 +126,9 @@ export default function ChartDrawings({
     // Drawings stay on screen when no tool is armed; only the pointer capture is switched off, so the
     // chart underneath keeps panning and zooming normally.
     const interactive = Boolean(tool);
+
+    // A range counts its bars from the interval on screen, which is the spacing of the bar times.
+    const barSeconds = barTimes.length > 1 ? Math.abs(barTimes[1] - barTimes[0]) : 0;
 
     const screenOf = (drawing: Drawing): ScreenPoint[] => drawing.points.map((point) => toScreen(point) ?? { x: NaN, y: NaN });
     const usable = (points: ScreenPoint[]) => (points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) ? points : []);
@@ -652,6 +657,98 @@ export default function ChartDrawings({
                         {readout}
                     </text>
                     {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        // --- forecasts: positions, ranges and projection -------------------------
+        // A position sizes a trade, a range measures one, a projection repeats a move. The numbers
+        // come from the helpers; the painter only decides where the boxes and readouts sit.
+        const boxOf = (from: DrawPoint, to: DrawPoint, fill: string) => {
+            const a = toScreen(from);
+            const b = toScreen(to);
+            if (!a || !b) return null;
+            return (
+                <rect
+                    x={Math.min(a.x, b.x)}
+                    y={Math.min(a.y, b.y)}
+                    width={Math.abs(b.x - a.x)}
+                    height={Math.abs(b.y - a.y)}
+                    fill={fill}
+                    stroke={color}
+                    strokeWidth={1}
+                    opacity={opacity}
+                />
+            );
+        };
+        const standing = (value: number, suffix = '') => `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}${suffix}`;
+
+        if (kind === 'longpos' || kind === 'shortpos') {
+            const zones = positionZones(drawing.points[0], drawing.points[1], drawing.points[2]);
+            const profit = boxOf(zones.profit[0], zones.profit[1], 'color-mix(in oklab, #26A69A 22%, transparent)');
+            const loss = boxOf(zones.loss[0], zones.loss[1], 'color-mix(in oklab, #EF5350 22%, transparent)');
+            if (!profit || !loss) return null;
+            const targetY = toScreen(zones.profit[1])?.y;
+            const stopY = toScreen(zones.loss[1])?.y;
+            const entryY = toScreen(zones.profit[0])?.y;
+            if (targetY == null || stopY == null || entryY == null) return null;
+            const right = Math.max(screen[0].x, screen[1].x);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {profit}
+                    {loss}
+                    <line x1={screen[0].x} y1={entryY} x2={right} y2={entryY} stroke={color} strokeWidth={width} opacity={opacity} />
+                    <text x={right - 6} y={targetY + 12} textAnchor="end" fontSize={11.5} className="mono" fill="#26A69A" opacity={opacity}>
+                        {`${standing(zones.reward)} · ${label('chart.pos.riskReward')} ${Number.isFinite(zones.ratio) ? zones.ratio.toFixed(2) : '∞'}`}
+                    </text>
+                    <text x={right - 6} y={stopY - 6} textAnchor="end" fontSize={11.5} className="mono" fill="#EF5350" opacity={opacity}>
+                        {`${standing(-zones.risk)} · ${zones.riskPercent.toFixed(2)}%`}
+                    </text>
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'pricerange' || kind === 'daterange' || kind === 'dprange') {
+            const readout = rangeReadout(drawing.points[0], drawing.points[1], barSeconds);
+            const box = boxOf(drawing.points[0], drawing.points[1], 'color-mix(in oklab, ' + color + ' 10%, transparent)');
+            if (!box) return null;
+            const middle = { x: (screen[0].x + screen[1].x) / 2, y: (screen[0].y + screen[1].y) / 2 };
+            const days = Math.abs(readout.seconds) / 86400;
+            const duration = days >= 1 ? `${days.toFixed(1)}D` : `${(Math.abs(readout.seconds) / 3600).toFixed(1)}H`;
+            const readings =
+                kind === 'pricerange'
+                    ? `${standing(readout.price)} (${standing(readout.percent, '%')})`
+                    : kind === 'daterange'
+                      ? `${duration} · ${readout.bars} ${label('chart.range.bars')}`
+                      : `${standing(readout.price)} (${standing(readout.percent, '%')}) · ${duration} · ${readout.bars} ${label('chart.range.bars')}`;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {box}
+                    {/* The measuring line the range is read off, at the middle of the span. */}
+                    <line x1={middle.x} y1={screen[0].y} x2={middle.x} y2={screen[1].y} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={opacity} />
+                    <text x={middle.x} y={Math.min(screen[0].y, screen[1].y) - 7} textAnchor="middle" fontSize={11.5} className="mono" fill={color} opacity={opacity}>
+                        {readings}
+                    </text>
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'projection') {
+            const [p0, p1] = drawing.points;
+            const [, end] = projectionEnds(p0, p1, 1);
+            const endAt = toScreen(end);
+            if (!endAt) return null;
+            const span = rangeReadout(p0, end, barSeconds);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    <line x1={screen[1].x} y1={screen[1].y} x2={endAt.x} y2={endAt.y} stroke={color} strokeWidth={width} strokeDasharray="5 4" opacity={opacity} />
+                    <text x={endAt.x} y={endAt.y - 7} textAnchor="end" fontSize={11.5} className="mono" fill={color} opacity={opacity}>
+                        {`${standing(span.price)} (${standing(span.percent, '%')})`}
+                    </text>
                     {selectionHandles(screen)}
                 </g>
             );
