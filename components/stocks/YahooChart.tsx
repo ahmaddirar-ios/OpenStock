@@ -20,23 +20,17 @@ import {
     Copy,
     CopyPlus,
     Download,
-    Eraser,
     ExternalLink,
     GitCompare,
     History,
     Loader2,
     Lock,
-    Magnet,
-    Redo2,
-    Undo2,
     Unlock,
     Maximize2,
     Minimize2,
-    MousePointer2,
     Pencil,
     Plus,
     RefreshCw,
-    Ruler,
     Trash2,
     Upload,
     X,
@@ -92,7 +86,6 @@ import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
 import {
     COUNT_GLYPHS,
-    COUNT_OPTIONS,
     COUNT_TOOL,
     buildTransferPayload,
     drawingColor,
@@ -115,8 +108,9 @@ import {
     type Drawing,
     type DrawPoint,
     type ScreenPoint,
-    type ShapeTool,
 } from '@/lib/chart-drawings';
+import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import DrawingRail from '@/components/stocks/DrawingRail';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
@@ -159,33 +153,7 @@ type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
 
-const TOOL_KEYS: Record<ShapeTool, StringKey> = {
-    trend: 'chart.tool.trend',
-    horizontal: 'chart.tool.horizontal',
-    rectangle: 'chart.tool.rectangle',
-    xrect: 'chart.tool.xrect',
-    channel: 'chart.tool.channel',
-    arrow: 'chart.tool.arrow',
-    pricetime: 'chart.tool.pricetime',
-    fib: 'chart.tool.fib',
-    gann: 'chart.tool.gann',
-    text: 'chart.tool.text',
-    xabcd: 'chart.pat.xabcd',
-    cypher: 'chart.pat.cypher',
-    hs: 'chart.pat.hs',
-    abcd: 'chart.pat.abcd',
-    triangle: 'chart.pat.triangle',
-    drives3: 'chart.pat.drives3',
-    'ew-impulse': 'chart.pat.ewImpulse',
-    'ew-abc': 'chart.pat.ewAbc',
-    'ew-triangle': 'chart.pat.ewTriangle',
-    'ew-double': 'chart.pat.ewDouble',
-    'ew-triple': 'chart.pat.ewTriple',
-    'ew-count': 'chart.count.impulse',
-    'ew-count-abc': 'chart.count.correction',
-    cycles: 'chart.pat.cycles',
-    sine: 'chart.pat.sine',
-};
+const TOOL_KEYS = TOOL_LABEL_KEYS;
 
 /** The interval the trader last chose is theirs, not the page's: it survives a reload and a symbol. */
 const INTERVAL_STORAGE_KEY = 'openstock:chart-interval';
@@ -313,6 +281,8 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
     const [tool, setTool] = useState<ActiveTool | null>(null);
+    // Hide-all: the drawings stay in memory, the layer just stops rendering.
+    const [drawingsHidden, setDrawingsHidden] = useState(false);
     // Magnet is a working mode, not a preference: it starts off and is one click away.
     const [magnet, setMagnet] = useState(false);
     const magnetRef = useRef(false);
@@ -881,7 +851,72 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         setMenu(null);
     };
 
-    // Pointermove writes the present directly: the drag's single step is taken when it ends.
+    /** The same wording the manual count rows use, so the automatic rows read as the same feature. */
+    const countLabel = ({ degree, kind }: { degree: CountDegree; kind: CountKind }) =>
+        `${t(COUNT_TOOL[kind] === 'ew-count' ? 'chart.count.impulse' : 'chart.count.correction')} · ${t(
+            (`chart.count.degree${degree[0].toUpperCase()}${degree.slice(1)}`) as StringKey,
+        )}`;
+    const hasCandles = (data?.candles.length ?? 0) > 0;
+    const selectedDrawing = selectedId ? drawings.find((drawing) => drawing.id === selectedId) ?? null : null;
+
+    // The rail passes a plain tool id; the manual counts still need the degree's glyphs.
+    const railPick = (next: ActiveTool) => {
+        if (next === 'ew-count' || next === 'ew-count-abc') {
+            const kind: CountKind = next === 'ew-count' ? 'impulse' : 'correction';
+            startTool(COUNT_TOOL[kind], COUNT_GLYPHS[countChoice.degree][kind]);
+            return;
+        }
+        startTool(next);
+    };
+
+    // The Elliott flyout also keeps the degree picker and the one-shot auto count.
+    const countExtra = (
+        <div className="mt-1 border-t border-line pt-1.5">
+            <p className="px-2 pb-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">
+                {t('chart.count.degree')} · {countLabel(countChoice)}
+            </p>
+            <div className="flex items-center gap-1 px-2 pb-1.5">
+                {(['major', 'minor', 'minute'] as CountDegree[]).map((degree) => (
+                    <button
+                        key={degree}
+                        type="button"
+                        onClick={() => setCountChoice((current) => ({ ...current, degree }))}
+                        className={cn(
+                            'flex-1 rounded-full px-2 py-1 text-[11.5px] font-semibold transition-colors',
+                            countChoice.degree === degree ? 'bg-brand text-brand-ink' : 'bg-page text-muted hover:bg-hover',
+                        )}
+                    >
+                        {t(`chart.count.degree${degree[0].toUpperCase()}${degree.slice(1)}` as StringKey)}
+                    </button>
+                ))}
+            </div>
+            <p className="px-2 pb-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">{t('chart.count.auto')}</p>
+            <div className="flex items-center gap-1 px-2">
+                {AUTO_SENSITIVITIES.map((id) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => runAutoCount(countChoice, id)}
+                        disabled={!hasCandles}
+                        aria-pressed={sensitivity === id}
+                        title={id === 'atr' ? t('chart.count.autoAtr') : undefined}
+                        className={cn(
+                            'flex-1 rounded-full px-2 py-1 text-[11.5px] font-semibold transition-colors',
+                            sensitivity === id ? 'bg-brand text-brand-ink' : 'bg-page text-muted hover:bg-hover',
+                            !hasCandles && 'cursor-not-allowed opacity-40',
+                        )}
+                    >
+                        {id === 'atr' ? 'ATR' : `${Math.round(Number(id) * 100)}%`}
+                    </button>
+                ))}
+            </div>
+            {autoNotice && (
+                <p role="status" className="px-2 pt-1.5 text-[11px] leading-snug text-faint">
+                    {t(autoNotice)}
+                </p>
+            )}
+        </div>
+    );
     const moveHandle = (id: string, index: number, point: DrawPoint) =>
         setTimeline((history) => ({
             ...history,
@@ -1193,6 +1228,30 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             {status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
 
             {status === 'ready' && !replay && (
+                <DrawingRail
+                    tool={tool}
+                    onPick={railPick}
+                    magnet={magnet}
+                    onMagnet={setMagnet}
+                    locked={!!selectedDrawing?.locked}
+                    canLock={!!selectedId}
+                    onToggleLock={() => selectedId && toggleLock(selectedId)}
+                    hidden={drawingsHidden}
+                    onHideAll={() => setDrawingsHidden((value) => !value)}
+                    canDelete={!!selectedId}
+                    onDelete={() => selectedId && removeDrawing(selectedId)}
+                    canUndo={canUndo(timeline)}
+                    canRedo={canRedo(timeline)}
+                    onUndo={undo}
+                    onRedo={redo}
+                    canClear={drawings.length > 0}
+                    onClear={clearAll}
+                    label={t}
+                    renderGroupExtra={(group) => (group === 'elliott' ? countExtra : null)}
+                />
+            )}
+
+            {status === 'ready' && !replay && !drawingsHidden && (
                 <ChartDrawings
                     drawings={drawings}
                     selectedId={selectedId}
@@ -1253,14 +1312,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
         </button>
     );
 
-    /** The same wording the manual count rows use, so the automatic rows read as the same feature. */
-    const countLabel = ({ degree, kind }: { degree: CountDegree; kind: CountKind }) =>
-        `${t(COUNT_TOOL[kind] === 'ew-count' ? 'chart.count.impulse' : 'chart.count.correction')} · ${t(
-            (`chart.count.degree${degree[0].toUpperCase()}${degree.slice(1)}`) as StringKey,
-        )}`;
-
-    const hasCandles = (data?.candles.length ?? 0) > 0;
-    const selectedDrawing = selectedId ? drawings.find((drawing) => drawing.id === selectedId) ?? null : null;
     // A chart alert defaults to the level the trader just selected, else the last close.
     const selectedLevel = selectedDrawing && selectedDrawing.points.length === 1 ? selectedDrawing.points[0].price : null;
     const lastClose = (data?.candles ?? []).at(-1)?.close ?? null;
@@ -1513,24 +1564,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
             {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away. */}
             {!replay && (
             <div className="chart-toolbar">
-                <button
-                    type="button"
-                    onClick={() => startTool('select')}
-                    className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', tool === 'select' && 'is-up')}
-                    aria-pressed={tool === 'select'}
-                    title={t('chart.tool.select')}
-                >
-                    <MousePointer2 className="size-3.5" /> {t('chart.tool.select')}
-                </button>
-                <button
-                    type="button"
-                    onClick={() => startTool('measure')}
-                    aria-pressed={tool === 'measure'}
-                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', tool === 'measure' && 'is-up')}
-                    title={t('chart.tool.measure')}
-                >
-                    <Ruler className="size-3.5" /> {t('chart.tool.measure')}
-                </button>
                 {alertSource(symbol) && (
                     <CreateAlertModal
                         symbol={symbol}
@@ -1547,105 +1580,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         </button>
                     </CreateAlertModal>
                 )}
-                {dropdown(
-                    'lines',
-                    t('chart.group.lines'),
-                    (['trend', 'horizontal', 'rectangle', 'xrect', 'channel', 'arrow', 'fib', 'gann', 'text', 'pricetime'] as ShapeTool[]).map((id) => ({
-                        key: id,
-                        label: t(TOOL_KEYS[id]),
-                        onClick: () => startTool(id),
-                        active: tool === id,
-                    })),
-                )}
-                {dropdown(
-                    'patterns',
-                    t('chart.group.patterns'),
-                    (['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3'] as ShapeTool[]).map((id) => ({
-                        key: id,
-                        label: t(TOOL_KEYS[id]),
-                        onClick: () => startTool(id),
-                        active: tool === id,
-                    })),
-                )}
-                {dropdown(
-                    'elliott',
-                    t('chart.group.elliott'),
-                    (['ew-impulse', 'ew-abc', 'ew-triangle', 'ew-double', 'ew-triple'] as ShapeTool[]).map((id) => ({
-                        key: id,
-                        label: t(TOOL_KEYS[id]),
-                        onClick: () => startTool(id),
-                        active: tool === id,
-                    })),
-                )}
-                {dropdown(
-                    'counts',
-                    t('chart.group.counts'),
-                    COUNT_OPTIONS.map(({ degree, kind }) => ({
-                        key: `${degree}-${kind}`,
-                        label: countLabel({ degree, kind }),
-                        onClick: () => {
-                            setCountChoice({ degree, kind });
-                            startTool(COUNT_TOOL[kind], COUNT_GLYPHS[degree][kind]);
-                        },
-                        active: tool === COUNT_TOOL[kind] && pendingLabels === COUNT_GLYPHS[degree][kind],
-                    })),
-                    <div key="auto" className="mt-1 border-t border-line pt-1.5">
-                        <p className="px-2 pb-1.5 text-[10.5px] font-bold uppercase tracking-wide text-faint">
-                            {t('chart.count.auto')} · {countLabel(countChoice)}
-                        </p>
-                        <div className="flex items-center gap-1 px-2">
-                            {AUTO_SENSITIVITIES.map((id) => (
-                                <button
-                                    key={id}
-                                    type="button"
-                                    onClick={() => runAutoCount(countChoice, id)}
-                                    disabled={!hasCandles}
-                                    aria-pressed={sensitivity === id}
-                                    title={id === 'atr' ? t('chart.count.autoAtr') : undefined}
-                                    className={cn(
-                                        'flex-1 rounded-full px-2 py-1 text-[11.5px] font-semibold transition-colors',
-                                        sensitivity === id ? 'bg-brand text-brand-ink' : 'bg-page text-muted hover:bg-hover',
-                                        !hasCandles && 'cursor-not-allowed opacity-40',
-                                    )}
-                                >
-                                    {id === 'atr' ? 'ATR' : `${Math.round(Number(id) * 100)}%`}
-                                </button>
-                            ))}
-                        </div>
-                        {autoNotice && (
-                            <p role="status" className="px-2 pt-1.5 text-[11px] leading-snug text-faint">
-                                {t(autoNotice)}
-                            </p>
-                        )}
-                    </div>,
-                )}
-                {dropdown(
-                    'cycles',
-                    t('chart.group.cycles'),
-                    (['cycles', 'sine'] as ShapeTool[]).map((id) => ({
-                        key: id,
-                        label: t(TOOL_KEYS[id]),
-                        onClick: () => startTool(id),
-                        active: tool === id,
-                    })),
-                )}
-                <button
-                    type="button"
-                    onClick={() => startTool('text')}
-                    className={cn('pill h-7 px-2.5 text-[12px]', tool === 'text' && 'is-up')}
-                    aria-pressed={tool === 'text'}
-                >
-                    {t('chart.tool.text')}
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setMagnet((value) => !value)}
-                    aria-pressed={magnet}
-                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', magnet && 'is-up')}
-                    title={t('chart.tool.magnet')}
-                >
-                    <Magnet className="size-3.5" /> {t('chart.tool.magnet')}
-                </button>
                 {tool === 'text' && (
                     <input
                         value={noteText}
@@ -1656,38 +1590,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                         dir="auto"
                     />
                 )}
-                <span className="mx-1 h-4 w-px bg-line" />
-                <button
-                    type="button"
-                    onClick={undo}
-                    disabled={!canUndo(timeline)}
-                    className="icon-btn"
-                    title={t('chart.tool.undo')}
-                    aria-label={t('chart.tool.undo')}
-                >
-                    <Undo2 />
-                </button>
-                <button
-                    type="button"
-                    onClick={redo}
-                    disabled={!canRedo(timeline)}
-                    className="icon-btn"
-                    title={t('chart.tool.redo')}
-                    aria-label={t('chart.tool.redo')}
-                >
-                    <Redo2 />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => selectedId && toggleLock(selectedId)}
-                    disabled={!selectedId}
-                    aria-pressed={!!selectedDrawing?.locked}
-                    className="icon-btn"
-                    title={t(selectedDrawing?.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
-                    aria-label={t(selectedDrawing?.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
-                >
-                    {selectedDrawing?.locked ? <Lock /> : <Unlock />}
-                </button>
                 <div role="group" aria-label={t('chart.tool.width')} className="flex items-center gap-0.5">
                     {DRAWING_WIDTHS.map((step) => {
                         const active = (selectedDrawing?.width ?? 1.6) === step;
@@ -1740,26 +1642,6 @@ export default function YahooChart({ symbol, tvSymbol, lang }: Props) {
                 </button>
                 <button type="button" onClick={duplicateSelected} disabled={!selectedId} className="icon-btn" title={t('chart.tool.duplicate')} aria-label={t('chart.tool.duplicate')}>
                     <CopyPlus />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => removeDrawing(selectedId ?? '')}
-                    disabled={!selectedId}
-                    className="icon-btn is-danger"
-                    title={t('chart.tool.delete')}
-                    aria-label={t('chart.tool.delete')}
-                >
-                    <Trash2 />
-                </button>
-                <button
-                    type="button"
-                    onClick={clearAll}
-                    disabled={drawings.length === 0}
-                    className="icon-btn"
-                    title={t('chart.tool.clear')}
-                    aria-label={t('chart.tool.clear')}
-                >
-                    <Eraser />
                 </button>
                 {tool && tool !== 'select' && (
                     <button type="button" onClick={() => startTool(null)} className="pill h-7 px-2.5 text-[12px] gap-1.5">
