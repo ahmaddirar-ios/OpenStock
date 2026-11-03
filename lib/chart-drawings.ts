@@ -95,7 +95,7 @@ export const nextColor = (current?: ColorKey): ColorKey => COLOR_KEYS[(COLOR_KEY
 
 // --- the tool registry -----------------------------------------------------
 
-export type ToolGroup = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles';
+export type ToolGroup = 'cursor' | 'lines' | 'fib' | 'gann' | 'patterns' | 'elliott' | 'forecast' | 'shapes' | 'annotation' | 'brush';
 
 export type ToolDef = {
     tool: ShapeTool;
@@ -116,9 +116,9 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'channel', group: 'lines', kind: 'channel', clicks: 3, defaultColor: 'violet' },
     { tool: 'arrow', group: 'lines', kind: 'arrow', clicks: 2, defaultColor: 'orange' },
     { tool: 'pricetime', group: 'lines', kind: 'pricetime', clicks: 2, defaultColor: 'white' },
-    { tool: 'fib', group: 'lines', kind: 'fib', clicks: 2, defaultColor: 'gold' },
-    { tool: 'gann', group: 'lines', kind: 'gann', clicks: 2, defaultColor: 'violet' },
-    { tool: 'text', group: 'lines', kind: 'text', clicks: 1, defaultColor: 'white' },
+    { tool: 'fib', group: 'fib', kind: 'fib', clicks: 2, defaultColor: 'gold' },
+    { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
+    { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },
 
     { tool: 'xabcd', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
     { tool: 'cypher', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
@@ -133,11 +133,11 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'ew-double', group: 'elliott', kind: 'poly', clicks: 4, pointLabels: ['0', 'W', 'X', 'Y'], defaultColor: 'cyan' },
     { tool: 'ew-triple', group: 'elliott', kind: 'poly', clicks: 6, pointLabels: ['0', 'W', 'X', 'Y', 'X', 'Z'], defaultColor: 'cyan' },
 
-    { tool: 'ew-count', group: 'counts', kind: 'poly', clicks: 5, defaultColor: 'teal' },
-    { tool: 'ew-count-abc', group: 'counts', kind: 'poly', clicks: 3, defaultColor: 'orange' },
+    { tool: 'ew-count', group: 'elliott', kind: 'poly', clicks: 5, defaultColor: 'teal' },
+    { tool: 'ew-count-abc', group: 'elliott', kind: 'poly', clicks: 3, defaultColor: 'orange' },
 
-    { tool: 'cycles', group: 'cycles', kind: 'vlines', clicks: 2, defaultColor: 'white' },
-    { tool: 'sine', group: 'cycles', kind: 'sine', clicks: 2, defaultColor: 'violet' },
+    { tool: 'cycles', group: 'gann', kind: 'vlines', clicks: 2, defaultColor: 'white' },
+    { tool: 'sine', group: 'gann', kind: 'sine', clicks: 2, defaultColor: 'violet' },
 ];
 
 export const TOOL_BY_ID: Record<ShapeTool, ToolDef> = Object.fromEntries(TOOL_DEFS.map((d) => [d.tool, d])) as Record<

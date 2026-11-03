@@ -69,7 +69,7 @@ describe('the tool registry', () => {
     });
 
     it('every tool belongs to a group that is offered in the interface', () => {
-        for (const group of ['lines', 'patterns', 'elliott', 'counts', 'cycles'] as const) {
+        for (const group of ['lines', 'fib', 'gann', 'patterns', 'elliott', 'annotation'] as const) {
             expect(toolsInGroup(group).length).toBeGreaterThan(0);
         }
         expect(toolsInGroup('lines').map((d) => d.tool)).toEqual([
@@ -80,12 +80,11 @@ describe('the tool registry', () => {
             'channel',
             'arrow',
             'pricetime',
-            'fib',
-            'gann',
-            'text',
         ]);
+        expect(toolsInGroup('fib').map((d) => d.tool)).toEqual(['fib']);
+        expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual(['text']);
         expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3']);
-        expect(toolsInGroup('cycles').map((d) => d.tool)).toEqual(['cycles', 'sine']);
+        expect(toolsInGroup('gann').map((d) => d.tool)).toEqual(['gann', 'cycles', 'sine']);
     });
 
     it('pattern glyph labels line up with the number of points the tool places', () => {
