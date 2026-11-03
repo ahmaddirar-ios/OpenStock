@@ -24,9 +24,16 @@ export default async function MarketingLayout({ children }: { children: React.Re
 
     return (
         <MotionProvider>
-        <div lang="en" dir="ltr" className="min-h-dvh bg-page">
-            <header className="sticky top-0 z-40 border-b border-transparent bg-page/80 backdrop-blur-md">
-                <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-6 px-5">
+        <div lang="en" dir="ltr" className="relative min-h-dvh overflow-x-clip bg-page">
+            {/* Marketing atmosphere: aurora field, hairline grid and film grain. Purely decorative. */}
+            <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
+                <div className="mk-aurora"><i className="a1" /><i className="a2" /><i className="a3" /></div>
+                <div className="mk-grid" />
+                <div className="mk-grain" />
+            </div>
+
+            <header className="sticky top-0 z-40 px-3 pt-3">
+                <div className="mk-glass mx-auto flex h-14 max-w-[1240px] items-center gap-6 rounded-2xl px-4 shadow-[0_24px_60px_-34px_rgba(0,0,0,0.95)]">
                     <Link href="/" aria-label="Rovex home" className="shrink-0">
                         <RovexLogo size={27} />
                     </Link>
@@ -52,9 +59,9 @@ export default async function MarketingLayout({ children }: { children: React.Re
                 </div>
             </header>
 
-            <main>{children}</main>
+            <main className="relative z-10">{children}</main>
 
-            <footer className="mx-auto mt-24 flex max-w-[1200px] flex-col gap-6 px-5 pb-10 md:flex-row md:items-center md:justify-between">
+            <footer className="relative z-10 mx-auto mt-24 flex max-w-[1200px] flex-col gap-6 px-5 pb-10 md:flex-row md:items-center md:justify-between">
                 <div className="flex flex-col gap-3">
                     <RovexLogo size={24} />
                     <p className="text-[13px] text-faint">© {new Date().getFullYear()} Rovex</p>

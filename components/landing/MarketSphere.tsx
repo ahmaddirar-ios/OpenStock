@@ -50,10 +50,10 @@ function Sphere() {
     });
 
     return (
-        <group ref={group} position={[0.45, 0, 0]}>
+        <group ref={group} position={[0, 0, 0]}>
             <mesh>
                 <icosahedronGeometry args={[1.62, 3]} />
-                <meshBasicMaterial wireframe color="#5d6d67" transparent opacity={0.32} />
+                <meshBasicMaterial wireframe color="#6f7d77" transparent opacity={0.42} />
             </mesh>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <torusGeometry args={[1.66, 0.005, 8, 160]} />

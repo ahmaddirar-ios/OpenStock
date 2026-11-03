@@ -37,8 +37,12 @@ export default function HeroCanvas({ className, fallback }: { className?: string
     }, []);
 
     return (
-        <div ref={ref} className={`grid place-items-center ${className ?? ''}`} aria-hidden>
-            {show ? <MarketSphere /> : fallback}
+        <div ref={ref} className={className} aria-hidden>
+            {show ? (
+                <MarketSphere />
+            ) : (
+                <div className="grid h-full w-full place-items-center">{fallback}</div>
+            )}
         </div>
     );
 }

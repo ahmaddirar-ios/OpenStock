@@ -42,6 +42,16 @@ const TIERS: Tier[] = [
     },
 ];
 
+// A moving tape under the hero: the exchanges people actually watch on Rovex.
+const TICKER = [
+    { symbol: '2222.SR', change: '+1.18%', up: true },
+    { symbol: 'AAPL', change: '+0.62%', up: true },
+    { symbol: 'BTC', change: '−1.40%', up: false },
+    { symbol: 'TASI', change: '+0.44%', up: true },
+    { symbol: 'NVDA', change: '+2.10%', up: true },
+    { symbol: '4013.SR', change: '−0.31%', up: false },
+];
+
 // 60 minutes of updates drawn as ticks: one line per refresh.
 const CadenceRail = ({ perHour }: { perHour: number }) => (
     <div
@@ -62,32 +72,63 @@ export default async function LandingPage() {
 
     return (
         <>
-            <section className="ambient mx-auto grid max-w-[1200px] items-center gap-12 px-5 pt-16 md:pt-24 lg:grid-cols-[minmax(0,1fr)_340px]">
-                <div>
-                    <MarketStatus />
-                    <h1 className="rise-in mt-6 text-[44px] font-bold leading-[1.02] tracking-[-0.05em] md:text-[68px]" style={{ animationDelay: '0.04s' }}>
-                        The market,<br />unfiltered.
-                    </h1>
-                    <p className="rise-in mt-5 max-w-xl text-[17px] leading-relaxed text-muted-foreground" style={{ animationDelay: '0.10s' }}>
-                        Rovex is a trading terminal for the exchanges the big platforms leave out. Professional charts, studies,
-                        alerts and a paper-trading desk — in Arabic and English, on the markets you actually trade.
-                    </p>
-                    <div className="rise-in mt-8 flex flex-wrap items-center gap-2" style={{ animationDelay: '0.16s' }}>
-                        <Magnetic><Link href={start.href} className="btn btn-primary h-11 px-5 text-[15px]">{start.label}</Link></Magnetic>
-                        <a href={REPO_URL} target="_blank" rel="noreferrer" className="btn btn-ghost h-11 px-5 text-[15px]">
-                            <Github /> Source
-                        </a>
+            <section className="mx-auto max-w-[1240px] px-5 pt-10 md:pt-16">
+                <div className="grid items-center gap-12 lg:grid-cols-[1.08fr_0.92fr]">
+                    <div>
+                        <div className="rise-in flex flex-wrap items-center gap-3">
+                            <MarketStatus />
+                            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-faint">Terminal · Arabic-first · AGPL</span>
+                        </div>
+                        <h1 className="mk-display rise-in mt-6 text-[clamp(56px,8.6vw,138px)]" style={{ animationDelay: '0.04s' }}>
+                            The market,<br /><span className="mk-outline">unfiltered</span><span className="text-brand">.</span>
+                        </h1>
+                        <p className="rise-in mt-6 max-w-[44ch] text-[17px] leading-relaxed text-muted-foreground" style={{ animationDelay: '0.10s' }}>
+                            Every exchange the big platforms skip. <span className="font-semibold text-foreground">Real charts, studies, alerts</span> and a
+                            paper desk — in Arabic and English, treated as equals.
+                        </p>
+                        <div className="rise-in mt-8 flex flex-wrap items-center gap-2.5" style={{ animationDelay: '0.16s' }}>
+                            <Magnetic><Link href={start.href} className="btn btn-primary h-11 px-5 text-[15px]">{start.label}</Link></Magnetic>
+                            <a href={REPO_URL} target="_blank" rel="noreferrer" className="btn btn-ghost h-11 px-5 text-[15px]">
+                                <Github /> Source
+                            </a>
+                        </div>
+                    </div>
+                    <Tilt max={4}>
+                        <div className="mk-glass mk-stage relative aspect-[1/0.92] overflow-hidden rounded-[26px]">
+                            <div
+                                className="pointer-events-none absolute inset-0"
+                                aria-hidden
+                                style={{ background: 'radial-gradient(120% 120% at 50% 40%, oklch(0.89 0.18 124 / 0.16), transparent 62%)' }}
+                            />
+                            <HeroCanvas
+                                className="absolute inset-0"
+                                fallback={<div className="grid h-full place-items-center p-6"><div className="w-full max-w-[280px]"><MarketDial /></div></div>}
+                            />
+                            <span className="mk-glass absolute left-4 top-[16%] flex items-center gap-2 rounded-xl px-3 py-2 font-mono text-[12px] num">
+                                2222.SR <b className="text-up">+1.18%</b>
+                            </span>
+                            <span className="mk-glass absolute bottom-[22%] right-4 flex items-center gap-2 rounded-xl px-3 py-2 font-mono text-[12px] num">
+                                BTC <b className="text-down">−1.40%</b>
+                            </span>
+                            <span className="absolute bottom-4 left-5 font-mono text-[12px] text-faint">
+                                TADAWUL · <b className="text-brand-ink">LIVE</b> · RIYADH 15:00
+                            </span>
+                        </div>
+                    </Tilt>
+                </div>
+            </section>
+
+            <div className="mx-auto mt-16 max-w-[1240px] px-5">
+                <div className="mk-ticker border-y border-line/70">
+                    <div className="mk-ticker-track py-4 font-mono text-[13px]">
+                        {[...TICKER, ...TICKER].map((t, i) => (
+                            <span key={i} className="flex items-center gap-2 whitespace-nowrap text-muted-foreground num">
+                                {t.symbol} <b className={t.up ? 'text-up' : 'text-down'}>{t.change}</b>
+                            </span>
+                        ))}
                     </div>
                 </div>
-                <Tilt className="hatch" max={4}>
-                    <div className="card relative grid min-h-[360px] place-items-center overflow-hidden px-6 pb-5 pt-6">
-                        <HeroCanvas
-                            className="absolute inset-0"
-                            fallback={<div className="w-full max-w-[280px]"><MarketDial /></div>}
-                        />
-                    </div>
-                </Tilt>
-            </section>
+            </div>
 
             <section className="mx-auto mt-16 max-w-[1200px] px-5">
                 <ProductPreview />
@@ -112,8 +153,7 @@ export default async function LandingPage() {
                     {TIERS.map((tier, i) => (
                         <StaggerItem key={tier.name} className="h-full" delay={i * 0.06}>
                         <Tilt className="h-full" max={4}>
-                        <div className="hatch h-full">
-                            <div className="card flex h-full flex-col gap-4 p-5">
+                            <div className="mk-glass flex h-full flex-col gap-4 rounded-2xl p-5">
                                 <div className="flex items-center justify-between gap-3">
                                     <h3 className="text-[18px] font-bold tracking-[-0.02em]">{tier.name}</h3>
                                     {tier.tag && <span className="pill is-brand">{tier.tag}</span>}
@@ -135,7 +175,6 @@ export default async function LandingPage() {
                                     {tier.cta.label}
                                 </Link>
                             </div>
-                        </div>
                         </Tilt>
                         </StaggerItem>
                     ))}
@@ -151,8 +190,8 @@ export default async function LandingPage() {
                     />
                     <a href={`${REPO_URL}#docker-setup`} target="_blank" rel="noreferrer" className="btn btn-ghost">Full setup in the README</a>
                 </Reveal>
-                <Reveal className="hatch" delay={0.08}>
-                    <pre className="card mono overflow-x-auto p-5 text-[13px] leading-7 text-muted-foreground">
+                <Reveal delay={0.08}>
+                    <pre className="mk-glass mono overflow-x-auto rounded-2xl p-5 text-[13px] leading-7 text-muted-foreground">
                         <span className="text-faint">$ </span><span className="text-foreground">git clone {REPO_URL}.git rovex</span>{'\n'}
                         <span className="text-faint">$ </span><span className="text-foreground">cd rovex</span>{'\n\n'}
                         <span className="text-faint"># .env (every variable is in the README)</span>{'\n'}
@@ -164,8 +203,8 @@ export default async function LandingPage() {
             </section>
 
             <section className="mx-auto mt-28 max-w-[1200px] px-5">
-                <Reveal className="hatch">
-                    <div className="card grid gap-10 p-8 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:p-12">
+                <Reveal>
+                    <div className="mk-glass grid gap-10 rounded-3xl p-8 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:p-12">
                         <div>
                             <p className="kicker text-brand-ink">Rovex</p>
                             <blockquote className="mt-4 text-[26px] font-semibold leading-snug tracking-[-0.03em] md:text-[30px]">

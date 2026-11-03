@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, IBM_Plex_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { Anton, Inter, IBM_Plex_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import {Toaster} from "@/components/ui/sonner";
 import { getLang } from "@/lib/i18n-server";
@@ -22,6 +22,15 @@ const plexMono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
+  display: "swap",
+});
+
+// Display face for the marketing headlines only. Anton is a single weight and its
+// condensed, upper-case rhythm is what gives the kinetic direction its voice.
+const display = Anton({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: "400",
   display: "swap",
 });
 
@@ -50,7 +59,7 @@ export default async function RootLayout({
     return (
         <html lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} className="dark" suppressHydrationWarning>
             <body
-                className={`${inter.variable} ${arabic.variable} ${plexMono.variable} font-sans antialiased`}
+                className={`${inter.variable} ${arabic.variable} ${plexMono.variable} ${display.variable} font-sans antialiased`}
             >
                 {children}
                 <Toaster/>
