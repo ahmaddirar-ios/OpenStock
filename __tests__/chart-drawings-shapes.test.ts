@@ -6,7 +6,11 @@ import { describe, expect, it } from 'vitest';
 import {
     TOOL_DEFS,
     extendedEnds,
+    measureSpan,
     pointsNeeded,
+    positionZones,
+    projectionEnds,
+    rangeReadout,
     rayEnd,
     toolDef,
     toolsInGroup,
@@ -81,6 +85,61 @@ describe('trendAngleDeg', () => {
         const low: DrawPoint = { time: 2000, price: 80 };
         expect(trendAngleDeg(a, low, scale)).toBeCloseTo(-45, 5);
         expect(trendAngleDeg(low, a, scale)).toBeCloseTo(-45, 5);
+    });
+});
+
+describe('positionZones', () => {
+    const entry: DrawPoint = { time: 1000, price: 100 };
+
+    it('sizes a long by its target and its stop', () => {
+        const zones = positionZones(entry, { time: 2000, price: 110 }, { time: 1500, price: 96 });
+        expect(zones.reward).toBeCloseTo(10, 6);
+        expect(zones.risk).toBeCloseTo(4, 6);
+        expect(zones.ratio).toBeCloseTo(2.5, 6);
+        expect(zones.riskPercent).toBeCloseTo(4, 6);
+    });
+
+    it('reads a short the same way round, so the mirror position has the same ratio', () => {
+        expect(positionZones(entry, { time: 2000, price: 90 }, { time: 1500, price: 104 }).ratio).toBeCloseTo(2.5, 6);
+    });
+
+    it('gives both zones the same time width, taken from the target', () => {
+        // TradingView's position box is one box: dragging the stop sideways must not skew it.
+        const zones = positionZones(entry, { time: 2000, price: 110 }, { time: 1400, price: 96 });
+        expect(zones.profit).toEqual([entry, { time: 2000, price: 110 }]);
+        expect(zones.loss).toEqual([entry, { time: 2000, price: 96 }]);
+    });
+
+    it('reports an un-bounded ratio when the stop sits on the entry', () => {
+        expect(positionZones(entry, { time: 2000, price: 110 }, { time: 2000, price: 100 }).ratio).toBe(Infinity);
+    });
+});
+
+describe('rangeReadout', () => {
+    it('agrees with the price/time box about the move it measures', () => {
+        const span = measureSpan(a, b);
+        const readout = rangeReadout(a, b, 60);
+        expect(readout.price).toBe(span.price);
+        expect(readout.seconds).toBe(span.seconds);
+        expect(readout.percent).toBeCloseTo(20, 6);
+    });
+
+    it('counts the bars the range covers for the interval on screen', () => {
+        // 1000 seconds at one bar a minute is 17 bars.
+        expect(rangeReadout(a, b, 60).bars).toBe(17);
+        // An unknown interval length cannot count bars, and says so rather than guessing.
+        expect(rangeReadout(a, b, 0).bars).toBe(0);
+    });
+});
+
+describe('projectionEnds', () => {
+    it('repeats the a→b move forward from b', () => {
+        expect(projectionEnds(a, b, 1)).toEqual([b, { time: 3000, price: 140 }]);
+        expect(projectionEnds(a, b, 2)).toEqual([b, { time: 4000, price: 160 }]);
+    });
+
+    it('falls back to the drawn move when asked for no projection', () => {
+        expect(projectionEnds(a, b, 0)).toEqual([a, b]);
     });
 });
 

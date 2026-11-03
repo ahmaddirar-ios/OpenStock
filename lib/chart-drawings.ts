@@ -255,6 +255,65 @@ export function trendAngleDeg(a: DrawPoint, b: DrawPoint, scale: { pxPerTime: nu
     return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
+// --- forecasts: positions, ranges and projection ----------------------------
+// A position is three points (entry, target, stop) and what a trader needs from it is a ratio;
+// a range is two points and what is needed is the move between them; a projection is that same
+// move repeated. All of it is arithmetic on prices and times, so it lives here.
+
+export type PositionZones = {
+    /** The profitable box, entry → target. */
+    profit: [DrawPoint, DrawPoint];
+    /** The losing box, entry → stop, forced to the same width as the profit box. */
+    loss: [DrawPoint, DrawPoint];
+    /** Both legs as positive price amounts, with the reward-to-risk ratio they make. */
+    reward: number;
+    risk: number;
+    /** reward / risk; `Infinity` when the stop sits exactly on the entry. */
+    ratio: number;
+    /** What the risk is worth as a percentage of the entry price. */
+    riskPercent: number;
+};
+
+/** Size a trade from the three points the position tools place. A long and a short read the same
+ *  way round — a short is simply a position whose target sits below its entry and whose stop sits
+ *  above. Both boxes share the target's time width, because TradingView's position is one box: a
+ *  stop dragged sideways must not skew it. */
+export function positionZones(entry: DrawPoint, target: DrawPoint, stop: DrawPoint): PositionZones {
+    const width = target.time - entry.time;
+    const reward = Math.abs(target.price - entry.price);
+    const risk = Math.abs(entry.price - stop.price);
+    return {
+        profit: [entry, target],
+        loss: [entry, { time: entry.time + width, price: stop.price }],
+        reward,
+        risk,
+        ratio: risk === 0 ? Infinity : reward / risk,
+        riskPercent: entry.price === 0 ? 0 : (risk / Math.abs(entry.price)) * 100,
+    };
+}
+
+export type RangeReadout = { price: number; percent: number; seconds: number; bars: number };
+
+/** What a range measures: the price move (signed), that move as a percentage of where it started,
+ *  the time it spans, and how many bars of the interval on screen that is. `barSeconds` is 0 when
+ *  the interval is unknown, which counts no bars rather than guessing one. */
+export function rangeReadout(a: DrawPoint, b: DrawPoint, barSeconds: number): RangeReadout {
+    const { price, seconds } = measureSpan(a, b);
+    return {
+        price,
+        percent: a.price === 0 ? 0 : (price / a.price) * 100,
+        seconds,
+        bars: barSeconds > 0 ? Math.round(Math.abs(seconds) / barSeconds) : 0,
+    };
+}
+
+/** The far end of a projection: the a→b move repeated `steps` times forward from b, drawn as the
+ *  dotted continuation a trader reads as "if this move runs again". */
+export function projectionEnds(a: DrawPoint, b: DrawPoint, steps: number): [DrawPoint, DrawPoint] {
+    if (steps <= 0) return [a, b];
+    return [b, { time: b.time + (b.time - a.time) * steps, price: b.price + (b.price - a.price) * steps }];
+}
+
 /** A pointer for an arrow tip, in SVG coordinates: the two barbs of a head that points at `to`. */
 export function arrowHeadPoints(from: { x: number; y: number }, to: { x: number; y: number }, size = 10): string {
     const dx = to.x - from.x;
