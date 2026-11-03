@@ -10,9 +10,13 @@ import {
     TEXT_MAX,
     TOOL_DEFS,
     TRANSFER_VERSION,
+    arrowHeadPoints,
     buildTransferPayload,
+    channelRails,
     cleanText,
+    cloneDrawing,
     cycleIndices,
+    dashOf,
     distanceToSegment,
     drawingColor,
     fibLevels,
@@ -21,26 +25,24 @@ import {
     hitTest,
     isColorKey,
     labelsFor,
+    measureSpan,
     mergeDrawings,
     nearestTime,
     newDrawingId,
     nextColor,
-    arrowHeadPoints,
-    channelRails,
-    cloneDrawing,
-    measureSpan,
     parseDrawings,
-    dashOf,
-    strokeWidthOf,
     parseTransferPayload,
     pointsNeeded,
+    readStayDrawing,
     serializeDrawings,
     sinePoints,
+    strokeWidthOf,
     toolDef,
     toolsInGroup,
+    type Drawing,
     withPoint,
     withText,
-    type Drawing,
+    writeStayDrawing,
 } from '@/lib/chart-drawings';
 
 const trend = (id: string, points: { time: number; price: number }[]): Drawing => ({ id, tool: 'trend', points });
@@ -549,5 +551,31 @@ describe('the four newer tools', () => {
             expect(Math.abs(y)).toBeGreaterThan(0);
         }
         expect(arrowHeadPoints({ x: 5, y: 5 }, { x: 5, y: 5 })).toBe('');
+    });
+});
+
+describe('hiding a drawing, and the switch that keeps a tool armed', () => {
+    it('keeps a hidden drawing, so it survives a reload and still lists', () => {
+        const stored = JSON.stringify([{ id: 'h1', tool: 'trend', points: [{ time: 1, price: 1 }, { time: 2, price: 2 }], hidden: true }]);
+        const back = parseDrawings(stored);
+        expect(back).toHaveLength(1);
+        expect(back[0].hidden).toBe(true);
+        // Anything that is not a real true is not hidden: a hand-edited string cannot hide a chart.
+        expect(parseDrawings(JSON.stringify([{ id: 'h2', tool: 'trend', points: [{ time: 1, price: 1 }, { time: 2, price: 2 }], hidden: 'yes' }]))[0].hidden).toBeUndefined();
+    });
+
+    it('remembers the stay-in-drawing-mode switch', () => {
+        const store = new Map<string, string>();
+        const storage = {
+            getItem: (key: string) => store.get(key) ?? null,
+            setItem: (key: string, value: string) => void store.set(key, value),
+        };
+        expect(readStayDrawing(storage)).toBe(false);
+        writeStayDrawing(storage, true);
+        expect(readStayDrawing(storage)).toBe(true);
+        writeStayDrawing(storage, false);
+        expect(readStayDrawing(storage)).toBe(false);
+        // A storage that refuses to answer never breaks the chart.
+        expect(readStayDrawing({ getItem: () => { throw new Error('private mode'); } })).toBe(false);
     });
 });

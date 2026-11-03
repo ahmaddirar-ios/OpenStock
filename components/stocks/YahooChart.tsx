@@ -25,6 +25,8 @@ import {
     CopyPlus,
     Download,
     ExternalLink,
+    EyeOff,
+    Eye,
     GitCompare,
     History,
     Loader2,
@@ -35,6 +37,7 @@ import {
     Pencil,
     Plus,
     RefreshCw,
+    Repeat,
     SendToBack,
     Trash2,
     Upload,
@@ -100,6 +103,7 @@ import {
     cloneDrawing,
     carriesText,
     layerDrawings,
+    readStayDrawing,
     loadDrawings,
     mergeDrawings,
     nearestTime,
@@ -110,6 +114,7 @@ import {
     toolDef,
     withPoint,
     withText,
+    writeStayDrawing,
     type ColorKey,
     type CountDegree,
     type CountKind,
@@ -653,6 +658,19 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     // The strokes the trader saved as a tool's default ("template"). A preference, so it is read once
     // and kept, not reset with the symbol's drawings.
+    // TradingView's "stay in drawing mode": the tool stays armed after a shape lands.
+    const [stayDrawing, setStayDrawing] = useState(false);
+    const stayDrawingRef = useRef(false);
+    stayDrawingRef.current = stayDrawing;
+    useEffect(() => {
+        setStayDrawing(readStayDrawing(window.localStorage));
+    }, []);
+    const toggleStayDrawing = () =>
+        setStayDrawing((value) => {
+            writeStayDrawing(window.localStorage, !value);
+            return !value;
+        });
+
     const [drawingStyles, setDrawingStyles] = useState<DrawingStyleMap>({});
     useEffect(() => {
         setDrawingStyles(loadDrawingStyles());
@@ -1135,6 +1153,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         );
     const toggleLock = (id: string) =>
         setDrawings((list) => list.map((d) => (d.id === id ? { ...d, locked: !d.locked } : d)));
+    /** Hidden drawings keep their place in the list and in storage; they are simply not painted. */
+    const toggleHidden = (id: string) =>
+        setDrawings((list) => list.map((d) => (d.id === id ? { ...d, hidden: !d.hidden } : d)));
+    const allLocked = drawings.length > 0 && drawings.every((drawing) => drawing.locked);
+    const toggleLockAll = () => setDrawings((list) => list.map((drawing) => ({ ...drawing, locked: !allLocked })));
     /** Which end of the pile the selected drawing sits on. The list's order is the stacking order. */
     const layerSelected = (move: LayerMove) => {
         if (!selectedId) return;
@@ -1427,6 +1450,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         [t],
     );
 
+    // What the layer paints: everything the trader has not hidden. The list and storage keep them all.
+    const visibleDrawings = useMemo(() => drawings.filter((drawing) => !drawing.hidden), [drawings]);
+
     // The drawing layer gets the candles themselves: a regression channel is fitted to them and the
     // anchored VWAP and volume profile count them.
     const drawingCandles = useMemo(() => data?.candles ?? [], [data]);
@@ -1467,7 +1493,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
             {status === 'ready' && !replay && !drawingsHidden && (
                 <ChartDrawings
-                    drawings={drawings}
+                    drawings={visibleDrawings}
                     selectedId={selectedId}
                     tool={tool}
                     text={noteText}
@@ -1484,7 +1510,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     onGestureEnd={endGesture}
                     snapPoint={snapDrawingPoint}
                     onEditText={editText}
-                    onToolConsumed={() => setTool(null)}
+                    onToolConsumed={() => {
+                        // "Stay in drawing mode" keeps the tool armed, so a run of shapes needs no re-pick.
+                        if (!stayDrawingRef.current) setTool(null);
+                    }}
                     label={t}
                 />
             )}
@@ -1894,6 +1923,25 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 </button>
                 <button
                     type="button"
+                    onClick={toggleLockAll}
+                    disabled={drawings.length === 0}
+                    aria-pressed={allLocked}
+                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', allLocked && 'is-up')}
+                    title={t(allLocked ? 'chart.unlockAll' : 'chart.lockAll')}
+                >
+                    {allLocked ? <Unlock className="size-3.5" /> : <Lock className="size-3.5" />} {t(allLocked ? 'chart.unlockAll' : 'chart.lockAll')}
+                </button>
+                <button
+                    type="button"
+                    onClick={toggleStayDrawing}
+                    aria-pressed={stayDrawing}
+                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', stayDrawing && 'is-up')}
+                    title={t('chart.stayDrawing')}
+                >
+                    <Repeat className="size-3.5" /> {t('chart.stayDrawing')}
+                </button>
+                <button
+                    type="button"
                     onClick={() => layerSelected('front')}
                     disabled={!selectedId}
                     className="icon-btn"
@@ -2049,6 +2097,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                             <button type="button" onClick={() => setSelectedId(drawing.id)} className="flex flex-1 items-center gap-2 text-start">
                                 <span className="font-semibold">{toolLabel(drawing)}</span>
                                 <span className="mono num truncate text-[11.5px] text-faint">{summary(drawing)}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => toggleHidden(drawing.id)}
+                                aria-pressed={!!drawing.hidden}
+                                title={t(drawing.hidden ? 'chart.show' : 'chart.hide')}
+                                aria-label={t(drawing.hidden ? 'chart.show' : 'chart.hide')}
+                                className={cn('icon-btn', drawing.hidden && 'text-warn')}
+                            >
+                                {drawing.hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                             </button>
                             <button
                                 type="button"

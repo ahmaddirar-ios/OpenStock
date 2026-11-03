@@ -117,6 +117,8 @@ export type Drawing = {
     color?: ColorKey;
     /** Locked drawings still render and still select, but their points cannot be dragged. */
     locked?: boolean;
+    /** Hidden drawings are kept, listed and remembered, but not painted — a chart decluttered. */
+    hidden?: boolean;
     /** Stroke weight, 1–4; unset means the tool's own default. */
     width?: DrawingWidth;
     /** Stroke pattern, independent of the tool; unset keeps the tool's own (a level is dashed). */
@@ -1100,6 +1102,28 @@ export const drawingsKey = (symbol: string) => `openstock-drawings:${symbol.toUp
 
 export const MAX_DRAWINGS = 200;
 
+/**
+ * Where the "stay in drawing mode" switch is kept: TradingView's behaviour of leaving the tool armed
+ * after a shape lands, so a trader can draw five trendlines without re-picking the tool each time.
+ */
+export const STAY_DRAWING_KEY = 'openstock:drawing-stay';
+
+export function readStayDrawing(storage: Pick<Storage, 'getItem'>): boolean {
+    try {
+        return storage.getItem(STAY_DRAWING_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+export function writeStayDrawing(storage: Pick<Storage, 'setItem'>, stay: boolean): void {
+    try {
+        storage.setItem(STAY_DRAWING_KEY, stay ? '1' : '0');
+    } catch {
+        /* a blocked storage only means the switch does not outlive the visit */
+    }
+}
+
 const isPoint = (v: unknown): v is DrawPoint =>
     !!v && typeof v === 'object' && Number.isFinite((v as DrawPoint).time) && Number.isFinite((v as DrawPoint).price);
 
@@ -1122,6 +1146,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const text = carriesText(candidate.tool) ? (cleanText(candidate.text, textLimit(candidate.tool)) ?? '—') : undefined;
     const color = isColorKey(candidate.color) ? candidate.color : undefined;
     const locked = candidate.locked === true ? true : undefined;
+    const hidden = candidate.hidden === true ? true : undefined;
     const width = isWidth(candidate.width) ? candidate.width : undefined;
     const dash = isDash(candidate.dash) ? candidate.dash : undefined;
 
@@ -1133,6 +1158,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(text ? { text } : {}),
         ...(color ? { color } : {}),
         ...(locked ? { locked } : {}),
+        ...(hidden ? { hidden } : {}),
         ...(width ? { width } : {}),
         ...(dash ? { dash } : {}),
     };
