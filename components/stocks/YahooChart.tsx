@@ -135,6 +135,15 @@ import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
 import type { StudyConfig } from '@/lib/chart-studies';
 import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
+import {
+    mergeSetup,
+    readSetupPending,
+    serializeChartSetup,
+    setupDecision,
+    setupFromLocal,
+    writeSetupPending,
+} from '@/lib/chart-setup';
+import { loadChartSetup, saveChartSetup } from '@/lib/actions/chart-setup.actions';
 import { alertSource } from '@/lib/alerts';
 import ChartLegend from '@/components/stocks/ChartLegend';
 import type { BarReadout } from '@/lib/chart-readout';
@@ -324,6 +333,42 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setTimeline(createHistory(list));
         setSelectedId(null);
     }, []);
+
+    // The account's copy of this symbol's setup — the drawings and the studies — so a chart follows the
+    // trader to another device. The browser stays the fast copy: it is read first and written first, and
+    // the account catches up on a short debounce. `syncReady` holds the pushes back until the open-time
+    // reconciliation has finished, so an incoming merge is never overwritten by a half-loaded chart.
+    const [syncState, setSyncState] = useState<'loading' | 'saving' | 'saved' | 'local' | 'error'>('loading');
+    const syncReady = useRef(false);
+    const syncTimer = useRef<number | null>(null);
+    const drawingsRef = useRef<Drawing[]>(drawings);
+    drawingsRef.current = drawings;
+    const symbolRef = useRef(symbol);
+    symbolRef.current = symbol;
+    const latestStudies = useRef<StudyConfig[]>(studies);
+    latestStudies.current = studies;
+
+    const pushSetup = useCallback(
+        async (target: string, setup: ReturnType<typeof setupFromLocal>) => {
+            const result = await saveChartSetup(target, serializeChartSetup(setup));
+            writeSetupPending(window.localStorage, target, !result.ok);
+            return result;
+        },
+        [],
+    );
+
+    const scheduleSetupSave = useCallback(() => {
+        if (!syncReady.current) return;
+        if (syncTimer.current !== null) window.clearTimeout(syncTimer.current);
+        syncTimer.current = window.setTimeout(() => {
+            syncTimer.current = null;
+            setSyncState('saving');
+            void pushSetup(symbolRef.current, setupFromLocal(drawingsRef.current, latestStudies.current)).then((result) => {
+                if (result.ok) setSyncState('saved');
+                else setSyncState(result.reason === 'unauthorized' ? 'local' : 'error');
+            });
+        }, 1200);
+    }, [pushSetup]);
     // The snapshot a drag started from, so pointermove never floods the timeline.
     const gestureStart = useRef<Drawing[] | null>(null);
     const beginGesture = useCallback(() => {
@@ -621,6 +666,54 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setDrawingStyles(next);
     };
 
+    // Opening a symbol: the browser's copy is already on screen (read above, instantly). Then the
+    // account is asked for its copy and the two are merged, or the browser's copy is pushed up when the
+    // account has none — the one-time migration for every chart drawn before the account existed. Work
+    // done offline this session is pushed rather than replaced, so coming back online cannot lose it.
+    useEffect(() => {
+        let cancelled = false;
+        syncReady.current = false;
+        setSyncState('loading');
+        const local = setupFromLocal(loadDrawings(symbol), readStudies(window.localStorage));
+        void (async () => {
+            const result = await loadChartSetup(symbol);
+            if (cancelled) return;
+            if (!result.ok) {
+                syncReady.current = true;
+                setSyncState(result.reason === 'unauthorized' ? 'local' : 'error');
+                return;
+            }
+            const pending = readSetupPending(window.localStorage, symbol);
+            const decision = setupDecision({
+                signedIn: true,
+                hasRemote: !!result.setup,
+                hasLocal: local.drawings.length > 0 || local.studies.length > 0,
+                localPending: pending,
+            });
+            if (decision === 'merge' && result.setup) {
+                const merged = mergeSetup(local, result.setup);
+                resetDrawings(merged.drawings);
+                updateStudies(merged.studies);
+                writeSetupPending(window.localStorage, symbol, false);
+                syncReady.current = true;
+                setSyncState('saved');
+                return;
+            }
+            if (decision === 'push') {
+                const saved = await pushSetup(symbol, local);
+                if (cancelled) return;
+                syncReady.current = true;
+                setSyncState(saved.ok ? 'saved' : saved.reason === 'unauthorized' ? 'local' : 'error');
+                return;
+            }
+            syncReady.current = true;
+            setSyncState('saved');
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [symbol, resetDrawings, updateStudies, pushSetup]);
+
     const saved = useRef(false);
     useEffect(() => {
         if (!saved.current) {
@@ -628,7 +721,18 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             return;
         }
         saveDrawings(symbol, drawings);
-    }, [symbol, drawings]);
+        scheduleSetupSave();
+    }, [symbol, drawings, scheduleSetupSave]);
+
+    // The study list is shared by every pane, so a change to it is a change to this symbol's setup too.
+    const studiesSettled = useRef(false);
+    useEffect(() => {
+        if (!studiesSettled.current) {
+            studiesSettled.current = true;
+            return;
+        }
+        scheduleSetupSave();
+    }, [studies, scheduleSetupSave]);
 
     // The common start date for the compare pane: the latest first-bar among the series, so symbols
     // with different amounts of history (AAPL back to 1980, 2222.SR to 2019) are measured together.
@@ -1916,6 +2020,22 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         </div>
                     ))}
                 </div>
+            )}
+
+            {!replay && (
+                <p role="status" className="px-1 text-[11px] text-faint">
+                    {t(
+                        syncState === 'saving'
+                            ? 'chart.sync.saving'
+                            : syncState === 'loading'
+                              ? 'chart.sync.loading'
+                              : syncState === 'local'
+                                ? 'chart.sync.local'
+                                : syncState === 'error'
+                                  ? 'chart.sync.error'
+                                  : 'chart.sync.saved',
+                    )}
+                </p>
             )}
 
             {expanded && <div className="fixed inset-0 z-40 bg-page/70 backdrop-blur-[3px]" onClick={() => setExpanded(false)} />}

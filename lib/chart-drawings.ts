@@ -1138,13 +1138,20 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     };
 };
 
+/**
+ * The one gate every incoming drawing passes, whatever its source: the browser's storage, an imported
+ * file, or a row from the account. Anything that does not survive is dropped, never thrown.
+ */
+export function parseDrawingList(value: unknown): Drawing[] {
+    if (!Array.isArray(value)) return [];
+    return value.map(cleanDrawing).filter((d): d is Drawing => d !== null).slice(0, MAX_DRAWINGS);
+}
+
 /** Parses whatever was stored: anything that is not a well-formed drawing is dropped, never thrown. */
 export function parseDrawings(raw: string | null): Drawing[] {
     if (!raw) return [];
     try {
-        const parsed: unknown = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        return parsed.map(cleanDrawing).filter((d): d is Drawing => d !== null).slice(0, MAX_DRAWINGS);
+        return parseDrawingList(JSON.parse(raw));
     } catch {
         return [];
     }
