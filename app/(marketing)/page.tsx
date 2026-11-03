@@ -8,6 +8,7 @@ import { getSession } from "@/lib/better-auth/auth";
 import { cn } from "@/lib/utils";
 import { REPO_URL } from "@/lib/constants";
 import { Reveal, Stagger, StaggerItem, Tilt, Magnetic } from "@/components/motion";
+import HeroCanvas from "@/components/landing/HeroCanvas";
 
 const FEATURES = [
     { icon: CandlestickChart, title: 'Charts that move', body: 'TradingView candles, technicals and financials for any listed company, full screen when you need room.' },
@@ -79,7 +80,12 @@ export default async function LandingPage() {
                     </div>
                 </div>
                 <Tilt className="hatch" max={4}>
-                    <div className="card px-6 pb-5 pt-6"><MarketDial /></div>
+                    <div className="card relative grid min-h-[360px] place-items-center overflow-hidden px-6 pb-5 pt-6">
+                        <HeroCanvas
+                            className="absolute inset-0"
+                            fallback={<div className="w-full max-w-[280px]"><MarketDial /></div>}
+                        />
+                    </div>
                 </Tilt>
             </section>
 
