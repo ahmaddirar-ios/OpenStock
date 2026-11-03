@@ -7,6 +7,7 @@
 // Adding a market = adding an entry here with symbols from an exchange that renders in embeds.
 
 import { isInternationalSymbol } from "@/lib/utils";
+import { isIndexSymbol } from "@/lib/yahoo";
 
 export type MarketId = 'us' | 'in' | 'de' | 'ca' | 'au' | 'sa' | 'crypto' | 'fx';
 
@@ -163,6 +164,8 @@ export const marketForCountry = (country?: string | null): MarketId => COUNTRY_M
 // Finnhub free can price (and so alert on) US listings and Binance pairs only.
 export const hasFinnhubQuotes = (symbol: string) => {
     const upper = symbol.toUpperCase();
+    // An index is not a listing: Finnhub answers a zero quote for it, which would render as "—".
+    if (isIndexSymbol(upper)) return false;
     if (upper.startsWith('BINANCE:')) return true;
     return !upper.includes(':') && !isInternationalSymbol(upper);
 };

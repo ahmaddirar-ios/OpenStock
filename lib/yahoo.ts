@@ -5,10 +5,21 @@
 export function normalizeYahooSymbol(symbol: string): string | null {
     const upper = (symbol || '').trim().toUpperCase();
     if (/^\d+\.SR$/.test(upper)) return upper;
-    if (upper === 'TADAWUL:TASI' || upper === '^TASI.SR') return '^TASI.SR';
+    // The index under every name a trader or another part of the app may hand us.
+    if (INDEX_ALIASES.has(upper)) return TASI_YAHOO;
     const ticker = upper.startsWith('TADAWUL:') ? upper.slice('TADAWUL:'.length) : '';
     return /^\d+$/.test(ticker) ? `${ticker}.SR` : null;
 }
+
+/** The Tadawul All Shares Index, which is not a company and has no ticker of its own. */
+const TASI_YAHOO = '^TASI.SR';
+const INDEX_ALIASES = new Set(['TASI', '^TASI.SR', 'TASI.SR', 'TADAWUL:TASI']);
+
+/** True for a market index rather than a listed company: its page has no financials to show. */
+export const isIndexSymbol = (symbol: string): boolean => INDEX_ALIASES.has((symbol || '').trim().toUpperCase());
+
+/** The exchange prefix TradingView lists the index under. */
+export const TASI_TRADINGVIEW = 'TADAWUL:TASI';
 
 export const isTadawulSymbol = (symbol: string) => normalizeYahooSymbol(symbol) !== null;
 

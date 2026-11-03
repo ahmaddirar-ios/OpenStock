@@ -17,6 +17,7 @@ import {
 import { getStockSentimentInsights } from '@/lib/actions/adanos.actions';
 import { getStockMetrics } from '@/lib/actions/finnhub.actions';
 import { formatSymbolForTradingView, isChartEmbeddable, tradingViewSymbolUrl } from '@/lib/utils';
+import { isIndexSymbol } from '@/lib/yahoo';
 import { yahooCandleSymbol } from '@/lib/yahoo-candles';
 import { getLang } from '@/lib/i18n-server';
 import { tx, type Lang } from '@/lib/i18n';
@@ -55,6 +56,8 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     const symbol = decodeURIComponent(rawSymbol).toUpperCase();
     const tvSymbol = formatSymbolForTradingView(symbol);
     const lang = await getLang();
+    // The Tadawul All Shares Index is the one symbol here that is not a company.
+    const isIndex = isIndexSymbol(symbol);
 
     return (
         <>
@@ -86,13 +89,16 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                             </div>
                         </Panel>
                     )}
-                    <Panel title={tx(lang, 'stock.financials')} sub={tx(lang, 'stock.financialsSub')}>
-                        <TradingViewWidget
-                            scriptUrl={`${scriptUrl}financials.js`}
-                            config={COMPANY_FINANCIALS_WIDGET_CONFIG(tvSymbol)}
-                            height={500}
-                        />
-                    </Panel>
+                    {/* An index has no company to report on: the panels below would each read "—". */}
+                    {!isIndex && (
+                        <Panel title={tx(lang, 'stock.financials')} sub={tx(lang, 'stock.financialsSub')}>
+                            <TradingViewWidget
+                                scriptUrl={`${scriptUrl}financials.js`}
+                                config={COMPANY_FINANCIALS_WIDGET_CONFIG(tvSymbol)}
+                                height={500}
+                            />
+                        </Panel>
+                    )}
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-3">
@@ -103,17 +109,21 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                             height={400}
                         />
                     </Panel>
-                    <Suspense fallback={null}>
-                        <DividendYield symbol={symbol} lang={lang} />
-                    </Suspense>
-                    <Suspense fallback={null}>
-                        <Sentiment symbol={symbol} lang={lang} />
-                    </Suspense>
-                    <Panel title={tx(lang, 'stock.news')} sub={tx(lang, 'stock.newsSub')}>
-                        <Suspense fallback={<NewsSkeleton rows={3} />}>
-                            <CompanyNews symbol={symbol} lang={lang} />
-                        </Suspense>
-                    </Panel>
+                    {!isIndex && (
+                        <>
+                            <Suspense fallback={null}>
+                                <DividendYield symbol={symbol} lang={lang} />
+                            </Suspense>
+                            <Suspense fallback={null}>
+                                <Sentiment symbol={symbol} lang={lang} />
+                            </Suspense>
+                            <Panel title={tx(lang, 'stock.news')} sub={tx(lang, 'stock.newsSub')}>
+                                <Suspense fallback={<NewsSkeleton rows={3} />}>
+                                    <CompanyNews symbol={symbol} lang={lang} />
+                                </Suspense>
+                            </Panel>
+                        </>
+                    )}
                     <Panel title={tx(lang, 'stock.profile')} sub={tx(lang, 'stock.profileSub')}>
                         <TradingViewWidget
                             scriptUrl={`${scriptUrl}symbol-profile.js`}

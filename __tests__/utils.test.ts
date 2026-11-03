@@ -19,6 +19,17 @@ describe('formatSymbolForTradingView', () => {
         expect(formatSymbolForTradingView('aapl')).toBe('AAPL');
     });
 
+    it('maps the Saudi index onto the exchange TradingView lists it under', () => {
+        // "TASI" on its own is not a TradingView symbol: the embed fails, and the page falls back to
+        // the Yahoo chart only when the exchange prefix is known and blocked.
+        expect(formatSymbolForTradingView('TASI')).toBe('TADAWUL:TASI');
+        expect(formatSymbolForTradingView('tasi')).toBe('TADAWUL:TASI');
+        expect(formatSymbolForTradingView('^TASI.SR')).toBe('TADAWUL:TASI');
+        expect(isChartEmbeddable(formatSymbolForTradingView('TASI'))).toBe(false);
+        // A company on the same exchange still maps the way it always did.
+        expect(formatSymbolForTradingView('2222.SR')).toBe('TADAWUL:2222');
+    });
+
     // Asia-Pacific exchanges
     it('maps Taiwan (.TW) to TWSE prefix', () => {
         expect(formatSymbolForTradingView('2330.TW')).toBe('TWSE:2330');
@@ -168,7 +179,7 @@ describe('formatMarketCapValue', () => {
 describe('formatChangePercent', () => {
     it('returns empty string for undefined/null', () => {
         expect(formatChangePercent(undefined)).toBe('');
-        expect(formatChangePercent(null as any)).toBe('');
+        expect(formatChangePercent(null as unknown as number)).toBe('');
     });
 
     it('formats positive change with + sign', () => {

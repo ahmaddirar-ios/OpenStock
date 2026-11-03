@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dailyQuoteFromChart, normalizeYahooSymbol, tadawulAppSymbol } from '@/lib/yahoo';
+import { dailyQuoteFromChart, isIndexSymbol, normalizeYahooSymbol, tadawulAppSymbol } from '@/lib/yahoo';
 import { formatSymbolForTradingView, isChartEmbeddable } from '@/lib/utils';
 
 describe('Tadawul symbols', () => {
@@ -7,6 +7,12 @@ describe('Tadawul symbols', () => {
         expect(normalizeYahooSymbol('2222.SR')).toBe('2222.SR');
         expect(normalizeYahooSymbol('tadawul:2222')).toBe('2222.SR');
         expect(normalizeYahooSymbol('TADAWUL:TASI')).toBe('^TASI.SR');
+        // A trader types the index by name: the app's own pages must accept it too.
+        expect(normalizeYahooSymbol('TASI')).toBe('^TASI.SR');
+        expect(normalizeYahooSymbol('tasi')).toBe('^TASI.SR');
+        expect(isIndexSymbol('TASI')).toBe(true);
+        expect(isIndexSymbol('^TASI.SR')).toBe(true);
+        expect(isIndexSymbol('2222.SR')).toBe(false);
         // Bare numbers stay ambiguous: 7203 is Toyota in Tokyo
         expect(normalizeYahooSymbol('7203')).toBeNull();
         expect(normalizeYahooSymbol('AAPL')).toBeNull();

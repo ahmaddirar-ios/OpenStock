@@ -38,6 +38,8 @@ describe('markets', () => {
         expect(hasFinnhubQuotes('BARC.L')).toBe(false);
         expect(hasFinnhubQuotes('7203.T')).toBe(false);
         expect(hasFinnhubQuotes('2222.SR')).toBe(false);
+        // An index is not a listing: Finnhub answers a zero quote, so the header must use Yahoo.
+        expect(hasFinnhubQuotes('TASI')).toBe(false);
         expect(hasFinnhubQuotes('FX:EURUSD')).toBe(false);
     });
 

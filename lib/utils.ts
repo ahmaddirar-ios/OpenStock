@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
+import { isIndexSymbol, TASI_TRADINGVIEW } from '@/lib/yahoo';
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -250,6 +251,10 @@ export function isInternationalSymbol(symbol: string): boolean {
 export function formatSymbolForTradingView(symbol: string): string {
     if (!symbol) return '';
     const upperSymbol = symbol.toUpperCase();
+
+    // TradingView has no bare "TASI": the index lives on the exchange's own prefix, and TADAWUL is
+    // one of the exchanges it will not embed, so this also routes the page to the Yahoo chart.
+    if (isIndexSymbol(upperSymbol)) return TASI_TRADINGVIEW;
 
     // Check for known exchange suffixes, trying longer suffixes first
     // to avoid ".TWO" matching ".TW" prematurely
