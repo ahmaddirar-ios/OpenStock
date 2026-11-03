@@ -93,6 +93,7 @@ import {
     DRAWING_DASHES,
     DRAWING_WIDTHS,
     cloneDrawing,
+    carriesText,
     loadDrawings,
     mergeDrawings,
     nearestTime,
@@ -1155,7 +1156,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     const summary = (drawing: Drawing) => {
         const prices = drawing.points.map((point) => point.price.toFixed(2));
-        if (drawing.tool === 'text') return drawing.text ?? '';
+        if (carriesText(drawing.tool)) return drawing.text ?? '';
         return prices.length === 1 ? prices[0] : `${prices[0]} → ${prices[prices.length - 1]}`;
     };
 
@@ -1584,7 +1585,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         </button>
                     </CreateAlertModal>
                 )}
-                {tool === 'text' && (
+                {tool != null && tool !== 'select' && tool !== 'measure' && carriesText(tool) && (
                     <input
                         value={noteText}
                         onChange={(event) => setNoteText(event.target.value)}
@@ -1795,7 +1796,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                             >
                                 {drawing.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
                             </button>
-                            {drawing.tool === 'text' && (
+                            {carriesText(drawing.tool) && (
                                 <button
                                     type="button"
                                     onClick={() => setEditRequest({ id: drawing.id, nonce: Date.now() })}

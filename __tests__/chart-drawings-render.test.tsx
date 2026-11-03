@@ -24,14 +24,14 @@ afterEach(cleanup);
 const toScreen = (point: DrawPoint): ScreenPoint => ({ x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 });
 const fromScreen = (x: number, y: number): DrawPoint => ({ time: 1000 + (x - 100) * 10, price: 100 + (500 - y) / 5 });
 
-const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null) => {
-    const drawing: Drawing = { id: 'd1', tool, points };
+const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string } = {}) => {
+    const drawing: Drawing = { id: 'd1', tool, points, ...(extra.text ? { text: extra.text } : {}) };
     const { container } = render(
         <ChartDrawings
             drawings={[drawing]}
             selectedId={null}
             tool={null}
-            text=""
+            text={extra.text ?? ""}
             barTimes={barTimes}
             toScreen={toScreenOverride ?? toScreen}
             fromScreen={fromScreen}
@@ -75,17 +75,17 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
         width: Number(node.getAttribute('stroke-width')),
         opacity: Number(node.getAttribute('opacity')),
     }));
-    return { lines, rects, dashes, ellipses, circles, polygons, paths, strokes, texts };
+    return { lines, rects, dashes, ellipses, circles, polygons, paths, strokes, texts, shapes: { rects: Array.from(svg.querySelectorAll('rect') as unknown as HTMLElement[]) } };
 };
 
 /** The same layer, but with a tool armed, so a drawing gesture can be played against it. */
-const renderDrawing = (options: { tool: ShapeTool | 'select'; points?: DrawPoint[] }, onCommit: (drawing: Drawing) => void = () => {}) => {
+const renderDrawing = (options: { tool: ShapeTool | 'select'; points?: DrawPoint[]; text?: string }, onCommit: (drawing: Drawing) => void = () => {}) => {
     const { container } = render(
         <ChartDrawings
             drawings={options.points ? [{ id: 'd1', tool: options.tool as ShapeTool, points: options.points }] : []}
             selectedId={null}
             tool={options.tool}
-            text=""
+            text={options.text ?? ""}
             barTimes={[]}
             toScreen={toScreen}
             fromScreen={fromScreen}
@@ -461,5 +461,54 @@ describe('the forecast tools on the chart', () => {
         expect(lines[1].y2).toBeCloseTo(450, 5);
         expect(dashes[1]).toBeTruthy();
         expect(dashes[0]).toBeFalsy();
+    });
+});
+
+describe('the annotation family on the chart', () => {
+    it('draws a callout as a leader line, a label box and the words', () => {
+        const { lines, texts, shapes } = renderTool('callout', [
+            { time: 1000, price: 100 },
+            { time: 1800, price: 112 },
+        ], [], undefined, { text: 'Breakout' });
+        // The leader runs from the point it annotates to the label box.
+        expect(lines.some((l) => l.x1 === 100 && l.y1 === 500)).toBe(true);
+        expect(texts).toContain('Breakout');
+        expect(shapes.rects.length).toBeGreaterThan(0);
+    });
+
+    it('draws a balloon with a filled label', () => {
+        const { texts, shapes } = renderTool('balloon', [
+            { time: 1000, price: 100 },
+            { time: 1700, price: 88 },
+        ], [], undefined, { text: 'Target' });
+        expect(texts).toContain('Target');
+        // A balloon is filled, so its rect carries a translucent fill.
+        expect(shapes.rects.some((rect) => (rect.getAttribute('fill') || '').includes('color-mix'))).toBe(true);
+    });
+
+    it('prints the price on a signpost and a flag', () => {
+        const post = renderTool('signpost', [{ time: 1000, price: 100 }]);
+        expect(post.texts.join(' ')).toContain('100.00');
+        expect(post.lines.length).toBeGreaterThan(0);
+
+        const flagged = renderTool('flag', [{ time: 1000, price: 100 }]);
+        expect(flagged.texts.join(' ')).toContain('100.00');
+        expect(flagged.polygons.length + flagged.shapes.rects.length).toBeGreaterThan(0);
+    });
+
+    it('pins a price note to the price it was placed at', () => {
+        const { texts, shapes } = renderTool('pricenote', [{ time: 1000, price: 100 }]);
+        expect(texts.join(' ')).toContain('100.00');
+        // A note sits on the panel edge, like the chart's own last-price chip.
+        expect(shapes.rects.length).toBeGreaterThan(0);
+    });
+
+    it('seeds a price marker with its price when the trader typed nothing', () => {
+        const onCommit = vi.fn();
+        const { svg } = renderDrawing({ tool: 'flag' }, onCommit);
+        fireEvent.pointerDown(svg, { clientX: 100, clientY: 500, pointerId: 7 });
+        fireEvent.pointerUp(svg, { clientX: 100, clientY: 500, pointerId: 7 });
+        expect(onCommit).toHaveBeenCalledTimes(1);
+        expect(onCommit.mock.calls[0][0].text).toBe('100.00');
     });
 });

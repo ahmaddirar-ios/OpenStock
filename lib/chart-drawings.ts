@@ -46,6 +46,11 @@ export type ShapeKind =
     | 'dcurve'
     | 'brush'
     | 'highlighter'
+    | 'callout'
+    | 'balloon'
+    | 'signpost'
+    | 'flag'
+    | 'pricenote'
     | 'fib'
     | 'gann'
     | 'text'
@@ -68,6 +73,8 @@ export type ShapeTool =
     | 'ellipse' | 'circle' | 'tri' | 'polyline' | 'arc' | 'curve' | 'dcurve'
     // freehand strokes (drawn by dragging, not by clicking)
     | 'brush' | 'highlighter'
+    // annotations: a label the trader writes, or the price at the point they marked
+    | 'callout' | 'balloon' | 'signpost' | 'flag' | 'pricenote'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -197,8 +204,16 @@ export const TOOL_DEFS: ToolDef[] = [
     // Freehand: open-ended like the polyline, but drawn by dragging rather than clicking.
     { tool: 'brush', group: 'brush', kind: 'brush', clicks: 0, defaultColor: 'white' },
     { tool: 'highlighter', group: 'brush', kind: 'highlighter', clicks: 0, defaultColor: 'gold' },
+
     { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
     { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },
+    // Annotations. The first two are two clicks (the point, then where the label sits); the price
+    // markers are one click and read their own price.
+    { tool: 'callout', group: 'annotation', kind: 'callout', clicks: 2, defaultColor: 'white' },
+    { tool: 'balloon', group: 'annotation', kind: 'balloon', clicks: 2, defaultColor: 'gold' },
+    { tool: 'signpost', group: 'annotation', kind: 'signpost', clicks: 1, defaultColor: 'cyan' },
+    { tool: 'flag', group: 'annotation', kind: 'flag', clicks: 1, defaultColor: 'orange' },
+    { tool: 'pricenote', group: 'annotation', kind: 'pricenote', clicks: 1, defaultColor: 'white' },
 
     { tool: 'xabcd', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
     { tool: 'cypher', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
@@ -235,6 +250,30 @@ export const toolDef = (tool: ShapeTool): ToolDef => TOOL_BY_ID[tool];
  *  open-ended tool (a polyline, a freehand stroke) reports 0 because it takes points until the
  *  trader finishes it. */
 export const pointsNeeded = (tool: ShapeTool): number => toolDef(tool).clicks;
+
+/**
+ * Tools whose drawing carries the trader's own words (a note, a callout, a balloon, a flag): the
+ * chart stores their text and re-opens the editor on a double click. The price markers derive their
+ * label instead, so nothing of theirs has to be stored.
+ */
+const TEXT_TOOLS = new Set<ShapeTool>(['text', 'callout', 'balloon', 'signpost', 'flag']);
+export const carriesText = (tool: ShapeTool): boolean => TEXT_TOOLS.has(tool);
+
+/** A price the way the chart prints it: two decimals, thousands separated. */
+export const priceLabel = (price: number): string =>
+    price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * The words a freshly placed annotation carries. A note, a callout and a balloon take what the
+ * trader typed (and fall back to the price so the label is never empty); a signpost or a flag is a
+ * price marker, so it starts with its own price and ignores whatever the note field still held —
+ * a double click edits it afterwards. Tools with no text carry none.
+ */
+export function annotationText(tool: ShapeTool, price: number, typed?: string | null): string | undefined {
+    if (!carriesText(tool)) return undefined;
+    if (tool === 'signpost' || tool === 'flag') return priceLabel(price);
+    return cleanText(typed ?? '') ?? priceLabel(price);
+}
 
 /** Freehand tools are drawn by dragging the pointer, not by clicking point after point. */
 export const isFreehand = (tool: ShapeTool): boolean => toolDef(tool).kind === 'brush' || toolDef(tool).kind === 'highlighter';
@@ -646,7 +685,7 @@ export function hitTest(
         const drawing = drawings[i];
         const kind = kindOf(drawing);
 
-        if (kind === 'text' || kind === 'horizontal') {
+        if (kind === 'text' || kind === 'horizontal' || kind === 'signpost' || kind === 'flag' || kind === 'pricenote') {
             if (isNearPoint(cursor, points[0], tolerance)) return drawing;
             continue;
         }
@@ -668,7 +707,7 @@ export function hitTest(
             if (kind === 'tri' && points.length >= 3 && distanceToSegment(cursor, points[points.length - 1], points[0]) <= tolerance) return drawing;
             continue;
         }
-        if (kind === 'ellipse' || kind === 'circle' || kind === 'arc' || kind === 'curve' || kind === 'dcurve') {
+        if (kind === 'ellipse' || kind === 'circle' || kind === 'arc' || kind === 'curve' || kind === 'dcurve' || kind === 'callout' || kind === 'balloon') {
             // These are drawn as curves between their anchors, so the anchors are what you grab.
             if (points.some((point) => isNearPoint(cursor, point, tolerance))) return drawing;
             continue;
@@ -795,7 +834,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         Array.isArray(candidate.labels) && candidate.labels.every((l) => typeof l === 'string')
             ? candidate.labels.slice(0, 8)
             : undefined;
-    const text = candidate.tool === 'text' ? (cleanText(candidate.text) ?? '—') : undefined;
+    const text = carriesText(candidate.tool) ? (cleanText(candidate.text) ?? '—') : undefined;
     const color = isColorKey(candidate.color) ? candidate.color : undefined;
     const locked = candidate.locked === true ? true : undefined;
     const width = isWidth(candidate.width) ? candidate.width : undefined;

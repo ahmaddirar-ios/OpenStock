@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+    annotationText,
+    carriesText,
     cleanText,
     cycleIndices,
     circleFrom,
@@ -31,6 +33,7 @@ import {
     MAX_STROKE_POINTS,
     polygonPoints,
     polylinePath,
+    priceLabel,
     positionZones,
     projectionEnds,
     quadraticPath,
@@ -208,7 +211,7 @@ export default function ChartDrawings({
                 id: newDrawingId(),
                 tool,
                 points: [point],
-                ...(tool === 'text' ? { text: cleanText(text) ?? '—' } : {}),
+                ...(annotationText(tool, point.price, text) ? { text: annotationText(tool, point.price, text) } : {}),
             });
             onToolConsumed();
             return;
@@ -239,6 +242,7 @@ export default function ChartDrawings({
             tool,
             points: next,
             ...(glyphs ? { labels: glyphs } : {}),
+            ...(annotationText(tool, next[next.length - 1].price, text) ? { text: annotationText(tool, next[next.length - 1].price, text) } : {}),
         });
         setDraft([]);
         setPreview(null);
@@ -307,7 +311,7 @@ export default function ChartDrawings({
         const rect = svgRef.current?.getBoundingClientRect();
         const cursor = { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
         const hit = hitTest(drawings, drawings.map((drawing) => usable(screenOf(drawing))), cursor, GRAB);
-        if (hit && hit.tool === 'text') setEditing({ id: hit.id, value: hit.text ?? '' });
+        if (hit && carriesText(hit.tool)) setEditing({ id: hit.id, value: hit.text ?? '' });
     };
     const onKeyDown = (event: React.KeyboardEvent) => {
         if (event.key !== 'Escape') return;
@@ -1084,6 +1088,62 @@ export default function ChartDrawings({
                         opacity={marker ? 0.28 : opacity}
                         style={marker ? { mixBlendMode: 'screen' } : undefined}
                     />
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        // --- annotations ---------------------------------------------------------
+        // A callout and a balloon are the trader's words with a leader line; the price markers read
+        // the price at the point they were placed on. A price note sits against the panel edge, the
+        // way the chart's own last-price chip does.
+        if (kind === 'callout' || kind === 'balloon' || kind === 'signpost' || kind === 'flag' || kind === 'pricenote') {
+            const words = drawing.text ?? priceLabel(drawing.points[0].price);
+            const font = 11.5;
+            const padX = 6;
+            const boxW = Math.max(34, words.length * font * 0.62 + padX * 2);
+            const boxH = 20;
+            const anchor = screen[0];
+            if (kind === 'pricenote') {
+                const x = edgeX - boxW - 2;
+                return (
+                    <g key={drawing.id} strokeDasharray={dash}>
+                        <line x1={screen[0].x} y1={anchor.y} x2={x} y2={anchor.y} stroke={color} strokeWidth={1} strokeDasharray="3 3" opacity={0.8} />
+                        <rect x={x} y={anchor.y - boxH / 2} width={boxW} height={boxH} rx={4} fill={color} opacity={0.9} />
+                        <text x={x + boxW / 2} y={anchor.y + 4} textAnchor="middle" fontSize={font} className="mono" fill="#0b0b0b">
+                            {words}
+                        </text>
+                        {selectionHandles(screen)}
+                    </g>
+                );
+            }
+
+            const at = kind === 'callout' || kind === 'balloon' ? screen[1] ?? screen[0] : { x: anchor.x + 12, y: anchor.y - 14 };
+            const boxX = at.x;
+            const boxY = at.y - boxH / 2;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {/* The leader line, and the pin a signpost or a flag stands on. */}
+                    {kind === 'signpost' ? (
+                        <line x1={anchor.x} y1={anchor.y} x2={anchor.x} y2={boxY + boxH} stroke={color} strokeWidth={1.5} opacity={opacity} />
+                    ) : (
+                        <line x1={anchor.x} y1={anchor.y} x2={kind === 'flag' ? boxX : at.x} y2={kind === 'flag' ? boxY + boxH / 2 : at.y} stroke={color} strokeWidth={1} opacity={opacity} />
+                    )}
+                    <rect
+                        x={boxX}
+                        y={boxY}
+                        width={boxW}
+                        height={boxH}
+                        rx={kind === 'balloon' ? boxH / 2 : 4}
+                        fill={kind === 'balloon' ? `color-mix(in oklab, ${color} 78%, transparent)` : `color-mix(in oklab, var(--card) 92%, transparent)`}
+                        stroke={color}
+                        strokeWidth={1}
+                        opacity={opacity}
+                    />
+                    <text x={boxX + padX} y={boxY + boxH / 2 + 4} fontSize={font} className="mono" fill={kind === 'balloon' ? '#0b0b0b' : color} opacity={opacity}>
+                        {words}
+                    </text>
+                    {dot(anchor.x, anchor.y, `${drawing.id}-a`, color, opacity, TEXT_DOT)}
                     {selectionHandles(screen)}
                 </g>
             );

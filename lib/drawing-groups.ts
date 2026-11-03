@@ -85,5 +85,10 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     curve: 'chart.tool.curve',
     dcurve: 'chart.tool.dcurve',
     brush: 'chart.tool.brush',
+    callout: 'chart.tool.callout',
+    balloon: 'chart.tool.balloon',
+    signpost: 'chart.tool.signpost',
+    flag: 'chart.tool.flag',
+    pricenote: 'chart.tool.pricenote',
     highlighter: 'chart.tool.highlighter',
 };

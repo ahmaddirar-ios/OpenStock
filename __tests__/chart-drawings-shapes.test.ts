@@ -5,7 +5,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     TOOL_DEFS,
+    annotationText,
     arcThrough,
+    carriesText,
     circleFrom,
     doubleCurvePath,
     ellipseFrom,
@@ -21,6 +23,7 @@ import {
     polygonPoints,
     polylinePath,
     positionZones,
+    priceLabel,
     projectionEnds,
     quadraticPath,
     rangeReadout,
@@ -317,5 +320,56 @@ describe('the seven basic line tools', () => {
             expect(toolDef(tool).group, tool).toBe('lines');
             expect(TOOL_DEFS.filter((d) => d.tool === tool), tool).toHaveLength(1);
         }
+    });
+});
+
+describe('the annotation family', () => {
+    it('knows which tools carry the trader’s own words', () => {
+        // A note, a callout and a balloon are written by the trader; the price markers are not.
+        for (const tool of ['text', 'callout', 'balloon', 'signpost', 'flag'] as const) {
+            expect(carriesText(tool), tool).toBe(true);
+        }
+        for (const tool of ['trend', 'rectangle', 'pricenote', 'ellipse'] as const) {
+            expect(carriesText(tool), tool).toBe(false);
+        }
+    });
+
+    it('keeps the words of a callout through a save and a reload', () => {
+        const stored = [
+            { id: 'c1', tool: 'callout' as const, points: [{ time: 1000, price: 100 }, { time: 1600, price: 110 }], text: 'Breakout' },
+            { id: 'f1', tool: 'flag' as const, points: [{ time: 1000, price: 100 }], text: 'Short here' },
+        ];
+        const back = parseDrawings(serializeDrawings(stored));
+        expect(back.map((d) => d.text)).toEqual(['Breakout', 'Short here']);
+    });
+
+    it('drops the words a tool that has none would carry', () => {
+        const back = parseDrawings(JSON.stringify([{ id: 't1', tool: 'trend', points: [{ time: 1, price: 1 }, { time: 2, price: 2 }], text: 'ignore me' }]));
+        expect(back[0].text).toBeUndefined();
+    });
+
+    it('labels a price the way the chart prints it', () => {
+        expect(priceLabel(9876.13)).toBe('9,876.13');
+        expect(priceLabel(26.1)).toBe('26.10');
+        expect(priceLabel(0)).toBe('0.00');
+    });
+});
+
+describe('the words a new annotation carries', () => {
+    it('takes what the trader typed for a note, a callout and a balloon', () => {
+        expect(annotationText('callout', 100, 'Breakout')).toBe('Breakout');
+        expect(annotationText('text', 100, 'watch the volume')).toBe('watch the volume');
+        // An empty label is a blank box on the chart: the price stands in until it is edited.
+        expect(annotationText('callout', 100, '   ')).toBe('100.00');
+    });
+
+    it('gives a price marker its own price, whatever the note field still held', () => {
+        expect(annotationText('signpost', 100, 'Breakout above 26.30')).toBe('100.00');
+        expect(annotationText('flag', 9876.13)).toBe('9,876.13');
+    });
+
+    it('carries nothing for a tool without words', () => {
+        expect(annotationText('trend', 100, 'x')).toBeUndefined();
+        expect(annotationText('pricenote', 100, 'x')).toBeUndefined();
     });
 });
