@@ -2,7 +2,7 @@
 // Kept out of the component so it can be asserted without a browser: the rail is
 // only as correct as this list, and every group's label must exist in both languages.
 
-import { toolsInGroup, type ToolGroup } from '@/lib/chart-drawings';
+import { toolsInGroup, type ShapeTool, type ToolGroup } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type RailGroup = { group: ToolGroup; label: StringKey };
@@ -25,3 +25,36 @@ export const RAIL_GROUPS: readonly RailGroup[] = [
  * (forecast, shapes, brush), so the rail never shows a flyout with nothing in it.
  */
 export const railGroupsWithTools = (): RailGroup[] => RAIL_GROUPS.filter(({ group }) => toolsInGroup(group).length > 0);
+
+/**
+ * The i18n key for each tool's label. Lives here (not in the chart component) so
+ * the rail and the toolbar share one map, and a consistency test can prove every
+ * tool has a label in both languages.
+ */
+export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
+    trend: 'chart.tool.trend',
+    horizontal: 'chart.tool.horizontal',
+    rectangle: 'chart.tool.rectangle',
+    xrect: 'chart.tool.xrect',
+    channel: 'chart.tool.channel',
+    arrow: 'chart.tool.arrow',
+    pricetime: 'chart.tool.pricetime',
+    fib: 'chart.tool.fib',
+    gann: 'chart.tool.gann',
+    text: 'chart.tool.text',
+    xabcd: 'chart.pat.xabcd',
+    cypher: 'chart.pat.cypher',
+    hs: 'chart.pat.hs',
+    abcd: 'chart.pat.abcd',
+    triangle: 'chart.pat.triangle',
+    drives3: 'chart.pat.drives3',
+    'ew-impulse': 'chart.pat.ewImpulse',
+    'ew-abc': 'chart.pat.ewAbc',
+    'ew-triangle': 'chart.pat.ewTriangle',
+    'ew-double': 'chart.pat.ewDouble',
+    'ew-triple': 'chart.pat.ewTriple',
+    'ew-count': 'chart.count.impulse',
+    'ew-count-abc': 'chart.count.correction',
+    cycles: 'chart.pat.cycles',
+    sine: 'chart.pat.sine',
+};
