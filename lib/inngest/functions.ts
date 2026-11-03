@@ -230,8 +230,10 @@ export const checkStockAlerts = inngest.createFunction(
             symbol: string;
             condition: AlertCondition;
             targetPrice: number;
-            params?: { period?: number; window?: number };
+            params?: { period?: number; window?: number; band?: number };
             lastPrice?: number | null;
+            anchor?: unknown;
+            lastGap?: number | null;
         };
         const alerts = activeAlerts as unknown as StoredAlert[];
         const symbols = [...new Set(alerts.map((alert) => alert.symbol))];
@@ -268,6 +270,7 @@ export const checkStockAlerts = inngest.createFunction(
         // Step 4: the same decision the alert centre makes, from the same pure function, so the
         // two paths cannot disagree about what fired or what the next cross compares against.
         const { needsCandles, planCheck } = await import("@/lib/alerts");
+        const { parseAnchor } = await import("@/lib/drawing-alert");
         type Snapshot = { price: number; changePercent: number };
         const rows = alerts.map((alert) => ({
             id: String(alert._id),
@@ -276,6 +279,8 @@ export const checkStockAlerts = inngest.createFunction(
             targetPrice: alert.targetPrice,
             params: alert.params ?? {},
             lastPrice: alert.lastPrice ?? null,
+            anchor: alert.anchor ? parseAnchor(alert.anchor) : null,
+            lastGap: alert.lastGap ?? null,
         }));
 
         // Only the symbols whose rules measure a series pay for candles; the rest live on quotes.
@@ -302,8 +307,11 @@ export const checkStockAlerts = inngest.createFunction(
                 const { Alert } = await import("@/database/models/alert.model");
                 await connectToDatabase();
                 await Alert.bulkWrite(
-                    plan.misses.map(({ id, value }) => ({
-                        updateOne: { filter: { _id: id, triggered: false }, update: { $set: { lastPrice: value } } },
+                    plan.misses.map(({ id, value, gap }) => ({
+                        updateOne: {
+                            filter: { _id: id, triggered: false },
+                            update: { $set: { lastPrice: value, ...(gap === undefined ? {} : { lastGap: gap }) } },
+                        },
                     })),
                 );
             });

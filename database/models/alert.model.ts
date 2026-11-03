@@ -12,6 +12,10 @@ export interface IAlert extends Document {
     triggered: boolean;
     /** The value seen on the previous check: a price, or what a series rule measured. */
     lastPrice: number | null;
+    /** A drawing rule's line, snapshotted when the alert was made (null for every other rule). */
+    anchor: unknown;
+    /** Where the price sat relative to that line on the previous check. */
+    lastGap: number | null;
     /** When and at what price the rule fired. */
     triggeredAt: Date | null;
     triggeredPrice: number | null;
@@ -33,6 +37,10 @@ const AlertSchema = new Schema<IAlert>(
         active: { type: Boolean, default: true },
         triggered: { type: Boolean, default: false },
         lastPrice: { type: Number, default: null },
+        // Mixed: a drawing snapshot is the same object the chart hands over, validated by
+        // lib/drawing-alert on the way in and on the way out.
+        anchor: { type: Schema.Types.Mixed, default: null },
+        lastGap: { type: Number, default: null },
         triggeredAt: { type: Date, default: null },
         triggeredPrice: { type: Number, default: null },
         seen: { type: Boolean, default: false },

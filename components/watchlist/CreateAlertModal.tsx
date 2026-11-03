@@ -7,7 +7,8 @@ import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { tx, type Lang } from "@/lib/i18n";
-import { needsCandles, PARAM_BOUNDS, type AlertCondition } from "@/lib/alerts";
+import { isAlertCondition, needsCandles, PARAM_BOUNDS, type AlertCondition } from "@/lib/alerts";
+import { DRAWING_BAND, DRAWING_CONDITIONS, anchorPriceAt, clampBand, isDrawingCondition, type DrawingAnchor } from "@/lib/drawing-alert";
 import { alertConditionLabel } from "@/lib/alert-labels";
 
 interface CreateAlertModalProps {
@@ -17,6 +18,8 @@ interface CreateAlertModalProps {
     children?: React.ReactNode;
     lang?: Lang;
     onAlertCreated?: () => void;
+    /** When given, the modal opens on the drawing rules for this snapshotted line instead of a price. */
+    anchor?: DrawingAnchor | null;
 }
 
 // Labels live in the dictionary; the values are what the server stores. The quick modal offers
@@ -31,22 +34,35 @@ const CONDITIONS: AlertCondition[] = [
     'VOLUME_SPIKE',
 ];
 
-export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD', children, lang = 'en', onAlertCreated }: CreateAlertModalProps) {
+export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD', children, lang = 'en', onAlertCreated, anchor }: CreateAlertModalProps) {
     const [open, setOpen] = useState(false);
     const [condition, setCondition] = useState<AlertCondition>('ABOVE');
     const [targetPrice, setTargetPrice] = useState('');
     const [period, setPeriod] = useState('');
+    const [band, setBand] = useState(String(DRAWING_BAND.default));
     const [loading, setLoading] = useState(false);
 
+    const drawing = anchor ?? null;
+    const conditions: AlertCondition[] = drawing ? [...DRAWING_CONDITIONS] : CONDITIONS;
+    const drawnCondition: AlertCondition = drawing && isDrawingCondition(condition) ? condition : drawing ? 'DRAWING_CROSS_UP' : condition;
+    // The line's price right now: a drawing rule has no number to type, only the line it watches.
+    const lineNow = drawing ? anchorPriceAt(drawing, Math.floor(Date.now() / 1000)) : null;
+
+    const activeCondition = drawing ? drawnCondition : condition;
     const target = parseFloat(targetPrice);
-    const isPriceRule = condition === 'ABOVE' || condition === 'BELOW';
+    const isPriceRule = activeCondition === 'ABOVE' || activeCondition === 'BELOW';
     const hasPrice = !!currentPrice && currentPrice > 0;
     const distance = isPriceRule && hasPrice && Number.isFinite(target) ? ((target - currentPrice!) / currentPrice!) * 100 : null;
-    const alreadyMet = distance !== null && (condition === 'ABOVE' ? distance <= 0 : distance >= 0);
+    const alreadyMet = distance !== null && (activeCondition === 'ABOVE' ? distance <= 0 : distance >= 0);
 
     const onOpenChange = (next: boolean) => {
         setOpen(next);
-        if (next) setTargetPrice(isPriceRule && hasPrice ? currentPrice!.toFixed(2) : '');
+        if (!next) return;
+        if (drawing) {
+            setCondition('DRAWING_CROSS_UP');
+            return;
+        }
+        setTargetPrice(isPriceRule && hasPrice ? currentPrice!.toFixed(2) : '');
     };
 
     const paramsFor = (value: AlertCondition) => {
@@ -60,15 +76,18 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
         e.preventDefault();
         setLoading(true);
         try {
+            const rule = drawing ? drawnCondition : condition;
+            const price = drawing ? lineNow ?? 0 : target;
             await createAlert({
                 symbol,
-                targetPrice: target,
-                condition,
-                ...(needsCandles(condition) ? { params: paramsFor(condition) } : {}),
+                targetPrice: price,
+                condition: rule,
+                ...(rule === 'DRAWING_TOUCH' ? { params: { band: clampBand(band) } } : needsCandles(rule) ? { params: paramsFor(rule) } : {}),
+                ...(drawing ? { anchor: drawing } : {}),
             });
             toast.success(tx(lang, 'alertModal.created')
                 .replace('{s}', symbol)
-                .replace('{c}', `${alertConditionLabel(lang, condition)} ${target}`));
+                .replace('{c}', `${alertConditionLabel(lang, rule)} ${price}`));
             setOpen(false);
             onAlertCreated?.();
         } catch (error) {
@@ -96,7 +115,7 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                             <label className="flex flex-col gap-2">
                                 <span className="form-label">{tx(lang, 'alertModal.condition')}</span>
                                 <select
-                                    value={condition}
+                                    value={activeCondition}
                                     onChange={(e) => {
                                         const next = e.target.value as AlertCondition;
                                         setCondition(next);
@@ -105,7 +124,7 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                                     }}
                                     className="h-11 rounded-[11px] border border-line bg-page px-3 text-[14px] font-semibold outline-none focus-visible:border-brand"
                                 >
-                                    {CONDITIONS.map((value) => (
+                                    {conditions.map((value) => (
                                         <option key={value} value={value}>{alertConditionLabel(lang, value)}</option>
                                     ))}
                                 </select>
@@ -125,7 +144,35 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                                 </label>
                             )}
 
-                            <label className="flex flex-col gap-2">
+                            {drawing && (
+                                <div className="flex flex-col gap-2">
+                                    <span className="form-label">{tx(lang, 'alertModal.target')}</span>
+                                    <span className="flex h-12 items-center gap-2 rounded-[11px] border border-line bg-page px-3">
+                                        <span className="mono text-faint">{currency}</span>
+                                        <span className="num text-lg font-semibold text-foreground">
+                                            {lineNow == null ? tx(lang, 'alertModal.noPrice') : formatPrice(lineNow, currency)}
+                                        </span>
+                                    </span>
+                                    <span className="text-[12.5px] text-faint">{tx(lang, 'alertModal.drawingDesc')}</span>
+                                    {drawnCondition === 'DRAWING_TOUCH' && (
+                                        <label className="flex flex-col gap-2 pt-1">
+                                            <span className="form-label">{tx(lang, 'alertModal.band')}</span>
+                                            <input
+                                                type="number"
+                                                inputMode="decimal"
+                                                step="0.05"
+                                                min={DRAWING_BAND.min}
+                                                max={DRAWING_BAND.max}
+                                                value={band}
+                                                onChange={(e) => setBand(e.target.value)}
+                                                className="num h-11 rounded-[11px] border border-line bg-page px-3 text-[15px] font-semibold text-foreground outline-none focus-visible:border-brand"
+                                            />
+                                        </label>
+                                    )}
+                                </div>
+                            )}
+
+                            {!drawing && <label className="flex flex-col gap-2">
                                 <span className="form-label">{tx(lang, 'alertModal.target')}</span>
                                 <span className="flex h-12 items-center gap-2 rounded-[11px] border border-line bg-page px-3 focus-within:border-brand">
                                     {isPriceRule && <span className="mono text-faint">{currency}</span>}
@@ -154,9 +201,9 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                                                     ...(distance === null ? [] : [tx(lang, 'alertModal.away').replace('{n}', `${distance > 0 ? '+' : ''}${distance.toFixed(2)}`)]),
                                                 ].join(' · ')}
                                 </span>
-                            </label>
+                            </label>}
 
-                            <button type="submit" disabled={loading || !(target > 0)} className="btn btn-primary h-11">
+                            <button type="submit" disabled={loading || (drawing ? lineNow == null : !(target > 0))} className="btn btn-primary h-11">
                                 {loading ? tx(lang, 'alertModal.setting') : tx(lang, 'alertModal.set')}
                             </button>
                         </form>

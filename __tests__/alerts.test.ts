@@ -188,8 +188,69 @@ describe('needsCandles', () => {
         }
     });
 
-    it('lists all fourteen conditions', () => {
-        expect(ALERT_CONDITIONS).toHaveLength(14);
+    it('reads a drawing rule through the same planner as every other rule', () => {
+        // A rising line: 100 at t=1000 to 120 at t=2000, so it sits at 110 at t=1500.
+        const line = { tool: 'trend' as const, kind: 'line' as const, points: [{ time: 1000, price: 100 }, { time: 2000, price: 120 }] };
+        const row = {
+            id: 'a1',
+            symbol: '2222.SR',
+            condition: 'DRAWING_CROSS_UP' as const,
+            targetPrice: 110,
+            params: {},
+            anchor: line,
+            lastGap: null as number | null,
+        };
+
+        // First check: below the line, nothing fires — it only records where the price sat.
+        const first = planCheck([row], { '2222.SR': { price: 109, changePercent: 0 } }, {}, 1500);
+        expect(first.fires).toHaveLength(0);
+        expect(first.misses).toHaveLength(1);
+        expect(first.misses[0].gap).toBeCloseTo((109 - 110) / 110, 6);
+
+        // Second check: above the line, with the recorded gap, the cross speaks.
+        const second = planCheck([{ ...row, lastGap: first.misses[0].gap }], { '2222.SR': { price: 111, changePercent: 0 } }, {}, 1500);
+        expect(second.fires).toHaveLength(1);
+        expect(second.fires[0].condition).toBe('DRAWING_CROSS_UP');
+        expect(second.fires[0].gap).toBeCloseTo((111 - 110) / 110, 6);
+    });
+
+    it('uses the band the touch rule was made with, not a default', () => {
+        // A level 26.49 with the price 1.2% below it: inside a 5% band, outside the 0.3% default.
+        const level = { tool: 'horizontal' as const, kind: 'level' as const, points: [{ time: 1000, price: 26.49 }] };
+        const row = {
+            id: 'a3',
+            symbol: '2222.SR',
+            condition: 'DRAWING_TOUCH' as const,
+            targetPrice: 26.49,
+            anchor: level,
+        };
+        const quote = { '2222.SR': { price: 26.16, changePercent: 0 } };
+        expect(planCheck([{ ...row, params: { band: 5 } }], quote, {}, 1500).fires).toHaveLength(1);
+        expect(planCheck([{ ...row, params: { band: 0.3 } }], quote, {}, 1500).fires).toHaveLength(0);
+        // No band at all is the default, which is a third of a percent.
+        expect(planCheck([{ ...row, params: {} }], quote, {}, 1500).fires).toHaveLength(0);
+    });
+
+    it('never fires a drawing rule that lost its anchor', () => {
+        const row = {
+            id: 'a2',
+            symbol: '2222.SR',
+            condition: 'DRAWING_CROSS_UP' as const,
+            targetPrice: 110,
+            params: {},
+            anchor: null,
+            lastGap: -0.01,
+        };
+        const plan = planCheck([row], { '2222.SR': { price: 111, changePercent: 0 } }, {}, 1500);
+        expect(plan.fires).toHaveLength(0);
+        expect(plan.misses).toHaveLength(1);
+    });
+
+    it('lists every condition, including the three a drawing can carry', () => {
+        expect(ALERT_CONDITIONS).toHaveLength(17);
+        for (const condition of ['DRAWING_CROSS_UP', 'DRAWING_CROSS_DOWN', 'DRAWING_TOUCH'] as const) {
+            expect(isAlertCondition(condition)).toBe(true);
+        }
     });
 });
 

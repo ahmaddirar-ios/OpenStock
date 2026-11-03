@@ -16,6 +16,7 @@ import {
     Bell,
     Bookmark,
     BookmarkCheck,
+    BellPlus,
     BringToFront,
     Camera,
     ChevronDown,
@@ -144,6 +145,7 @@ import {
     writeSetupPending,
 } from '@/lib/chart-setup';
 import { loadChartSetup, saveChartSetup } from '@/lib/actions/chart-setup.actions';
+import { anchorFor } from '@/lib/drawing-alert';
 import { alertSource } from '@/lib/alerts';
 import ChartLegend from '@/components/stocks/ChartLegend';
 import type { BarReadout } from '@/lib/chart-readout';
@@ -1489,6 +1491,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     // A chart alert defaults to the level the trader just selected, else the last close.
     const selectedLevel = selectedDrawing && selectedDrawing.points.length === 1 ? selectedDrawing.points[0].price : null;
+    // A line the selected drawing can hand to an alert: snapshotted now, so later dragging it does
+    // not change what was promised.
+    const selectedAnchor = useMemo(
+        () => (selectedDrawing ? anchorFor(selectedDrawing.tool, selectedDrawing.points) : null),
+        [selectedDrawing],
+    );
     const lastClose = (data?.candles ?? []).at(-1)?.close ?? null;
     const alertPrice = selectedLevel ?? lastClose;
 
@@ -1752,6 +1760,23 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                             title={t('chart.alert')}
                         >
                             <Bell className="size-3.5" /> {t('chart.alert')}
+                        </button>
+                    </CreateAlertModal>
+                )}
+                {alertSource(symbol) && selectedAnchor && (
+                    <CreateAlertModal
+                        symbol={symbol}
+                        currentPrice={alertPrice}
+                        currency={data?.currency ?? 'USD'}
+                        lang={lang}
+                        anchor={selectedAnchor}
+                    >
+                        <button
+                            type="button"
+                            className="pill h-7 gap-1.5 px-2.5 text-[12px] is-up"
+                            title={t('chart.alertOnDrawing')}
+                        >
+                            <BellPlus className="size-3.5" /> {t('chart.alertOnDrawing')}
                         </button>
                     </CreateAlertModal>
                 )}

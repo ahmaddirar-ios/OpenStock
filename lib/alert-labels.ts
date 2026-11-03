@@ -36,7 +36,13 @@ const CONDITION_KEYS: Record<AlertCondition, StringKey> = {
     ATR_ABOVE: 'alerts.cond.atrAbove',
     CROSS_52W_HIGH: 'alerts.cond.cross52High',
     CROSS_52W_LOW: 'alerts.cond.cross52Low',
+    DRAWING_CROSS_UP: 'alerts.cond.drawingCrossUp',
+    DRAWING_CROSS_DOWN: 'alerts.cond.drawingCrossDown',
+    DRAWING_TOUCH: 'alerts.cond.drawingTouch',
 };
+
+/** A rule attached to a drawing: its number is the line's own price, not something the trader types. */
+export const isDrawingAlert = (condition: AlertCondition): boolean => condition.startsWith('DRAWING_');
 
 /** The change rules carry a percentage; every other rule carries a price. */
 export const isPercentAlert = (condition: AlertCondition): boolean =>

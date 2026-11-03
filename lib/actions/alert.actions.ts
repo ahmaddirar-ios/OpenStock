@@ -1,6 +1,7 @@
 'use server';
 
 import { connectToDatabase } from '@/database/mongoose';
+import { anchorPriceAt, isDrawingCondition, parseAnchor } from '@/lib/drawing-alert';
 import { Alert } from '@/database/models/alert.model';
 import { revalidatePath } from 'next/cache';
 import { requireUserId } from '@/lib/better-auth/auth';
@@ -33,6 +34,11 @@ export type AlertInput = {
     targetPrice: number;
     /** The second number a rule needs: an RSI period or a volume window. */
     params?: AlertParams;
+    /**
+     * A drawing the rule is attached to. Its geometry is snapshotted here rather than referenced
+     * later, so editing the drawing afterwards does not silently change what was promised.
+     */
+    anchor?: unknown;
 };
 
 export type FiredAlert = {
@@ -79,7 +85,11 @@ export async function createAlert(params: AlertInput) {
     // listing has one, a Binance pair does not.
     if (needsCandles(condition) && !compareYahooSymbol(symbol)) fail('unsupportedSymbol');
 
-    const targetPrice = Number(params.targetPrice);
+    // A drawing rule carries the line's own price as its target: the trader does not type one.
+    const anchor = isDrawingCondition(condition) ? parseAnchor(params.anchor) : null;
+    if (isDrawingCondition(condition) && !anchor) fail('invalidAnchor');
+    const lineNow = anchor ? anchorPriceAt(anchor, Math.floor(Date.now() / 1000)) : null;
+    const targetPrice = lineNow != null && Number.isFinite(lineNow) ? lineNow : Number(params.targetPrice);
     if (!validateAlertTarget(condition, targetPrice)) fail('invalidTarget');
 
     const ruleParams = normalizeAlertParams(condition, params.params);
@@ -90,7 +100,15 @@ export async function createAlert(params: AlertInput) {
 
     try {
         // lastPrice starts empty: a cross rule cannot fire until two checks have been seen.
-        const alert = await Alert.create({ userId, symbol, targetPrice, condition, params: ruleParams, active: true });
+        const alert = await Alert.create({
+            userId,
+            symbol,
+            targetPrice,
+            condition,
+            params: ruleParams,
+            active: true,
+            ...(anchor ? { anchor } : {}),
+        });
         revalidatePath('/alerts');
         revalidatePath('/watchlist');
         return JSON.parse(JSON.stringify(alert));
@@ -255,6 +273,8 @@ export async function checkAlerts(): Promise<CheckResult> {
         targetPrice: alert.targetPrice,
         params: (alert.params ?? {}) as AlertParams,
         lastPrice: alert.lastPrice ?? null,
+        anchor: parseAnchor(alert.anchor),
+        lastGap: alert.lastGap ?? null,
     }));
     const quoted = [...new Set(rules.filter((rule) => !needsCandles(rule.condition)).map((rule) => rule.symbol))];
     const measured = [...new Set(rules.filter((rule) => needsCandles(rule.condition)).map((rule) => rule.symbol))];
@@ -264,8 +284,11 @@ export async function checkAlerts(): Promise<CheckResult> {
 
     // Remember what each rule saw on this check, so a cross has a previous value next time.
     await Promise.all(
-        plan.misses.map(({ id, value }) =>
-            Alert.updateOne({ _id: id, triggered: false }, { $set: { lastPrice: value } }),
+        plan.misses.map(({ id, value, gap }) =>
+            Alert.updateOne(
+                { _id: id, triggered: false },
+                { $set: { lastPrice: value, ...(gap === undefined ? {} : { lastGap: gap }) } },
+            ),
         ),
     );
 

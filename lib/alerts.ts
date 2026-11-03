@@ -6,6 +6,15 @@ import { hasFinnhubQuotes } from '@/lib/markets';
 import { normalizeYahooSymbol } from '@/lib/yahoo';
 import { atr, rsi, sma } from '@/lib/indicators';
 import type { Candle } from '@/lib/yahoo-candles';
+import {
+    DRAWING_BAND,
+    DRAWING_CONDITIONS,
+    anchorGap,
+    clampBand,
+    evaluateDrawingRule,
+    isDrawingCondition,
+    type DrawingAnchor,
+} from '@/lib/drawing-alert';
 
 export type AlertCondition =
     | 'ABOVE'
@@ -21,7 +30,11 @@ export type AlertCondition =
     | 'VOLUME_SPIKE'
     | 'ATR_ABOVE'
     | 'CROSS_52W_HIGH'
-    | 'CROSS_52W_LOW';
+    | 'CROSS_52W_LOW'
+    // Attached to a drawing: the price breaks above or below a snapshotted line, or touches it.
+    | 'DRAWING_CROSS_UP'
+    | 'DRAWING_CROSS_DOWN'
+    | 'DRAWING_TOUCH';
 
 export const ALERT_CONDITIONS: readonly AlertCondition[] = [
     'ABOVE',
@@ -38,6 +51,7 @@ export const ALERT_CONDITIONS: readonly AlertCondition[] = [
     'ATR_ABOVE',
     'CROSS_52W_HIGH',
     'CROSS_52W_LOW',
+    ...DRAWING_CONDITIONS,
 ];
 
 export const isAlertCondition = (value: unknown): value is AlertCondition =>
@@ -48,7 +62,8 @@ export const isPercentCondition = (condition: AlertCondition): boolean =>
     condition === 'CHANGE_UP' || condition === 'CHANGE_DOWN';
 
 /** The second number some rules carry; the first is always `targetPrice`. */
-export type AlertParams = { period?: number; window?: number };
+/** The second number some rules carry; the first is always `targetPrice`. `band` is a touch's width. */
+export type AlertParams = { period?: number; window?: number; band?: number };
 
 /**
  * Every range a rule's numbers may take, in one place: the validators, the defaults and the
@@ -105,6 +120,10 @@ export function normalizeAlertParams(condition: AlertCondition, params?: AlertPa
     if (condition === 'ATR_ABOVE') {
         return { period: Math.round(Number(params?.period ?? PARAM_BOUNDS.atrPeriod.default)) };
     }
+    if (condition === 'DRAWING_TOUCH') {
+        // The band a touch counts within, in percent of the line's price.
+        return { band: clampBand(params?.band) };
+    }
     return {};
 }
 
@@ -118,6 +137,9 @@ export function validateAlertParams(condition: AlertCondition, params?: AlertPar
     }
     if (condition === 'ATR_ABOVE') {
         return params?.period == null || within(Number(params.period), PARAM_BOUNDS.atrPeriod);
+    }
+    if (condition === 'DRAWING_TOUCH') {
+        return params?.band == null || (Number.isFinite(Number(params.band)) && Number(params.band) >= DRAWING_BAND.min && Number(params.band) <= DRAWING_BAND.max);
     }
     return params?.period == null && params?.window == null;
 }
@@ -166,8 +188,14 @@ export type AlertRule = {
     condition: AlertCondition;
     targetPrice: number;
     params?: AlertParams;
-    /** The price at the previous check, used only by the cross conditions. */
+    /** The price at the previous check, used only by the price cross conditions. */
     lastPrice?: number | null;
+    /** The drawing this rule was made on, snapshotted when it was made. */
+    anchor?: DrawingAnchor | null;
+    /** The signed gap to that drawing at the previous check; the cross conditions compare against it. */
+    lastGap?: number | null;
+    /** When the check runs, so a line can be read at that moment. */
+    at?: number;
 };
 
 /**
@@ -179,8 +207,23 @@ export type AlertRule = {
  */
 export function evaluateAlert(rule: AlertRule, snapshot: AlertSnapshot): boolean {
     const price = Number(snapshot.price);
+    if (!Number.isFinite(price) || price <= 0) return false;
+
+    // A drawing rule reads its own geometry; `targetPrice` is only the line's price when it was made.
+    if (isDrawingCondition(rule.condition)) {
+        if (!rule.anchor) return false;
+        return evaluateDrawingRule({
+            condition: rule.condition,
+            anchor: rule.anchor,
+            price,
+            time: rule.at ?? Math.floor(Date.now() / 1000),
+            lastGap: rule.lastGap ?? null,
+            band: rule.params?.band,
+        });
+    }
+
     const target = Number(rule.targetPrice);
-    if (!Number.isFinite(price) || !Number.isFinite(target) || price <= 0) return false;
+    if (!Number.isFinite(target) || price <= 0) return false;
     const last = rule.lastPrice == null ? null : Number(rule.lastPrice);
 
     switch (rule.condition) {
@@ -224,6 +267,9 @@ export type CheckRuleRow = {
     targetPrice: number;
     params?: AlertParams;
     lastPrice?: number | null;
+    /** A drawing rule's snapshotted line, and where the price sat relative to it last time. */
+    anchor?: DrawingAnchor | null;
+    lastGap?: number | null;
 };
 
 /**
@@ -355,9 +401,19 @@ export type CheckPlan = {
     /** Rules whose quote or series never came back: skipped, and left exactly as they were. */
     skipped: number;
     /** Rules that fired, with the value the rule measured. */
-    fires: { id: string; symbol: string; condition: AlertCondition; targetPrice: number; value: number; price?: number; changePercent?: number }[];
+    fires: {
+        id: string;
+        symbol: string;
+        condition: AlertCondition;
+        targetPrice: number;
+        value: number;
+        price?: number;
+        changePercent?: number;
+        /** Present for a drawing rule: the gap the next check would compare against. */
+        gap?: number | null;
+    }[];
     /** Rules that did not fire, with the value the next check must compare against. */
-    misses: { id: string; value: number }[];
+    misses: { id: string; value: number; gap?: number | null }[];
 };
 
 /**
@@ -371,6 +427,7 @@ export function planCheck(
     rules: CheckRuleRow[],
     quotes: Record<string, AlertSnapshot>,
     series: Record<string, Candle[]> = {},
+    at: number = Math.floor(Date.now() / 1000),
 ): CheckPlan {
     const plan: CheckPlan = { checked: 0, skipped: 0, fires: [], misses: [] };
 
@@ -403,8 +460,17 @@ export function planCheck(
         }
         plan.checked += 1;
 
+        const drawing = isDrawingCondition(rule.condition) && rule.anchor ? anchorGap(rule.anchor, snapshot.price, at) : undefined;
         const hit = evaluateAlert(
-            { condition: rule.condition, targetPrice: rule.targetPrice, lastPrice: rule.lastPrice ?? null },
+            {
+                condition: rule.condition,
+                targetPrice: rule.targetPrice,
+                params: rule.params,
+                lastPrice: rule.lastPrice ?? null,
+                anchor: rule.anchor ?? null,
+                lastGap: rule.lastGap ?? null,
+                at,
+            },
             snapshot,
         );
         if (hit) {
@@ -416,9 +482,14 @@ export function planCheck(
                 value: snapshot.price,
                 price: snapshot.price,
                 changePercent: snapshot.changePercent,
+                ...(drawing === undefined ? {} : { gap: drawing }),
             });
         } else {
-            plan.misses.push({ id: rule.id, value: nextLastPrice(snapshot) });
+            plan.misses.push({
+                id: rule.id,
+                value: nextLastPrice(snapshot),
+                ...(drawing === undefined ? {} : { gap: drawing }),
+            });
         }
     }
 
