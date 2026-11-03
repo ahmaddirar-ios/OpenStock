@@ -73,13 +73,13 @@ export default async function LandingPage() {
     return (
         <>
             <section className="mx-auto max-w-[1240px] px-5 pt-10 md:pt-16">
-                <div className="grid items-center gap-12 lg:grid-cols-[1.08fr_0.92fr]">
+                <div className="mk-hero-grid">
                     <div>
                         <div className="rise-in flex flex-wrap items-center gap-3">
                             <MarketStatus />
                             <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-faint">Terminal · Arabic-first · AGPL</span>
                         </div>
-                        <h1 className="mk-display rise-in mt-6 text-[clamp(56px,8.6vw,138px)]" style={{ animationDelay: '0.04s' }}>
+                        <h1 className="mk-display mk-hero-title rise-in mt-6" style={{ animationDelay: '0.04s' }}>
                             The market,<br /><span className="mk-outline">unfiltered</span><span className="text-brand">.</span>
                         </h1>
                         <p className="rise-in mt-6 max-w-[44ch] text-[17px] leading-relaxed text-muted-foreground" style={{ animationDelay: '0.10s' }}>
@@ -94,7 +94,7 @@ export default async function LandingPage() {
                         </div>
                     </div>
                     <Tilt max={4}>
-                        <div className="mk-glass mk-stage relative aspect-[1/0.92] overflow-hidden rounded-[26px]">
+                        <div className="mk-glass mk-stage relative overflow-hidden rounded-[26px]">
                             <div
                                 className="pointer-events-none absolute inset-0"
                                 aria-hidden

@@ -1041,6 +1041,13 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
     letter-spacing: -.012em;
     line-height: .85;
 }
+/* The hero headline size lives here (not in a utility) so it can never be purged or
+   collapsed to the browser default by a partial stylesheet. */
+.mk-hero-title { font-size: clamp(3.4rem, 8.6vw, 8.6rem); }
+/* Hero grid lives here too, so the two-column composition does not depend on a
+   generated arbitrary utility. */
+.mk-hero-grid { display: grid; align-items: center; gap: 3rem; }
+@media (min-width: 1024px) { .mk-hero-grid { grid-template-columns: 1.08fr 0.92fr; } }
 .mk-outline { -webkit-text-stroke: 1.5px rgb(255 255 255 / .52); color: transparent; }
 
 .mk-ticker { overflow: hidden;
@@ -1049,7 +1056,8 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 .mk-ticker-track { display: flex; width: max-content; gap: 46px; animation: mk-slide 30s linear infinite; }
 @keyframes mk-slide { to { transform: translateX(-50%); } }
 
-.mk-stage { box-shadow: 0 50px 100px -55px oklch(0.89 0.18 124 / 0.35),
+.mk-stage { aspect-ratio: 1 / 0.92; min-height: 320px;
+    box-shadow: 0 50px 100px -55px oklch(0.89 0.18 124 / 0.35),
     inset 0 0 90px -40px oklch(0.89 0.18 124 / 0.35); }
 
 @media (prefers-reduced-motion: reduce) {
