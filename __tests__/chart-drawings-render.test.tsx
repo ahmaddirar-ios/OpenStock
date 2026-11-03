@@ -24,7 +24,7 @@ afterEach(cleanup);
 const toScreen = (point: DrawPoint): ScreenPoint => ({ x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 });
 const fromScreen = (x: number, y: number): DrawPoint => ({ time: 1000 + (x - 100) * 10, price: 100 + (500 - y) / 5 });
 
-const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string } = {}) => {
+const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string; closes?: { time: number; close: number }[]; fromScreen?: (x: number, y: number) => DrawPoint | null } = {}) => {
     const drawing: Drawing = { id: 'd1', tool, points, ...(extra.text ? { text: extra.text } : {}) };
     const { container } = render(
         <ChartDrawings
@@ -33,8 +33,9 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
             tool={null}
             text={extra.text ?? ""}
             barTimes={barTimes}
+            closes={extra.closes ?? []}
             toScreen={toScreenOverride ?? toScreen}
-            fromScreen={fromScreen}
+            fromScreen={extra.fromScreen ?? fromScreen}
             onCommit={() => {}}
             onSelect={() => {}}
             onMoveHandle={() => {}}
@@ -510,5 +511,132 @@ describe('the annotation family on the chart', () => {
         fireEvent.pointerUp(svg, { clientX: 100, clientY: 500, pointerId: 7 });
         expect(onCommit).toHaveBeenCalledTimes(1);
         expect(onCommit.mock.calls[0][0].text).toBe('100.00');
+    });
+});
+
+describe('the Gann, pitchfork and measured-channel family on the chart', () => {
+    // On this scale a 1000-second leg is 100px wide, and one price unit is 5px tall.
+    const a: DrawPoint = { time: 1000, price: 100 }; // (100, 500)
+    const b: DrawPoint = { time: 2000, price: 120 }; // (200, 400)
+    const c: DrawPoint = { time: 1600, price: 90 }; // (160, 550)
+
+    it('fans the Gann angles out of the pivot to the right edge', () => {
+        const { lines, circles } = renderTool('gannfan', [a, b]);
+        // Every angle starts at the first click and stops at the panel's right edge.
+        const fan = lines.filter((line) => line.x1 === 100 && line.y1 === 500 && line.x2 === 640);
+        expect(fan).toHaveLength(9);
+        // The 1x1 is the clicked trend itself: 20 price over 1000 seconds reaches 208 at 6400.
+        expect(fan.some((line) => Math.abs(line.y2 - -40) < 0.5)).toBe(true);
+        // Half the slope reaches half as far above the pivot.
+        expect(fan.some((line) => Math.abs(line.y2 - 230) < 0.5)).toBe(true);
+        // Both clicks are still grabbable.
+        expect(circles.map((dot) => `${dot.cx},${dot.cy}`)).toEqual(expect.arrayContaining(['100,500', '200,400']));
+    });
+
+    it('boxes the Gann grid with its diagonals and the angles inside', () => {
+        const { rects, lines } = renderTool('gannbox', [a, b]);
+        // The traders' two clicks box the grid: (100,400) to (200,500).
+        const box = rects.map((rect) => ({
+            x: Number(rect.getAttribute('x')),
+            y: Number(rect.getAttribute('y')),
+            w: Number(rect.getAttribute('width')),
+            h: Number(rect.getAttribute('height')),
+        }));
+        expect(box).toContainEqual({ x: 100, y: 400, w: 100, h: 100 });
+        expect(lines).toHaveLength(11); // two diagonals plus the nine angles
+    });
+
+    it('makes a Gann square square, whatever the drag', () => {
+        const { rects } = renderTool('gannsquare', [a, b]);
+        const square = rects
+            .map((rect) => ({ w: Number(rect.getAttribute('width')), h: Number(rect.getAttribute('height')) }))
+            .find((rect) => rect.w > 0 && rect.w === rect.h);
+        // The drag was 100px wide and 25px tall; the square takes the longer side.
+        expect(square).toEqual({ w: 100, h: 100 });
+    });
+
+    it('draws a pitchfork as a median and two parallels running to the edge', () => {
+        const { lines } = renderTool('pitchfork', [a, b, c]);
+        const rails = lines.filter((line) => line.x2 === 640);
+        expect(rails).toHaveLength(3);
+        // The median passes through the midpoint of the last two points: (1800, 105) → (180, 475).
+        expect(rails.some((line) => line.y1 === 500 && Math.abs(line.y2 - 331.25) < 0.5)).toBe(true);
+        // The parallels leave through the second and third clicks.
+        expect(rails.some((line) => line.y1 === 400 && Math.abs(line.y2 - 262.5) < 0.5)).toBe(true);
+        expect(rails.some((line) => line.y1 === 550 && Math.abs(line.y2 - 400) < 0.5)).toBe(true);
+    });
+
+    it('moves the pivot for each pitchfork variant, as the names promise', () => {
+        // Andrews starts at the first click.
+        expect(renderTool('pitchfork', [a, b, c]).lines.find((line) => line.y1 === 500)?.x1).toBe(100);
+        // Schiff starts half the price leg above the first click: price 110 → y 450.
+        expect(renderTool('schiffpitchfork', [a, b, c]).lines.some((line) => line.x1 === 100 && line.y1 === 450)).toBe(true);
+        // The modified and inside variants pivot on the midpoint of the first two clicks: (150, 450).
+        expect(renderTool('modpitchfork', [a, b, c]).lines.some((line) => line.x1 === 150 && line.y1 === 450)).toBe(true);
+        expect(renderTool('insidepitchfork', [a, b, c]).lines.some((line) => line.x1 === 150 && line.y1 === 450)).toBe(true);
+    });
+
+    it('fits a regression channel to the candles on screen', () => {
+        const closes = Array.from({ length: 11 }, (_, i) => ({ time: 1000 + i * 100, close: 100 + i }));
+        const { lines, polygons } = renderTool('regression', [a, { time: 2000, price: 110 }], [], undefined, { closes });
+        // A perfect line: the channel runs from (1000, 100) up to (2000, 110).
+        expect(lines.some((line) => line.x1 === 100 && line.y1 === 500 && line.x2 === 200 && line.y2 === 450)).toBe(true);
+        // The two bands are drawn, and the fitted band is filled.
+        expect(lines).toHaveLength(3);
+        expect(polygons).toHaveLength(1);
+    });
+
+    it('holds a flat channel across the span the trader marked', () => {
+        const { lines } = renderTool('flattop', [a, b]);
+        // The high and the low, each held flat to the right edge.
+        expect(lines.some((line) => line.y1 === 400 && line.y2 === 400 && line.x2 === 640)).toBe(true);
+        expect(lines.some((line) => line.y1 === 500 && line.y2 === 500 && line.x2 === 640)).toBe(true);
+    });
+
+    it('still paints the retired Gann box so an old drawing does not vanish', () => {
+        // `gann` left the rail when the richer gannbox replaced it, but a chart saved before that
+        // must keep its box.
+        const { rects, lines } = renderTool('gann', [a, b]);
+        expect(rects.length).toBeGreaterThan(0);
+        expect(lines.length).toBeGreaterThan(0);
+    });
+
+    it('carries the disjoint channel to the third point, away from the first', () => {
+        const { lines } = renderTool('disjoint', [a, b, c]);
+        // The base is the first two clicks; the parallel is the same move set off from the third.
+        expect(lines).toContainEqual({ x1: 100, y1: 500, x2: 200, y2: 400 });
+        expect(lines).toContainEqual({ x1: 160, y1: 550, x2: 260, y2: 450 });
+    });
+});
+
+describe('a fan that has to reach the panel edge', () => {
+    const a: DrawPoint = { time: 1000, price: 100 }; // (100, 500)
+    const b: DrawPoint = { time: 2000, price: 120 }; // (200, 400)
+
+    // In production the chart's own time lookup gives up a pixel or two before the panel's right
+    // edge: the right offset is not part of its time scale. The painter has to carry the trend's
+    // slope on instead, or a fan draws nothing at all (which is how the speed fan once behaved).
+    const stopsBeforeTheEdge = (x: number, y: number) => (x >= WIDTH - 24 ? null : fromScreen(x, y));
+
+    it('draws the Gann angles anyway', () => {
+        const { lines } = renderTool('gannfan', [a, b], [], undefined, { fromScreen: stopsBeforeTheEdge });
+        const fan = lines.filter((line) => line.x1 === 100 && line.y1 === 500 && line.x2 === 640);
+        expect(fan).toHaveLength(9);
+        // The 1x1 still lands where the real edge time would have put it.
+        expect(fan.some((line) => Math.abs(line.y2 - -40) < 0.5)).toBe(true);
+    });
+
+    it('draws the speed fan, which had the same hole', () => {
+        const { lines } = renderTool('fibspeed', [a, b], [], undefined, { fromScreen: stopsBeforeTheEdge });
+        expect(lines.filter((line) => line.x2 === 640).length).toBeGreaterThan(0);
+    });
+
+    it('runs a ray and an extended line to the edges', () => {
+        const ray = renderTool('ray', [a, b], [], undefined, { fromScreen: stopsBeforeTheEdge });
+        expect(ray.lines.some((line) => line.x1 === 100 && line.x2 === 640)).toBe(true);
+
+        const extended = renderTool('extended', [a, b], [], undefined, { fromScreen: stopsBeforeTheEdge });
+        // Both ends move out past the two clicks: (0, …) to (640, …).
+        expect(extended.lines.some((line) => line.x1 === 0 && line.x2 === 640)).toBe(true);
     });
 });

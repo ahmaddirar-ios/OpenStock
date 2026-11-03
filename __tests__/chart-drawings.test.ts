@@ -69,7 +69,7 @@ describe('the tool registry', () => {
     });
 
     it('every tool belongs to a group that is offered in the interface', () => {
-        for (const group of ['lines', 'fib', 'gann', 'patterns', 'elliott', 'annotation'] as const) {
+        for (const group of ['lines', 'fib', 'gann', 'patterns', 'elliott', 'shapes', 'annotation', 'brush'] as const) {
             expect(toolsInGroup(group).length).toBeGreaterThan(0);
         }
         expect(toolsInGroup('lines').map((d) => d.tool)).toEqual([
@@ -91,7 +91,23 @@ describe('the tool registry', () => {
         expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fib');
         expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual(['text', 'callout', 'balloon', 'signpost', 'flag', 'pricenote']);
         expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3']);
-        expect(toolsInGroup('gann').map((d) => d.tool)).toEqual(['gann', 'cycles', 'sine']);
+        // The Gann flyout holds the angles, the pitchforks, the measured channels and the cycles,
+        // in the order they sit in the registry (and so in the flyout). The original `gann` tool is
+        // retired (hidden) now that the richer gannbox replaced it.
+        expect(toolsInGroup('gann').map((d) => d.tool)).toEqual([
+            'gannfan',
+            'gannbox',
+            'gannsquare',
+            'pitchfork',
+            'schiffpitchfork',
+            'modpitchfork',
+            'insidepitchfork',
+            'regression',
+            'flattop',
+            'disjoint',
+            'cycles',
+            'sine',
+        ]);
     });
 
     it('pattern glyph labels line up with the number of points the tool places', () => {

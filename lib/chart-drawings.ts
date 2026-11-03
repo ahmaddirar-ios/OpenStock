@@ -51,6 +51,16 @@ export type ShapeKind =
     | 'signpost'
     | 'flag'
     | 'pricenote'
+    | 'gannfan'
+    | 'gannbox'
+    | 'gannsquare'
+    | 'pitchfork'
+    | 'schiffpitchfork'
+    | 'modpitchfork'
+    | 'insidepitchfork'
+    | 'regression'
+    | 'flattop'
+    | 'disjoint'
     | 'fib'
     | 'gann'
     | 'text'
@@ -75,6 +85,9 @@ export type ShapeTool =
     | 'brush' | 'highlighter'
     // annotations: a label the trader writes, or the price at the point they marked
     | 'callout' | 'balloon' | 'signpost' | 'flag' | 'pricenote'
+    // Gann, pitchforks and the measured channels
+    | 'gannfan' | 'gannbox' | 'gannsquare' | 'pitchfork' | 'schiffpitchfork' | 'modpitchfork' | 'insidepitchfork'
+    | 'regression' | 'flattop' | 'disjoint'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -152,6 +165,11 @@ export type ToolDef = {
     /** Glyphs printed beside the points, when the tool has them. */
     pointLabels?: string[];
     defaultColor: ColorKey;
+    /**
+     * Retired from the rail, but still a valid tool. A stored drawing keeps painting and stays
+     * selectable; nothing offers the tool again. Used when a richer tool replaces an older one.
+     */
+    hidden?: boolean;
 };
 
 export const TOOL_DEFS: ToolDef[] = [
@@ -205,7 +223,9 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'brush', group: 'brush', kind: 'brush', clicks: 0, defaultColor: 'white' },
     { tool: 'highlighter', group: 'brush', kind: 'highlighter', clicks: 0, defaultColor: 'gold' },
 
-    { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
+    // The original Gann box. The richer gannbox (rectangle, diagonals and the fan of angles) took
+    // its place in the rail, so it is retired: stored drawings still paint, nothing offers it.
+    { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet', hidden: true },
     { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },
     // Annotations. The first two are two clicks (the point, then where the label sits); the price
     // markers are one click and read their own price.
@@ -214,6 +234,18 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'signpost', group: 'annotation', kind: 'signpost', clicks: 1, defaultColor: 'cyan' },
     { tool: 'flag', group: 'annotation', kind: 'flag', clicks: 1, defaultColor: 'orange' },
     { tool: 'pricenote', group: 'annotation', kind: 'pricenote', clicks: 1, defaultColor: 'white' },
+
+    // Gann, pitchforks and the measured channels: the same group the design put them in.
+    { tool: 'gannfan', group: 'gann', kind: 'gannfan', clicks: 2, defaultColor: 'violet' },
+    { tool: 'gannbox', group: 'gann', kind: 'gannbox', clicks: 2, defaultColor: 'violet' },
+    { tool: 'gannsquare', group: 'gann', kind: 'gannsquare', clicks: 2, defaultColor: 'violet' },
+    { tool: 'pitchfork', group: 'gann', kind: 'pitchfork', clicks: 3, defaultColor: 'gold' },
+    { tool: 'schiffpitchfork', group: 'gann', kind: 'schiffpitchfork', clicks: 3, defaultColor: 'gold' },
+    { tool: 'modpitchfork', group: 'gann', kind: 'modpitchfork', clicks: 3, defaultColor: 'gold' },
+    { tool: 'insidepitchfork', group: 'gann', kind: 'insidepitchfork', clicks: 3, defaultColor: 'gold' },
+    { tool: 'regression', group: 'gann', kind: 'regression', clicks: 2, defaultColor: 'teal' },
+    { tool: 'flattop', group: 'gann', kind: 'flattop', clicks: 2, defaultColor: 'cyan' },
+    { tool: 'disjoint', group: 'gann', kind: 'disjoint', clicks: 3, defaultColor: 'violet' },
 
     { tool: 'xabcd', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
     { tool: 'cypher', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
@@ -281,7 +313,8 @@ export const isFreehand = (tool: ShapeTool): boolean => toolDef(tool).kind === '
 /** The most points an open-ended stroke keeps, so a freehand line cannot fill the storage quota. */
 export const MAX_STROKE_POINTS = 240;
 
-export const toolsInGroup = (group: ToolGroup): ToolDef[] => TOOL_DEFS.filter((d) => d.group === group);
+/** The tools a flyout offers. A retired tool is skipped here but still paints and still parses. */
+export const toolsInGroup = (group: ToolGroup): ToolDef[] => TOOL_DEFS.filter((d) => d.group === group && !d.hidden);
 
 export const newDrawingId = (): string => Math.random().toString(36).slice(2, 10);
 
@@ -398,6 +431,137 @@ export function rangeReadout(a: DrawPoint, b: DrawPoint, barSeconds: number): Ra
         seconds,
         bars: barSeconds > 0 ? Math.round(Math.abs(seconds) / barSeconds) : 0,
     };
+}
+
+
+// --- Gann, pitchforks and the measured channels ------------------------------
+// Gann's angles measure one trend against itself, a pitchfork measures a trend against the
+// retracement that followed it, and the measured channels fit the candles the trader selected.
+// Each helper returns the lines; the painter draws them.
+
+/** The Gann angles, as multiples of the trend the trader clicked (1x1 is the trend itself). */
+export const GANN_RATIOS = [0.125, 0.25, 0.3333, 0.5, 1, 2, 3, 4, 8] as const;
+
+/** Every Gann angle from `a` through `b`, continued to the edge of the visible range. */
+export function gannFanEnds(a: DrawPoint, b: DrawPoint, edgeTime: number, ratios: readonly number[] = GANN_RATIOS): { ratio: number; end: DrawPoint }[] {
+    if (b.time === a.time || edgeTime === a.time) return [];
+    const slope = (b.price - a.price) / (b.time - a.time);
+    return ratios.map((ratio) => ({ ratio, end: { time: edgeTime, price: a.price + slope * ratio * (edgeTime - a.time) } }));
+}
+
+/** The Gann box: the trader's rectangle, its two diagonals, and the fan of angles inside it. */
+export function gannBoxGuides(a: DrawPoint, b: DrawPoint): {
+    corners: [DrawPoint, DrawPoint];
+    diagonals: [[DrawPoint, DrawPoint], [DrawPoint, DrawPoint]];
+    fan: { ratio: number; end: DrawPoint }[];
+} {
+    const topLeft = { time: Math.min(a.time, b.time), price: Math.max(a.price, b.price) };
+    const bottomRight = { time: Math.max(a.time, b.time), price: Math.min(a.price, b.price) };
+    return {
+        corners: [topLeft, bottomRight],
+        diagonals: [
+            [a, b],
+            [{ time: topLeft.time, price: topLeft.price }, { time: bottomRight.time, price: bottomRight.price }],
+        ],
+        fan: gannFanEnds(a, b, b.time),
+    };
+}
+
+/** The Gann square: a square in pixels, its diagonals and the midlines. Drawn by the painter, which
+ *  is the only place that knows the scale, so only the rule for the corner lives here. */
+export function gannSquareCorner(a: ScreenPoint, b: ScreenPoint): ScreenPoint {
+    const side = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    const signX = b.x >= a.x ? 1 : -1;
+    const signY = b.y >= a.y ? 1 : -1;
+    return { x: a.x + side * signX, y: a.y + side * signY };
+}
+
+export type PitchforkVariant = 'andrews' | 'schiff' | 'modified' | 'inside';
+
+/** The three lines of a pitchfork: the median, and its two parallels through the outer points. */
+export function pitchforkLines(a: DrawPoint, b: DrawPoint, c: DrawPoint, variant: PitchforkVariant = 'andrews'): {
+    pivot: DrawPoint;
+    median: [DrawPoint, DrawPoint];
+    upper: [DrawPoint, DrawPoint];
+    lower: [DrawPoint, DrawPoint];
+} {
+    const mid = (p: DrawPoint, q: DrawPoint): DrawPoint => ({ time: (p.time + q.time) / 2, price: (p.price + q.price) / 2 });
+    // The pivot is where the median starts: Andrews at the first point, Schiff half of the price leg
+    // earlier, the modified and inside variants at the midpoint of the first two points.
+    const pivot =
+        variant === 'andrews'
+            ? a
+            : variant === 'schiff'
+              ? { time: a.time, price: (a.price + b.price) / 2 }
+              : mid(a, b);
+    const target = variant === 'inside' ? c : mid(b, c);
+    const slope = { time: target.time - pivot.time, price: target.price - pivot.price };
+    const through = (point: DrawPoint): [DrawPoint, DrawPoint] => [point, { time: point.time + slope.time, price: point.price + slope.price }];
+    return {
+        pivot,
+        median: through(pivot),
+        upper: through(b),
+        lower: through(c),
+    };
+}
+
+/** A least-squares channel through the candles between the two points, with ±2σ bands. Falls back to
+ *  the plain move when there are too few candles to fit anything. */
+export function regressionChannel(
+    a: DrawPoint,
+    b: DrawPoint,
+    candles: readonly { time: number; close: number }[],
+): { line: [DrawPoint, DrawPoint]; upper: [DrawPoint, DrawPoint]; lower: [DrawPoint, DrawPoint]; sigma: number; slope: number } {
+    const from = Math.min(a.time, b.time);
+    const to = Math.max(a.time, b.time);
+    const inside = candles.filter((candle) => candle.time >= from && candle.time <= to);
+    const plain = { line: [a, b] as [DrawPoint, DrawPoint], sigma: 0, slope: (b.price - a.price) / Math.max(1, b.time - a.time) };
+    if (inside.length < 3) return { ...plain, upper: [a, b], lower: [a, b] };
+
+    // Time is rebased to seconds from the first candle so the sums stay small.
+    const t0 = inside[0].time;
+    const xs = inside.map((candle) => candle.time - t0);
+    const ys = inside.map((candle) => candle.close);
+    const n = xs.length;
+    const meanX = xs.reduce((sum, x) => sum + x, 0) / n;
+    const meanY = ys.reduce((sum, y) => sum + y, 0) / n;
+    const sxx = xs.reduce((sum, x) => sum + (x - meanX) ** 2, 0);
+    const sxY = xs.reduce((sum, x, i) => sum + (x - meanX) * (ys[i] - meanY), 0);
+    const slope = sxx === 0 ? 0 : sxY / sxx;
+    const intercept = meanY - slope * meanX;
+    const priceAt = (time: number): number => intercept + slope * (time - t0);
+    const sigma = Math.sqrt(xs.reduce((sum, x, i) => sum + (ys[i] - priceAt(inside[i].time)) ** 2, 0) / n);
+
+    const ends: [DrawPoint, DrawPoint] = [
+        { time: from, price: priceAt(from) },
+        { time: to, price: priceAt(to) },
+    ];
+    return {
+        line: ends,
+        upper: [{ time: from, price: priceAt(from) + sigma * 2 }, { time: to, price: priceAt(to) + sigma * 2 }],
+        lower: [{ time: from, price: priceAt(from) - sigma * 2 }, { time: to, price: priceAt(to) - sigma * 2 }],
+        sigma,
+        slope,
+    };
+}
+
+/** A flat channel: the two prices the trader marked, held across the span they marked. */
+export function flattenLines(a: DrawPoint, b: DrawPoint): { top: [DrawPoint, DrawPoint]; bottom: [DrawPoint, DrawPoint] } {
+    const from = Math.min(a.time, b.time);
+    const to = Math.max(a.time, b.time);
+    const high = Math.max(a.price, b.price);
+    const low = Math.min(a.price, b.price);
+    return {
+        top: [{ time: from, price: high }, { time: to, price: high }],
+        bottom: [{ time: from, price: low }, { time: to, price: low }],
+    };
+}
+
+/** A channel whose second rail is the first one carried to the third point: the two rails need not
+ *  cover the same stretch of time, which is what makes it disjoint. */
+export function disjointChannel(a: DrawPoint, b: DrawPoint, c: DrawPoint): { base: [DrawPoint, DrawPoint]; parallel: [DrawPoint, DrawPoint] } {
+    const move = { time: b.time - a.time, price: b.price - a.price };
+    return { base: [a, b], parallel: [c, { time: c.time + move.time, price: c.price + move.price }] };
 }
 
 /** The far end of a projection: the a→b move repeated `steps` times forward from b, drawn as the

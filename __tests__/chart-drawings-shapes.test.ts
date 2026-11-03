@@ -9,6 +9,7 @@ import {
     arcThrough,
     carriesText,
     circleFrom,
+    disjointChannel,
     doubleCurvePath,
     ellipseFrom,
     extendedEnds,
@@ -17,8 +18,12 @@ import {
     fibExtension,
     fibFanEnds,
     fibTimeMultiples,
+    flattenLines,
+    gannBoxGuides,
+    gannFanEnds,
     measureSpan,
     parseDrawings,
+    pitchforkLines,
     pointsNeeded,
     polygonPoints,
     polylinePath,
@@ -28,6 +33,7 @@ import {
     quadraticPath,
     rangeReadout,
     rayEnd,
+    regressionChannel,
     serializeDrawings,
     speedFanEnds,
     toolDef,
@@ -371,5 +377,82 @@ describe('the words a new annotation carries', () => {
     it('carries nothing for a tool without words', () => {
         expect(annotationText('trend', 100, 'x')).toBeUndefined();
         expect(annotationText('pricenote', 100, 'x')).toBeUndefined();
+    });
+});
+
+describe('the Gann and pitchfork family', () => {
+    const a: DrawPoint = { time: 1000, price: 100 };
+    const b: DrawPoint = { time: 2000, price: 120 };
+    const c: DrawPoint = { time: 1600, price: 90 };
+
+    it('fans the Gann angles out of the first point to the edge', () => {
+        const ends = gannFanEnds(a, b, 4000);
+        // The 1x1 is the clicked trend itself: 20 over 1000 seconds reaches 160 at 4000.
+        expect(ends.find((e) => e.ratio === 1)?.end).toEqual({ time: 4000, price: 160 });
+        // Half the slope reaches half as far above the pivot.
+        expect(ends.find((e) => e.ratio === 0.5)?.end).toEqual({ time: 4000, price: 130 });
+        expect(ends.map((e) => e.ratio)).toEqual([0.125, 0.25, 0.3333, 0.5, 1, 2, 3, 4, 8]);
+    });
+
+    it('boxes the Gann grid between two points', () => {
+        const guides = gannBoxGuides(a, b);
+        // The box is the two clicks; the diagonals run corner to corner; the 1x1 is one of the fan lines.
+        expect(guides.corners).toEqual([{ time: 1000, price: 120 }, { time: 2000, price: 100 }]);
+        expect(guides.diagonals).toEqual([
+            [{ time: 1000, price: 100 }, { time: 2000, price: 120 }],
+            [{ time: 1000, price: 120 }, { time: 2000, price: 100 }],
+        ]);
+        expect(guides.fan.find((line) => line.ratio === 1)).toBeTruthy();
+    });
+
+    it('draws Andrews pitchfork as a median through the middle of the last two points', () => {
+        const lines = pitchforkLines(a, b, c, 'andrews');
+        // The median starts at a and passes through the midpoint of b and c.
+        expect(lines.median[0]).toEqual(a);
+        expect(lines.median[1].time).toBeCloseTo(1800, 6);
+        expect(lines.median[1].price).toBeCloseTo(105, 6);
+        // The parallels run through b and through c, with the median's slope.
+        expect(lines.upper[0]).toEqual(b);
+        expect(lines.lower[0]).toEqual(c);
+        expect(lines.upper[1].price - b.price).toBeCloseTo(lines.median[1].price - a.price, 6);
+    });
+
+    it('moves the pivot for the Schiff variants, as the names promise', () => {
+        const schiff = pitchforkLines(a, b, c, 'schiff');
+        expect(schiff.median[0]).toEqual({ time: 1000, price: 110 });
+        const modified = pitchforkLines(a, b, c, 'modified');
+        expect(modified.median[0]).toEqual({ time: 1500, price: 110 });
+        // Inside takes the midpoint of the first two points as its pivot.
+        const inside = pitchforkLines(a, b, c, 'inside');
+        expect(inside.median[0]).toEqual({ time: 1500, price: 110 });
+        expect(inside.median[1].time).toBeGreaterThan(inside.median[0].time);
+    });
+
+    it('fits a regression channel through the candles it is given', () => {
+        // A perfect line: every close sits on price = 100 + 0.01 × (time - 1000).
+        const candles = Array.from({ length: 11 }, (_, i) => ({ time: 1000 + i * 100, close: 100 + i }));
+        const channel = regressionChannel(a, { time: 2000, price: 110 }, candles);
+        expect(channel.slope).toBeCloseTo(0.01, 6);
+        expect(channel.line[0].price).toBeCloseTo(100, 6);
+        expect(channel.line[1].price).toBeCloseTo(110, 6);
+        // A perfect fit has no spread, so the bands collapse onto the line.
+        expect(channel.sigma).toBeCloseTo(0, 6);
+        expect(channel.upper[1].price).toBeCloseTo(110, 6);
+    });
+
+    it('flattens the two prices across the panel width', () => {
+        const lines = flattenLines(a, b);
+        expect(lines.top).toEqual([{ time: 1000, price: 120 }, { time: 2000, price: 120 }]);
+        expect(lines.bottom).toEqual([{ time: 1000, price: 100 }, { time: 2000, price: 100 }]);
+    });
+
+    it('offsets a disjoint channel by the third point', () => {
+        const lines = disjointChannel(a, b, c);
+        // The base is the first two points; the parallel is the same move, shifted so it passes through c.
+        expect(lines.base).toEqual([a, b]);
+        expect(lines.parallel).toEqual([
+            { time: 1600, price: 90 },
+            { time: 2600, price: 110 },
+        ]);
     });
 });

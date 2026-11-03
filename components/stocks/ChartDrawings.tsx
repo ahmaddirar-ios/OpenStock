@@ -10,6 +10,13 @@ import {
     doubleCurvePath,
     drawingColor,
     ellipseFrom,
+    disjointChannel,
+    flattenLines,
+    gannBoxGuides,
+    gannFanEnds,
+    gannSquareCorner,
+    pitchforkLines,
+    regressionChannel,
     fibLevels,
     gannGuides,
     arrowHeadPoints,
@@ -67,6 +74,8 @@ type Props = {
     editRequest?: { id: string; nonce: number } | null;
     /** Bar times of the interval on screen, so a cycle can land on real bars. */
     barTimes: number[];
+    /** The closes on screen, which is what a regression channel is fitted to. */
+    closes?: { time: number; close: number }[];
     /** Chart pixels for a drawing point, or null when the chart is not ready or the point is off screen. */
     toScreen: (point: DrawPoint) => ScreenPoint | null;
     /** The inverse, so a pointer position can be stored as a chart point. */
@@ -105,6 +114,7 @@ export default function ChartDrawings({
     labels,
     editRequest,
     barTimes,
+    closes = [],
     toScreen,
     fromScreen,
     onCommit,
@@ -666,6 +676,12 @@ export default function ChartDrawings({
         const edgeX = svgRef.current?.clientWidth ?? 0;
         const edgeY = svgRef.current?.clientHeight ?? 0;
         const priceY = (time: number, price: number): number | null => toScreen({ time, price })?.y ?? null;
+        // Where the panel's right edge sits in chart time. The chart's own lookup stops a pixel short
+        // of the edge (the right offset is not part of its time scale), so when it gives up, the
+        // clicked trend's slope is carried on linearly — the same approximation the price fallbacks
+        // make. Every ray, extension and fan needs this; nothing else does.
+        const edgeTimeAt = (x: number, a: DrawPoint, b: DrawPoint, at: ScreenPoint, bt: ScreenPoint): number | null =>
+            fromScreen(x, 0)?.time ?? (bt.x === at.x ? null : a.time + ((b.time - a.time) / (bt.x - at.x)) * (x - at.x));
         const selectionHandles = (points: ScreenPoint[]) =>
             selected && !locked
                 ? points.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)
@@ -678,18 +694,20 @@ export default function ChartDrawings({
             if (p1 && p1.time !== p0.time) {
                 const rightward = p1.time > p0.time;
                 if (kind === 'ray') {
-                    const edgeTime = fromScreen(rightward ? edgeX : 0, 0)?.time;
-                    const end = edgeTime == null ? p1 : rayEnd(p0, p1, edgeTime);
-                    const y = priceY(p0.time, end.price);
-                    if (y != null) to = { x: rightward ? edgeX : 0, y };
+                    const edgeTime = edgeTimeAt(rightward ? edgeX : 0, p0, p1, screen[0], screen[1]);
+                    if (edgeTime != null) {
+                        const end = rayEnd(p0, p1, edgeTime);
+                        const y = priceY(p0.time, end.price);
+                        if (y != null && Number.isFinite(y)) to = { x: rightward ? edgeX : 0, y };
+                    }
                 } else {
-                    const leftTime = fromScreen(0, 0)?.time;
-                    const rightTime = fromScreen(edgeX, 0)?.time;
+                    const leftTime = edgeTimeAt(0, p0, p1, screen[0], screen[1]);
+                    const rightTime = edgeTimeAt(edgeX, p0, p1, screen[0], screen[1]);
                     if (leftTime != null && rightTime != null) {
                         const [left, right] = extendedEnds(p0, p1, leftTime, rightTime);
                         const leftY = priceY(p0.time, left.price);
                         const rightY = priceY(p0.time, right.price);
-                        if (leftY != null && rightY != null) {
+                        if (leftY != null && rightY != null && Number.isFinite(leftY) && Number.isFinite(rightY)) {
                             from = { x: 0, y: leftY };
                             to = { x: edgeX, y: rightY };
                         }
@@ -964,14 +982,15 @@ export default function ChartDrawings({
 
         if (kind === 'fibspeed') {
             const [p0, p1] = drawing.points;
-            const edgeTime = fromScreen(edgeX, 0)?.time;
+            if (!p1) return null;
+            const edgeTime = edgeTimeAt(edgeX, p0, p1, screen[0], screen[1]);
             const ends = edgeTime == null ? [] : speedFanEnds(p0, p1, edgeTime);
             const fallbackY = priceYFrom(p0, p1, screen[0], screen[1]);
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
                     {ends.map(({ ratio, end }) => {
                         const y = priceY(p0.time, end.price) ?? fallbackY?.(end.price) ?? null;
-                        if (y == null) return null;
+                        if (y == null || !Number.isFinite(y)) return null;
                         return <line key={`${drawing.id}-s${ratio}`} x1={screen[0].x} y1={screen[0].y} x2={edgeX} y2={y} stroke={color} strokeWidth={1} opacity={opacity} />;
                     })}
                     {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
@@ -1144,6 +1163,166 @@ export default function ChartDrawings({
                         {words}
                     </text>
                     {dot(anchor.x, anchor.y, `${drawing.id}-a`, color, opacity, TEXT_DOT)}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        // --- Gann, pitchforks and the measured channels ---------------------------
+        // Gann measures the clicked trend against itself, a pitchfork measures the retracement that
+        // followed it, and the regression channel is fitted to the candles on screen. The maths is in
+        // lib/chart-drawings; here the lines are only placed.
+        if (kind === 'gannfan' || kind === 'gannbox' || kind === 'gannsquare') {
+            const [p0, p1] = drawing.points;
+            if (!p1) return null;
+            const edgeTime = edgeTimeAt(edgeX, p0, p1, screen[0], screen[1]);
+            const fromPrices = priceYFrom(p0, p1, screen[0], screen[1]);
+            const fan = edgeTime == null ? [] : gannFanEnds(p0, p1, edgeTime);
+            const fanLines = fan.map(({ ratio, end }) => {
+                const y = priceY(p0.time, end.price) ?? fromPrices?.(end.price) ?? null;
+                if (y == null || !Number.isFinite(y)) return null;
+                return (
+                    <line
+                        key={`${drawing.id}-g${ratio}`}
+                        x1={screen[0].x}
+                        y1={screen[0].y}
+                        x2={edgeX}
+                        y2={y}
+                        stroke={color}
+                        strokeWidth={ratio === 1 ? width : 1}
+                        opacity={ratio === 1 ? opacity : 0.5}
+                    />
+                );
+            });
+
+            if (kind === 'gannfan') {
+                return (
+                    <g key={drawing.id} strokeDasharray={dash}>
+                        {fanLines}
+                        {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                        {selectionHandles(screen)}
+                    </g>
+                );
+            }
+
+            if (kind === 'gannbox') {
+                const guides = gannBoxGuides(p0, p1);
+                const tl = toScreen(guides.corners[0]);
+                const br = toScreen(guides.corners[1]);
+                if (!tl || !br) return null;
+                const top = Math.min(tl.y, br.y);
+                const left = Math.min(tl.x, br.x);
+                return (
+                    <g key={drawing.id} strokeDasharray={dash}>
+                        <rect x={left} y={top} width={Math.abs(br.x - tl.x)} height={Math.abs(br.y - tl.y)} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />
+                        <line x1={left} y1={top} x2={left + Math.abs(br.x - tl.x)} y2={top + Math.abs(br.y - tl.y)} stroke={color} strokeWidth={1} opacity={0.7} />
+                        <line x1={left} y1={top + Math.abs(br.y - tl.y)} x2={left + Math.abs(br.x - tl.x)} y2={top} stroke={color} strokeWidth={1} opacity={0.7} />
+                        {fanLines}
+                        {selectionHandles(screen)}
+                    </g>
+                );
+            }
+
+            // A Gann square is square in pixels, which only the painter can know.
+            const corner = gannSquareCorner(screen[0], screen[1]);
+            const side = Math.abs(corner.x - screen[0].x);
+            const x0 = Math.min(screen[0].x, corner.x);
+            const y0 = Math.min(screen[0].y, corner.y);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <rect x={x0} y={y0} width={side} height={side} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />
+                    <line x1={x0} y1={y0} x2={x0 + side} y2={y0 + side} stroke={color} strokeWidth={1} opacity={0.7} />
+                    <line x1={x0} y1={y0 + side} x2={x0 + side} y2={y0} stroke={color} strokeWidth={1} opacity={0.7} />
+                    <line x1={x0 + side / 2} y1={y0} x2={x0 + side / 2} y2={y0 + side} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+                    <line x1={x0} y1={y0 + side / 2} x2={x0 + side} y2={y0 + side / 2} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+                    {fanLines}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'pitchfork' || kind === 'schiffpitchfork' || kind === 'modpitchfork' || kind === 'insidepitchfork') {
+            const [p0, p1, p2] = drawing.points;
+            if (!p2) return null;
+            const variant = kind === 'pitchfork' ? 'andrews' : kind === 'schiffpitchfork' ? 'schiff' : kind === 'modpitchfork' ? 'modified' : 'inside';
+            const lines = pitchforkLines(p0, p1, p2, variant);
+            // Each rail starts where its own point is and runs to the panel's edge.
+            const rail = (pair: [DrawPoint, DrawPoint], key: string, weight: number, alpha: number) => {
+                const from = toScreen(pair[0]);
+                const to = toScreen(pair[1]);
+                if (!from || !to) return null;
+                const dx = to.x - from.x;
+                const y = Math.abs(dx) > 0.5 ? from.y + ((to.y - from.y) / dx) * (edgeX - from.x) : from.y;
+                return <line key={key} x1={from.x} y1={from.y} x2={edgeX} y2={y} stroke={color} strokeWidth={weight} strokeDasharray={weight === 1 ? '6 4' : undefined} opacity={alpha} />;
+            };
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {rail(lines.median, `${drawing.id}-m`, width, opacity)}
+                    {rail(lines.upper, `${drawing.id}-u`, 1, 0.7)}
+                    {rail(lines.lower, `${drawing.id}-l`, 1, 0.7)}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'regression') {
+            const [p0, p1] = drawing.points;
+            if (!p1) return null;
+            const channel = regressionChannel(p0, p1, closes);
+            const at = (point: DrawPoint) => toScreen({ time: point.time, price: point.price });
+            const line = channel.line.map(at);
+            const upper = channel.upper.map(at);
+            const lower = channel.lower.map(at);
+            if ([...line, ...upper, ...lower].some((point) => point == null)) return null;
+            const [l0, l1] = line as ScreenPoint[];
+            const [u0, u1] = upper as ScreenPoint[];
+            const [d0, d1] = lower as ScreenPoint[];
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <polygon points={`${u0.x},${u0.y} ${u1.x},${u1.y} ${d1.x},${d1.y} ${d0.x},${d0.y}`} fill={`color-mix(in oklab, ${color} 10%, transparent)`} stroke="none" />
+                    <line x1={u0.x} y1={u0.y} x2={u1.x} y2={u1.y} stroke={color} strokeWidth={1} strokeDasharray="5 4" opacity={0.7} />
+                    <line x1={d0.x} y1={d0.y} x2={d1.x} y2={d1.y} stroke={color} strokeWidth={1} strokeDasharray="5 4" opacity={0.7} />
+                    <line x1={l0.x} y1={l0.y} x2={l1.x} y2={l1.y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'flattop') {
+            const [p0, p1] = drawing.points;
+            if (!p1) return null;
+            const { top, bottom } = flattenLines(p0, p1);
+            const rails = [top, bottom].map((pair, index) => {
+                const from = toScreen(pair[0]);
+                const to = toScreen(pair[1]);
+                if (!from || !to) return null;
+                const y = from.y;
+                return <line key={`${drawing.id}-f${index}`} x1={Math.min(from.x, to.x)} y1={y} x2={edgeX} y2={y} stroke={color} strokeWidth={width} opacity={index === 0 ? opacity : 0.7} />;
+            });
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {rails}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'disjoint') {
+            const [p0, p1, p2] = drawing.points;
+            if (!p2) return null;
+            const channel = disjointChannel(p0, p1, p2);
+            const pair = (points: [DrawPoint, DrawPoint], key: string, weight: number) => {
+                const from = toScreen(points[0]);
+                const to = toScreen(points[1]);
+                if (!from || !to) return null;
+                return <line key={key} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={color} strokeWidth={weight} opacity={opacity} />;
+            };
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {pair(channel.base, `${drawing.id}-b`, width)}
+                    {pair(channel.parallel, `${drawing.id}-p`, width)}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
                     {selectionHandles(screen)}
                 </g>
             );

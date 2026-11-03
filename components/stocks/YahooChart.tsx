@@ -1222,6 +1222,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         [t],
     );
 
+    // A regression channel is fitted to the closes on screen, so the drawing layer gets them.
+    const closes = useMemo(() => (data?.candles ?? []).map((candle) => ({ time: candle.time, close: candle.close })), [data]);
+
     const body = (
         // dir=ltr on the plotting area too: the labels drawn on the canvas overlay are SVG text
         // (Fibonacci ratios, notes), and in an RTL page "0.786" would otherwise reorder to "786.0".
@@ -1265,6 +1268,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     labels={pendingLabels}
                     editRequest={editRequest}
                     barTimes={barTimes}
+                    closes={closes}
                     toScreen={toScreen}
                     fromScreen={fromScreen}
                     onCommit={commit}

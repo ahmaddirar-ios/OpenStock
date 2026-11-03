@@ -24,8 +24,28 @@ describe('drawing rail groups', () => {
     it('remaps the existing tools onto the rail groups', () => {
         expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fib');
         expect(toolsInGroup('annotation').map((d) => d.tool)).toContain('text');
-        expect(toolsInGroup('gann').map((d) => d.tool)).toEqual(expect.arrayContaining(['gann', 'cycles', 'sine']));
+        expect(toolsInGroup('gann').map((d) => d.tool)).toEqual(expect.arrayContaining(['gannfan', 'cycles', 'sine']));
         expect(toolsInGroup('elliott').map((d) => d.tool)).toEqual(expect.arrayContaining(['ew-impulse', 'ew-count']));
+    });
+
+    it('offers the Gann family in the rail order, without the retired Gann box', () => {
+        // The original `gann` tool is hidden: the richer gannbox replaced it. It is still a tool, so
+        // a stored drawing keeps parses — it just never appears in a flyout twice.
+        expect(toolsInGroup('gann').map((d) => d.tool)).toEqual([
+            'gannfan',
+            'gannbox',
+            'gannsquare',
+            'pitchfork',
+            'schiffpitchfork',
+            'modpitchfork',
+            'insidepitchfork',
+            'regression',
+            'flattop',
+            'disjoint',
+            'cycles',
+            'sine',
+        ]);
+        expect(TOOL_DEFS.find((d) => d.tool === 'gann')?.hidden).toBe(true);
     });
 
     it('every rail group has a label in both languages and at least one tool', () => {
