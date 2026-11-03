@@ -1,0 +1,20 @@
+Rovex
+=====
+
+This deployment is a modified version of OpenStock.
+
+    OpenStock — https://github.com/Open-Dev-Society/OpenStock
+    Copyright (C) the OpenStock contributors
+    Licensed under the GNU Affero General Public License v3.0 (see LICENSE)
+
+Modifications in this repository (branding, Arabic-first interface, chart and
+alert features) are Copyright (C) Rovex contributors and are released under the
+same licence, AGPL-3.0.
+
+Because Rovex is offered to users over a network, section 13 of the AGPL applies:
+anyone who interacts with it remotely is entitled to the corresponding source of
+the running version. The running source is this repository.
+
+Rovex is an independent project. It is not affiliated with, endorsed by, or
+sponsored by OpenStock or Open Dev Society, and it does not use their name or
+marks beyond the attribution above.

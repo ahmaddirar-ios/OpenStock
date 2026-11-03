@@ -6,6 +6,7 @@ import {getSession} from "@/lib/better-auth/auth";
 import ProductPreview from "@/components/landing/ProductPreview";
 import { SocialProvidersProvider } from "@/components/forms/SocialAuthButtons";
 import { LangProvider } from "@/components/LangToggle";
+import RovexLogo from "@/components/brand/RovexLogo";
 import { getLang } from "@/lib/i18n-server";
 import { tx } from "@/lib/i18n";
 
@@ -26,8 +27,8 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
     return (
         <main className="auth-layout">
             <section className="auth-left-section scrollbar-hide-default">
-                <Link href="/" className="auth-logo flex items-center gap-2">
-                    <Image src="/assets/images/logo.png" alt="OpenStock" width={140} height={35} priority />
+                <Link href="/" className="auth-logo flex items-center gap-2" aria-label="Rovex home">
+                    <RovexLogo size={30} lang={lang} />
                 </Link>
 
                 <div className="pb-6 lg:pb-8 flex-1">

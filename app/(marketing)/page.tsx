@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { ArrowUpRight, Bell, CandlestickChart, Command, GitPullRequest, Github, Grid3x3, HeartHandshake, MailOpen, MessagesSquare, Star } from "lucide-react";
+import { Bell, CandlestickChart, Command, Github, Grid3x3, MailOpen, MessagesSquare } from "lucide-react";
 import { MarketDial, MarketStatus } from "@/components/landing/MarketClock";
 import ProductPreview from "@/components/landing/ProductPreview";
 import SectionHead from "@/components/marketing/SectionHead";
 import IconCard from "@/components/marketing/IconCard";
 import { getSession } from "@/lib/better-auth/auth";
-import { formatCount, getRepoStats } from "@/lib/github";
 import { cn } from "@/lib/utils";
-import { sidebarSponsors } from "@/lib/sponsors";
-import { DISCORD_URL, GOOD_FIRST_ISSUES_URL, REPO_URL } from "@/lib/constants";
+import { REPO_URL } from "@/lib/constants";
 
 const FEATURES = [
     { icon: CandlestickChart, title: 'Charts that move', body: 'TradingView candles, technicals and financials for any listed company, full screen when you need room.' },
@@ -19,39 +17,26 @@ const FEATURES = [
     { icon: MailOpen, title: 'A Monday digest', body: 'A short, AI-written summary of the week’s news for the stocks you watch.' },
 ];
 
-const TIERS = [
+type Tier = {
+    name: string; price: string; per?: string; tag?: string;
+    cadence: string; perHour: number; body: string; cta: { label: string; href: string };
+};
+
+const TIERS: Tier[] = [
     {
-        name: 'Community', price: 'Free', cadence: 'Hourly', perHour: 1,
-        body: 'This site. Quotes refresh every hour and are shared by everyone from the edge. Charts stay live.',
+        name: 'Rovex', price: 'Free', cadence: 'Hourly', perHour: 1,
+        body: 'The hosted app. Quotes refresh hourly and are shared by everyone; charts stay live from the exchange feed.',
         cta: { label: 'Get started', href: '/sign-up' },
     },
     {
-        name: 'OpenStock Cloud', price: '$5', per: '/month', tag: 'Coming soon', cadence: 'Every 15 seconds', perHour: 240,
-        body: 'The same app with live quotes and email price alerts, hosted on a pool of market data keys. Nothing to set up.',
-        cta: { label: 'Get notified on Discord', href: DISCORD_URL },
+        name: 'Realtime', price: 'Your key', cadence: 'Every 15 seconds', perHour: 240,
+        body: 'Add your own Finnhub keys and prices refresh every 15 seconds — no subscription, no per-seat fee.',
+        cta: { label: 'How to switch it on', href: '#self-host' },
     },
     {
         name: 'Self-host', price: 'Free', cadence: 'Your call', perHour: 240,
-        body: 'Run it on your own server with your own Finnhub keys: realtime quotes and alerts for you and your team.',
+        body: 'Run Rovex on your own server with your own database: realtime quotes and alerts for you and your team.',
         cta: { label: 'Setup guide', href: '#self-host' },
-    },
-];
-
-const SUPPORT = [
-    {
-        icon: HeartHandshake, title: 'Sponsor', primary: true,
-        body: 'Monthly tiers from $5, a one-time gift, or a custom partnership. Sponsors are shown on this site, in the app and in the README.',
-        cta: { label: 'See sponsor tiers', href: '/sponsor' },
-    },
-    {
-        icon: GitPullRequest, title: 'Contribute',
-        body: 'Pick a good first issue, improve the docs or design a screen. Every merged pull request keeps OpenStock moving.',
-        cta: { label: 'Good first issues', href: GOOD_FIRST_ISSUES_URL },
-    },
-    {
-        icon: Star, title: 'Spread the word',
-        body: 'Star the repo and share it with someone paying for a terminal they barely use.',
-        cta: { label: 'Star on GitHub', href: REPO_URL },
     },
 ];
 
@@ -69,48 +54,26 @@ const CadenceRail = ({ perHour }: { perHour: number }) => (
 );
 
 // Floats in the empty gutter beside the 1200px column, so it only shows on screens wide enough to have one.
-const SponsorBanner = () => {
-    const [sponsor] = sidebarSponsors();
-    if (!sponsor) return null;
-    return (
-        <aside aria-label="Sponsor" className="fixed top-[130px] z-30 hidden w-[200px] right-[calc((100vw-1200px)/4-100px)] min-[1680px]:block">
-            <a href={sponsor.url} target="_blank" rel="noreferrer" className="hatch group">
-                <div className="card flex flex-col gap-4 p-5">
-                    <p className="kicker flex items-center gap-1.5 text-brand-ink"><span className="live-dot" /> Sponsor</p>
-                    {sponsor.logo && <img src={sponsor.logo} alt={sponsor.iconOnly ? '' : sponsor.name} className="h-14 w-auto self-start" />}
-                    <div>
-                        <p className="text-[17px] font-bold tracking-[-0.02em]">{sponsor.name}</p>
-                        {sponsor.blurb && <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{sponsor.blurb}</p>}
-                    </div>
-                    <span className="btn btn-ghost h-9 text-[13px] group-hover:bg-[var(--hover)] group-hover:text-foreground">Visit {sponsor.name} <ArrowUpRight /></span>
-                </div>
-            </a>
-        </aside>
-    );
-};
-
 export default async function LandingPage() {
-    const [session, repo] = await Promise.all([getSession(), getRepoStats()]);
+    const session = await getSession();
     const start = session?.user ? { href: '/dashboard', label: 'Open dashboard' } : { href: '/sign-up', label: 'Get started free' };
 
     return (
         <>
-            <SponsorBanner />
             <section className="mx-auto grid max-w-[1200px] items-center gap-12 px-5 pt-14 md:pt-20 lg:grid-cols-[minmax(0,1fr)_320px]">
                 <div>
                     <MarketStatus />
                     <h1 className="mt-6 text-[44px] font-bold leading-[1.02] tracking-[-0.05em] md:text-[68px]">
-                        Markets, minus<br />the paywall.
+                        The market,<br />unfiltered.
                     </h1>
                     <p className="mt-5 max-w-xl text-[17px] leading-relaxed text-muted-foreground">
-                        OpenStock is an open-source alternative to expensive market platforms. Track prices, watch the whole market and dig into
-                        company insights, built openly, for everyone.
+                        Rovex is a trading terminal for the exchanges the big platforms leave out. Professional charts, studies,
+                        alerts and a paper-trading desk — in Arabic and English, on the markets you actually trade.
                     </p>
                     <div className="mt-8 flex flex-wrap items-center gap-2">
                         <Link href={start.href} className="btn btn-primary h-11 px-5 text-[15px]">{start.label}</Link>
                         <a href={REPO_URL} target="_blank" rel="noreferrer" className="btn btn-ghost h-11 px-5 text-[15px]">
-                            <Github /> Self-host it
-                            {repo && <span className="num text-faint">{formatCount(repo.stars)} stars</span>}
+                            <Github /> Source
                         </a>
                     </div>
                 </div>
@@ -179,8 +142,8 @@ export default async function LandingPage() {
                 </div>
                 <div className="hatch">
                     <pre className="card mono overflow-x-auto p-5 text-[13px] leading-7 text-muted-foreground">
-                        <span className="text-faint">$ </span><span className="text-foreground">git clone {REPO_URL}.git</span>{'\n'}
-                        <span className="text-faint">$ </span><span className="text-foreground">cd OpenStock</span>{'\n\n'}
+                        <span className="text-faint">$ </span><span className="text-foreground">git clone {REPO_URL}.git rovex</span>{'\n'}
+                        <span className="text-faint">$ </span><span className="text-foreground">cd rovex</span>{'\n\n'}
                         <span className="text-faint"># .env (every variable is in the README)</span>{'\n'}
                         <span className="text-brand-ink">FINNHUB_API_KEYS</span>=key_one,key_two,key_three{'\n'}
                         <span className="text-brand-ink">NEXT_PUBLIC_OPENSTOCK_DATA_MODE</span>=realtime{'\n\n'}
@@ -189,58 +152,19 @@ export default async function LandingPage() {
                 </div>
             </section>
 
-            <section id="sponsor" className="mx-auto mt-28 max-w-[1200px] scroll-mt-24 px-5">
-                <SectionHead
-                    kicker="Support"
-                    title="OpenStock is open for sponsors."
-                    sub="It stays free because people and companies back it. Pay what you can, or give time instead."
-                />
-                <div className="grid gap-3 lg:grid-cols-3">
-                    {SUPPORT.map(({ icon, title, body, cta, primary }) => (
-                        <IconCard
-                            key={title}
-                            icon={icon}
-                            title={title}
-                            footer={
-                                <a href={cta.href} {...(cta.href.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})} className={cn('btn w-full', primary ? 'btn-primary' : 'btn-ghost')}>
-                                    {cta.label}
-                                </a>
-                            }
-                        >
-                            {body}
-                        </IconCard>
-                    ))}
-                </div>
-            </section>
-
             <section className="mx-auto mt-28 max-w-[1200px] px-5">
                 <div className="hatch">
                     <div className="card grid gap-10 p-8 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:p-12">
                         <div>
-                            <p className="kicker text-brand-ink">Open Dev Society</p>
+                            <p className="kicker text-brand-ink">Rovex</p>
                             <blockquote className="mt-4 text-[26px] font-semibold leading-snug tracking-[-0.03em] md:text-[30px]">
-                                Technology should belong to everyone. Knowledge should be open, free, and accessible.
+                                Every market deserves a real chart — not the ones the platforms decide to show.
                             </blockquote>
                             <div className="mt-8 flex flex-wrap gap-2">
                                 <Link href={start.href} className="btn btn-primary h-11 px-5 text-[15px]">{start.label}</Link>
-                                <Link href="/about" className="btn btn-ghost h-11 px-5 text-[15px]">Read the manifesto</Link>
+                                <Link href="/help" className="btn btn-ghost h-11 px-5 text-[15px]">How it works</Link>
                             </div>
                         </div>
-                        {repo && (
-                            <dl className="grid grid-cols-2 content-end gap-3">
-                                {[
-                                    ['Stars', formatCount(repo.stars)],
-                                    ['Forks', formatCount(repo.forks)],
-                                    ['License', repo.license ?? 'AGPL-3.0'],
-                                    ['Written in', 'TypeScript'],
-                                ].map(([label, value]) => (
-                                    <div key={label} className="bento-tile col-span-1 bg-page">
-                                        <dt className="kicker">{label}</dt>
-                                        <dd className="bento-value text-[26px]">{value}</dd>
-                                    </div>
-                                ))}
-                            </dl>
-                        )}
                     </div>
                 </div>
             </section>
