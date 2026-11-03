@@ -366,18 +366,34 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         [],
     );
 
+    // What a pending save will send, captured when it is scheduled. Reading the refs at fire time would
+    // save the *next* symbol's drawings under the next symbol's name — a clear followed by a quick
+    // symbol switch would silently write an empty set somewhere else and lose the clear.
+    const pendingSetup = useRef<{ symbol: string; setup: ReturnType<typeof setupFromLocal> } | null>(null);
+
+    const flushSetupSave = useCallback(async () => {
+        if (syncTimer.current !== null) {
+            window.clearTimeout(syncTimer.current);
+            syncTimer.current = null;
+        }
+        const pending = pendingSetup.current;
+        pendingSetup.current = null;
+        if (!pending) return;
+        setSyncState('saving');
+        const result = await pushSetup(pending.symbol, pending.setup);
+        writeSetupPending(window.localStorage, pending.symbol, !result.ok);
+        setSyncState(result.ok ? 'saved' : result.reason === 'unauthorized' ? 'local' : 'error');
+    }, [pushSetup]);
+
     const scheduleSetupSave = useCallback(() => {
         if (!syncReady.current) return;
+        pendingSetup.current = { symbol: symbolRef.current, setup: setupFromLocal(drawingsRef.current, latestStudies.current) };
         if (syncTimer.current !== null) window.clearTimeout(syncTimer.current);
         syncTimer.current = window.setTimeout(() => {
             syncTimer.current = null;
-            setSyncState('saving');
-            void pushSetup(symbolRef.current, setupFromLocal(drawingsRef.current, latestStudies.current)).then((result) => {
-                if (result.ok) setSyncState('saved');
-                else setSyncState(result.reason === 'unauthorized' ? 'local' : 'error');
-            });
+            void flushSetupSave();
         }, 1200);
-    }, [pushSetup]);
+    }, [flushSetupSave]);
     // The snapshot a drag started from, so pointermove never floods the timeline.
     const gestureStart = useRef<Drawing[] | null>(null);
     const beginGesture = useCallback(() => {
@@ -694,6 +710,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     // done offline this session is pushed rather than replaced, so coming back online cannot lose it.
     useEffect(() => {
         let cancelled = false;
+        // The previous symbol's last edit goes out before the new one is read, or it would be lost.
+        void flushSetupSave();
         syncReady.current = false;
         setSyncState('loading');
         const local = setupFromLocal(loadDrawings(symbol), readStudies(window.localStorage));
@@ -734,7 +752,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         return () => {
             cancelled = true;
         };
-    }, [symbol, resetDrawings, updateStudies, pushSetup]);
+    }, [symbol, resetDrawings, updateStudies, pushSetup, flushSetupSave]);
 
     const saved = useRef(false);
     useEffect(() => {
@@ -1170,6 +1188,18 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const clearAll = () => {
         setDrawings([]);
         setSelectedId(null);
+        // Straight to the account, not on the debounce: an empty local set merged with the old account
+        // copy would restore every drawing on the next visit.
+        pendingSetup.current = null;
+        if (syncTimer.current !== null) {
+            window.clearTimeout(syncTimer.current);
+            syncTimer.current = null;
+        }
+        setSyncState('saving');
+        void pushSetup(symbol, setupFromLocal([], latestStudies.current)).then((result) => {
+            writeSetupPending(window.localStorage, symbol, !result.ok);
+            setSyncState(result.ok ? 'saved' : result.reason === 'unauthorized' ? 'local' : 'error');
+        });
     };
 
     /** The chart plus the drawings layer, stamped with the symbol and interval, as a PNG. */
