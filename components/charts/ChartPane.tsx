@@ -14,6 +14,7 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import { createCandleHost, type CandleHost } from '@/lib/candle-host';
+import { readChartType } from '@/lib/chart-view';
 import type { StudyConfig } from '@/lib/chart-studies';
 import { sessionChange, universeName } from '@/lib/chart-grid';
 import { getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
@@ -114,7 +115,9 @@ export default function ChartPane({
         const el = elRef.current;
         if (!el) return;
 
-        const host = createCandleHost(el, { timeVisible: false });
+        // The grid draws whatever type the chart is set to: the /charts panes used to always be
+        // candles, which made the same symbol look different on the two pages.
+        const host = createCandleHost(el, { timeVisible: false, chartType: readChartType(window.localStorage) });
         hostRef.current = host;
 
         const handleCrosshair = (param: MouseEventParams) => {

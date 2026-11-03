@@ -14,7 +14,8 @@ export type ChartType =
     | 'area'
     | 'renko'
     | 'kagi'
-    | 'linebreak';
+    | 'linebreak'
+    | 'baseline';
 
 /** The order the menu lists them in: the three candle readings, then bars, then the two lines. */
 export const CHART_TYPES: readonly ChartType[] = [
@@ -27,6 +28,7 @@ export const CHART_TYPES: readonly ChartType[] = [
     'renko',
     'kagi',
     'linebreak',
+    'baseline',
 ];
 
 export const DEFAULT_CHART_TYPE: ChartType = 'candles';
@@ -41,6 +43,7 @@ export const CHART_TYPE_KEYS: Record<ChartType, StringKey> = {
     renko: 'chart.type.renko',
     kagi: 'chart.type.kagi',
     linebreak: 'chart.type.linebreak',
+    baseline: 'chart.type.baseline',
 };
 
 /** Anything that is not one of the six reads as the default: a chart never opens in an unknown mode. */

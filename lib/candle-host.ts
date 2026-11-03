@@ -5,21 +5,22 @@
 import {
     AreaSeries,
     BarSeries,
-    PriceScaleMode,
+    BaselineSeries,
     CandlestickSeries,
     HistogramSeries,
     LineSeries,
     LineStyle,
+    PriceScaleMode,
     TickMarkType,
     createChart,
-    type Time,
     type DeepPartial,
-    type TimeChartOptions,
-    type TimeScaleOptions,
     type IChartApi,
     type ISeriesApi,
     type MouseEventParams,
     type SeriesType,
+    type Time,
+    type TimeChartOptions,
+    type TimeScaleOptions,
     type UTCTimestamp,
 } from 'lightweight-charts';
 import { heikinAshi, renko, type ChartType, type ScaleMode } from '@/lib/chart-view';
@@ -266,6 +267,22 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 lastValueVisible: false,
             });
         }
+        if (chartType === 'baseline') {
+            // A baseline splits the picture at one price: above it reads as strength, below as weakness.
+            // The base is the range's own middle until the data arrives and settles on its first close.
+            return chart.addSeries(BaselineSeries, {
+                baseValue: { type: 'price', price: 0 },
+                topLineColor: up,
+                topFillColor1: 'rgba(34,197,94,0.28)',
+                topFillColor2: 'rgba(34,197,94,0.02)',
+                bottomLineColor: down,
+                bottomFillColor1: 'rgba(239,68,68,0.02)',
+                bottomFillColor2: 'rgba(239,68,68,0.28)',
+                lineWidth: 2,
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+        }
         if (chartType === 'linebreak') {
             return chart.addCustomSeries(new LineBreakPaneView(), {}) as unknown as ISeriesApi<SeriesType>;
         }
@@ -390,7 +407,13 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             return;
         }
         const candles = seriesBars();
-        if (chartType === 'line' || chartType === 'area') {
+        if (chartType === 'baseline') {
+            // The base is where the reading starts: the first close on screen. A series option can be
+            // changed after creation, which is how the base follows the data it was created without.
+            const base = candles.find((candle) => 'close' in candle) as { close: number } | undefined;
+            if (base) price.applyOptions({ baseValue: { type: 'price', price: base.close } });
+        }
+        if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
             price.setData(
                 candles.map((candle) =>
                     'close' in candle
