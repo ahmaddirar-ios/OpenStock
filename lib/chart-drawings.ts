@@ -30,6 +30,13 @@ export type ShapeKind =
     | 'daterange'
     | 'dprange'
     | 'projection'
+    | 'fibext'
+    | 'fibtrendext'
+    | 'fibfan'
+    | 'fibchannel'
+    | 'fibtime'
+    | 'fibarc'
+    | 'fibspeed'
     | 'fib'
     | 'gann'
     | 'text'
@@ -46,6 +53,8 @@ export type ShapeTool =
     | 'ray' | 'extended' | 'hray' | 'vline' | 'cross' | 'trendangle' | 'info'
     // forecasts: positions, ranges and a projected move
     | 'longpos' | 'shortpos' | 'pricerange' | 'daterange' | 'dprange' | 'projection'
+    // the Fibonacci family
+    | 'fibext' | 'fibtrendext' | 'fibfan' | 'fibchannel' | 'fibtime' | 'fibarc' | 'fibspeed'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -151,6 +160,16 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'dprange', group: 'forecast', kind: 'dprange', clicks: 2, defaultColor: 'blue' },
     { tool: 'projection', group: 'forecast', kind: 'projection', clicks: 2, defaultColor: 'orange' },
     { tool: 'fib', group: 'fib', kind: 'fib', clicks: 2, defaultColor: 'gold' },
+
+    // The rest of the Fibonacci family: the retracement shipped first, these are the readings
+    // built on it — extensions, a fan, a channel, time zones, arcs and the speed fan.
+    { tool: 'fibext', group: 'fib', kind: 'fibext', clicks: 3, defaultColor: 'gold' },
+    { tool: 'fibtrendext', group: 'fib', kind: 'fibtrendext', clicks: 3, defaultColor: 'gold' },
+    { tool: 'fibfan', group: 'fib', kind: 'fibfan', clicks: 2, defaultColor: 'gold' },
+    { tool: 'fibchannel', group: 'fib', kind: 'fibchannel', clicks: 3, defaultColor: 'gold' },
+    { tool: 'fibtime', group: 'fib', kind: 'fibtime', clicks: 2, defaultColor: 'cyan' },
+    { tool: 'fibarc', group: 'fib', kind: 'fibarc', clicks: 3, defaultColor: 'gold' },
+    { tool: 'fibspeed', group: 'fib', kind: 'fibspeed', clicks: 2, defaultColor: 'violet' },
     { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
     { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },
 
@@ -312,6 +331,71 @@ export function rangeReadout(a: DrawPoint, b: DrawPoint, barSeconds: number): Ra
 export function projectionEnds(a: DrawPoint, b: DrawPoint, steps: number): [DrawPoint, DrawPoint] {
     if (steps <= 0) return [a, b];
     return [b, { time: b.time + (b.time - a.time) * steps, price: b.price + (b.price - a.price) * steps }];
+}
+
+// --- the rest of the Fibonacci family ---------------------------------------
+// The retracement (levels between two points) shipped first. Extensions measure past the second
+// point, a fan spreads the same ratios from one point, a channel carries the base line through a
+// third point, time zones walk the sequence forward, arcs size themselves from the base move, and
+// the speed fan draws the slope at thirds. Each is one pure function; the painter only draws.
+
+/** Ratios an extension reads past 100%, plus the retracement levels it starts from. */
+export const FIB_EXT_RATIOS = [0, 0.618, 1, 1.272, 1.618, 2, 2.618, 3.618] as const;
+
+/** The trend-based extension starts at the retracement, as TradingView's does. */
+export const FIB_TREND_EXT_RATIOS = [0.618, 1, 1.618, 2.618] as const;
+
+/** Extension levels: the a→b move measured from the third point, one line per ratio. */
+export function fibExtension(a: DrawPoint, b: DrawPoint, c: DrawPoint, ratios: readonly number[] = FIB_EXT_RATIOS): FibLevel[] {
+    const move = b.price - a.price;
+    return ratios.map((ratio) => ({ ratio, price: c.price + move * ratio }));
+}
+
+/** The fan's line ends: the ratios are read on the vertical through `b`, every line starting at `a`. */
+export function fibFanEnds(a: DrawPoint, b: DrawPoint, ratios: readonly number[] = FIB_RATIOS): { ratio: number; end: DrawPoint }[] {
+    const range = b.price - a.price;
+    return ratios.map((ratio) => ({ ratio, end: { time: b.time, price: a.price + range * ratio } }));
+}
+
+/** Channel lines: for each ratio, the segment between the points that sit that far from the base
+ *  line towards the third point. Ratio 0 is the base itself, ratio 1 is the third point. */
+export function fibChannelLevels(a: DrawPoint, b: DrawPoint, c: DrawPoint, ratios: readonly number[] = FIB_RATIOS): [DrawPoint, DrawPoint][] {
+    const between = (from: DrawPoint, to: DrawPoint, ratio: number): DrawPoint => ({
+        time: from.time + (to.time - from.time) * ratio,
+        price: from.price + (to.price - from.price) * ratio,
+    });
+    return ratios.map((ratio) => [between(a, c, ratio), between(b, c, ratio)]);
+}
+
+/** The Fibonacci sequence, which is what a time zone steps forward by. */
+export function fibTimeMultiples(count: number): number[] {
+    const out: number[] = [];
+    let previous = 1;
+    let current = 2;
+    for (let i = 0; i < count; i += 1) {
+        out.push(previous);
+        const next = previous + current;
+        previous = current;
+        current = next;
+    }
+    return out;
+}
+
+/** Arc sizes in pixels: each ratio scales the base move's own width and height. */
+export function fibArcRadii(from: ScreenPoint, to: ScreenPoint, ratios: readonly number[] = FIB_RATIOS): { ratio: number; rx: number; ry: number }[] {
+    const rx = Math.abs(to.x - from.x);
+    const ry = Math.abs(to.y - from.y);
+    return ratios.map((ratio) => ({ ratio, rx: rx * ratio, ry: ry * ratio }));
+}
+
+/** The speed fan's thirds: the a→b slope repeated at 1/3, 2/3 and 3/3 out to the edge of the range
+ *  the caller is looking at. A vertical pair has no slope, so the fan is empty. */
+export const SPEED_RATIOS = [1 / 3, 2 / 3, 1] as const;
+
+export function speedFanEnds(a: DrawPoint, b: DrawPoint, edgeTime: number, ratios: readonly number[] = SPEED_RATIOS): { ratio: number; end: DrawPoint }[] {
+    if (b.time === a.time || edgeTime === a.time) return [];
+    const slope = (b.price - a.price) / (b.time - a.time);
+    return ratios.map((ratio) => ({ ratio, end: { time: edgeTime, price: a.price + slope * ratio * (edgeTime - a.time) } }));
 }
 
 /** A pointer for an arrow tip, in SVG coordinates: the two barbs of a head that points at `to`. */

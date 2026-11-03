@@ -70,4 +70,11 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     daterange: 'chart.tool.daterange',
     dprange: 'chart.tool.dprange',
     projection: 'chart.tool.projection',
+    fibext: 'chart.tool.fibext',
+    fibtrendext: 'chart.tool.fibtrendext',
+    fibfan: 'chart.tool.fibfan',
+    fibchannel: 'chart.tool.fibchannel',
+    fibtime: 'chart.tool.fibtime',
+    fibarc: 'chart.tool.fibarc',
+    fibspeed: 'chart.tool.fibspeed',
 };

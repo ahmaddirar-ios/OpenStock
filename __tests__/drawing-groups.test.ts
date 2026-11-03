@@ -50,6 +50,20 @@ describe('drawing rail groups', () => {
         expect(railGroupsWithTools().map((g) => g.group)).toContain('forecast');
     });
 
+    it('offers the whole Fibonacci family on its own group', () => {
+        // The base retracement landed in phase 1; these are the rest of the family TradingView draws.
+        expect(toolsInGroup('fib').map((d) => d.tool)).toEqual([
+            'fib',
+            'fibext',
+            'fibtrendext',
+            'fibfan',
+            'fibchannel',
+            'fibtime',
+            'fibarc',
+            'fibspeed',
+        ]);
+    });
+
     it('labels every tool in both languages', () => {
         // The rail prints TOOL_LABEL_KEYS, so a tool without a key would render an empty row.
         expect(Object.keys(TOOL_LABEL_KEYS).sort()).toEqual(TOOL_DEFS.map((d) => d.tool).sort());

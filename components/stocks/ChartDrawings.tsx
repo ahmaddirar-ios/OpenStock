@@ -11,6 +11,13 @@ import {
     channelRails,
     dashOf,
     extendedEnds,
+    FIB_EXT_RATIOS,
+    FIB_TREND_EXT_RATIOS,
+    fibArcRadii,
+    fibChannelLevels,
+    fibExtension,
+    fibFanEnds,
+    fibTimeMultiples,
     handleIndex,
     measureSpan,
     hitTest,
@@ -21,6 +28,7 @@ import {
     projectionEnds,
     rangeReadout,
     rayEnd,
+    speedFanEnds,
     strokeWidthOf,
     pointsNeeded,
     sinePoints,
@@ -749,6 +757,144 @@ export default function ChartDrawings({
                     <text x={endAt.x} y={endAt.y - 7} textAnchor="end" fontSize={11.5} className="mono" fill={color} opacity={opacity}>
                         {`${standing(span.price)} (${standing(span.percent, '%')})`}
                     </text>
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        // --- the rest of the Fibonacci family ------------------------------------
+        // The retracement's own branch is above; these are the readings built on it. Every level is
+        // a line the helpers produce; the painter places them, and only the extension family prints
+        // its ratio (the fan, channel and arcs are read by their position). A level whose price sits
+        // outside the visible price range cannot be placed by the chart's own scale, so the painter
+        // falls back to the pixel slope between the two placed points and lets the SVG clip it.
+        const priceYFrom = (a: DrawPoint, b: DrawPoint, at: ScreenPoint, bt: ScreenPoint): ((price: number) => number) | null => {
+            const move = b.price - a.price;
+            if (move === 0) return null;
+            const perPrice = (bt.y - at.y) / move;
+            return (price) => at.y + (price - a.price) * perPrice;
+        };
+        if (kind === 'fibext' || kind === 'fibtrendext') {
+            const [p0, p1, p2] = drawing.points;
+            if (!p2) return null;
+            const ratios = kind === 'fibext' ? FIB_EXT_RATIOS : FIB_TREND_EXT_RATIOS;
+            const levels = fibExtension(p0, p1, p2, ratios);
+            const fallbackY = priceYFrom(p0, p1, screen[0], screen[1]);
+            const left = Math.min(screen[0].x, screen[1].x);
+            const right = Math.max(screen[0].x, screen[1].x, edgeX);
+            let lastLabelY: number | null = null;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {levels.map(({ ratio, price }) => {
+                        const y = toScreen({ time: p2.time, price })?.y ?? fallbackY?.(price) ?? null;
+                        if (y == null) return null;
+                        const stacked = lastLabelY != null && Math.abs(y - lastLabelY) < 13;
+                        if (!stacked) lastLabelY = y;
+                        return (
+                            <g key={`${drawing.id}-x${ratio}`}>
+                                <line x1={left} x2={right} y1={y} y2={y} stroke={color} strokeWidth={1} strokeDasharray="5 4" opacity={opacity} />
+                                {!stacked && (
+                                    <text x={right - 4} y={y - 4} textAnchor="end" fontSize={10.5} className="mono" fill={color} opacity={opacity}>
+                                        {`${ratio} (${price.toFixed(2)})`}
+                                    </text>
+                                )}
+                            </g>
+                        );
+                    })}
+                    {dot(screen[2].x, screen[2].y, `${drawing.id}-c`, color, opacity, TEXT_DOT)}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'fibfan') {
+            const fan = fibFanEnds(drawing.points[0], drawing.points[1]);
+            // Every fan line ends on the vertical through the second point, so only its price has to
+            // be turned into a pixel.
+            const fallbackY = priceYFrom(drawing.points[0], drawing.points[1], screen[0], screen[1]);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {fan.map(({ ratio, end }) => {
+                        const y = toScreen(end)?.y ?? fallbackY?.(end.price) ?? null;
+                        if (y == null) return null;
+                        return <line key={`${drawing.id}-f${ratio}`} x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={y} stroke={color} strokeWidth={1} opacity={opacity} />;
+                    })}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'fibchannel') {
+            const levels = fibChannelLevels(drawing.points[0], drawing.points[1], drawing.points[2]);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {levels.map(([from, to], index) => {
+                        const a = toScreen(from);
+                        const b = toScreen(to);
+                        if (!a || !b) return null;
+                        return (
+                            <line
+                                key={`${drawing.id}-c${index}`}
+                                x1={a.x}
+                                y1={a.y}
+                                x2={b.x}
+                                y2={b.y}
+                                stroke={color}
+                                strokeWidth={index === 0 ? width : 1}
+                                opacity={index === 0 ? opacity : 0.75}
+                            />
+                        );
+                    })}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'fibtime') {
+            // The zones sit past the move and are read in pixels: a time beyond the last bar cannot
+            // be mapped by the chart's own scale, so the spacing comes from the two points' pixels.
+            const span = screen[1].x - screen[0].x;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {fibTimeMultiples(8).map((multiple) => {
+                        const x = screen[1].x + span * multiple;
+                        return <line key={`${drawing.id}-t${multiple}`} x1={x} x2={x} y1={0} y2={edgeY} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={opacity} />;
+                    })}
+                    {dot(screen[0].x, screen[0].y, `${drawing.id}-a`, color, opacity, TEXT_DOT)}
+                    {dot(screen[1].x, screen[1].y, `${drawing.id}-b`, color, opacity, TEXT_DOT)}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'fibarc') {
+            const radii = fibArcRadii(screen[0], screen[1]);
+            const centre = screen[2] ?? screen[1];
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {radii.map(({ ratio, rx, ry }) => (
+                        <ellipse key={`${drawing.id}-a${ratio}`} cx={centre.x} cy={centre.y} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={opacity} />
+                    ))}
+                    {dot(centre.x, centre.y, `${drawing.id}-c`, color, opacity, TEXT_DOT)}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'fibspeed') {
+            const [p0, p1] = drawing.points;
+            const edgeTime = fromScreen(edgeX, 0)?.time;
+            const ends = edgeTime == null ? [] : speedFanEnds(p0, p1, edgeTime);
+            const fallbackY = priceYFrom(p0, p1, screen[0], screen[1]);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {ends.map(({ ratio, end }) => {
+                        const y = priceY(p0.time, end.price) ?? fallbackY?.(end.price) ?? null;
+                        if (y == null) return null;
+                        return <line key={`${drawing.id}-s${ratio}`} x1={screen[0].x} y1={screen[0].y} x2={edgeX} y2={y} stroke={color} strokeWidth={1} opacity={opacity} />;
+                    })}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
                     {selectionHandles(screen)}
                 </g>
             );

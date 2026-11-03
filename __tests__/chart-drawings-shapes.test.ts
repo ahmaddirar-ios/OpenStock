@@ -6,12 +6,18 @@ import { describe, expect, it } from 'vitest';
 import {
     TOOL_DEFS,
     extendedEnds,
+    fibArcRadii,
+    fibChannelLevels,
+    fibExtension,
+    fibFanEnds,
+    fibTimeMultiples,
     measureSpan,
     pointsNeeded,
     positionZones,
     projectionEnds,
     rangeReadout,
     rayEnd,
+    speedFanEnds,
     toolDef,
     toolsInGroup,
     trendAngleDeg,
@@ -140,6 +146,68 @@ describe('projectionEnds', () => {
 
     it('falls back to the drawn move when asked for no projection', () => {
         expect(projectionEnds(a, b, 0)).toEqual([a, b]);
+    });
+});
+
+describe('the Fibonacci family', () => {
+    // A 100 → 120 move, then a retracement to 110: the third point of an extension.
+    const base: DrawPoint = { time: 1000, price: 100 };
+    const top: DrawPoint = { time: 2000, price: 120 };
+    const third: DrawPoint = { time: 1200, price: 110 };
+
+    it('extends the base move beyond the retracement', () => {
+        const levels = fibExtension(base, top, third, [1, 1.618, 2]);
+        // 110 + 20 × ratio: the level sits above the third point by the base move's multiple.
+        expect(levels.map((l) => l.price)).toEqual([130, 142.36, 150]);
+        expect(levels.map((l) => l.ratio)).toEqual([1, 1.618, 2]);
+    });
+
+    it('fans the retracement ratios onto the vertical through the second point', () => {
+        const ends = fibFanEnds(base, top, [0, 0.5, 1]);
+        expect(ends.map((e) => e.end)).toEqual([
+            { time: 2000, price: 100 },
+            { time: 2000, price: 110 },
+            { time: 2000, price: 120 },
+        ]);
+    });
+
+    it('channels the base through the third point, one line per ratio', () => {
+        const levels = fibChannelLevels(base, top, third, [0, 0.5, 1]);
+        // Ratio 0 is the base itself; ratio 1 collapses onto the third point.
+        expect(levels[0]).toEqual([
+            { time: 1000, price: 100 },
+            { time: 2000, price: 120 },
+        ]);
+        expect(levels[1]).toEqual([
+            { time: 1100, price: 105 },
+            { time: 1600, price: 115 },
+        ]);
+        expect(levels[2]).toEqual([
+            { time: 1200, price: 110 },
+            { time: 1200, price: 110 },
+        ]);
+    });
+
+    it('walks the Fibonacci sequence forward for a time zone', () => {
+        expect(fibTimeMultiples(6)).toEqual([1, 2, 3, 5, 8, 13]);
+        expect(fibTimeMultiples(0)).toEqual([]);
+    });
+
+    it('sizes arcs from the two ends of the base move', () => {
+        const radii = fibArcRadii({ x: 0, y: 0 }, { x: 100, y: -50 }, [0.5, 1]);
+        expect(radii).toEqual([
+            { ratio: 0.5, rx: 50, ry: 25 },
+            { ratio: 1, rx: 100, ry: 50 },
+        ]);
+    });
+
+    it('draws the speed fan at thirds of the move, out to the edge time', () => {
+        const ends = speedFanEnds(base, top, 5000);
+        // The base move is 20 over 1000 seconds; each ratio keeps that slope to the edge time.
+        expect(ends.map((e) => e.ratio)).toEqual([1 / 3, 2 / 3, 1]);
+        expect(ends.map((e) => Math.round(e.end.price))).toEqual([127, 153, 180]);
+        // A vertical pair has no slope to fan.
+        expect(speedFanEnds(base, { time: 1000, price: 130 }, 5000)).toEqual([]);
     });
 });
 

@@ -24,7 +24,7 @@ afterEach(cleanup);
 const toScreen = (point: DrawPoint): ScreenPoint => ({ x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 });
 const fromScreen = (x: number, y: number): DrawPoint => ({ time: 1000 + (x - 100) * 10, price: 100 + (500 - y) / 5 });
 
-const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = []) => {
+const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null) => {
     const drawing: Drawing = { id: 'd1', tool, points };
     const { container } = render(
         <ChartDrawings
@@ -33,7 +33,7 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
             tool={null}
             text=""
             barTimes={barTimes}
-            toScreen={toScreen}
+            toScreen={toScreenOverride ?? toScreen}
             fromScreen={fromScreen}
             onCommit={() => {}}
             onSelect={() => {}}
@@ -54,9 +54,15 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
         y2: Number(line.getAttribute('y2')),
     }));
     const rects = Array.from(svg.querySelectorAll('rect'));
+    const ellipses = Array.from(svg.querySelectorAll('ellipse')).map((node) => ({
+        cx: Number(node.getAttribute('cx')),
+        cy: Number(node.getAttribute('cy')),
+        rx: Number(node.getAttribute('rx')),
+        ry: Number(node.getAttribute('ry')),
+    }));
     const dashes = Array.from(svg.querySelectorAll('line')).map((line) => line.getAttribute('stroke-dasharray'));
     const texts = Array.from(svg.querySelectorAll('text')).map((node) => node.textContent ?? '');
-    return { lines, rects, dashes, texts };
+    return { lines, rects, dashes, ellipses, texts };
 };
 
 // A shallow line: (1000, 100) → (2000, 105), i.e. 100px right and 25px up on this scale.
@@ -64,6 +70,86 @@ const rise: DrawPoint[] = [
     { time: 1000, price: 100 },
     { time: 2000, price: 105 },
 ];
+
+describe('the Fibonacci family on the chart', () => {
+    const base: DrawPoint = { time: 1000, price: 100 };
+    const top: DrawPoint = { time: 2000, price: 120 };
+    const third: DrawPoint = { time: 1200, price: 110 };
+
+    it('labels every extension level with its ratio and price', () => {
+        const { lines, texts } = renderTool('fibext', [base, top, third]);
+        // The default extension set has eight levels, and the base move (20) is measured from 110.
+        expect(lines.length).toBe(8);
+        expect(texts.join(' ')).toContain('1 (130.00)');
+        expect(texts.join(' ')).toContain('1.618 (142.36)');
+    });
+
+    it('draws the trend-based extension from its own ratios', () => {
+        const { lines, texts } = renderTool('fibtrendext', [base, top, third]);
+        expect(lines.length).toBe(4);
+        expect(texts.join(' ')).toContain('0.618 (122.36)');
+    });
+
+    it('fans the retracement ratios from the first point to the vertical through the second', () => {
+        const { lines } = renderTool('fibfan', [base, top]);
+        expect(lines.length).toBe(15);
+        // Ratio 0 lands on the first point's price at the second point's time; ratio 1 lands on the
+        // second point itself (index 7 of the retracement set).
+        expect(lines[0]).toEqual({ x1: 100, y1: 500, x2: 200, y2: 500 });
+        expect(lines[7]).toEqual({ x1: 100, y1: 500, x2: 200, y2: 400 });
+    });
+
+    it('channels the base line towards the third point', () => {
+        const { lines } = renderTool('fibchannel', [base, top, third]);
+        expect(lines.length).toBe(15);
+        // Ratio 0 is the base itself: from the first point to the second.
+        expect(lines[0]).toEqual({ x1: 100, y1: 500, x2: 200, y2: 400 });
+    });
+
+    it('walks the Fibonacci sequence to the right of the move', () => {
+        const { lines } = renderTool('fibtime', [base, top]);
+        expect(lines.length).toBe(8);
+        // The move spans 100px, so the zones sit at 1, 2, 3, 5, 8, 13, 21 and 34 spans past it.
+        expect(lines[0]).toEqual({ x1: 300, y1: 0, x2: 300, y2: HEIGHT });
+        expect(lines.map((line) => line.x1)).toEqual([300, 400, 500, 700, 1000, 1500, 2300, 3600]);
+    });
+
+    it('sizes the arcs from the base move around the third point', () => {
+        const { ellipses } = renderTool('fibarc', [base, top, third]);
+        expect(ellipses.length).toBe(15);
+        // The base move is 100px wide and 100px tall on this scale, so every arc is a circle here.
+        expect(ellipses[0].cx).toBe(120);
+        expect(ellipses[0].cy).toBe(450);
+        expect(ellipses[0].rx).toBe(0);
+        expect(ellipses[1].rx).toBeCloseTo(23.6, 6);
+        expect(ellipses[1].ry).toBeCloseTo(23.6, 6);
+    });
+
+    it('draws the speed fan at thirds of the slope to the edge', () => {
+        const { lines } = renderTool('fibspeed', [base, top]);
+        expect(lines.length).toBe(3);
+        // The edge sits 5400 seconds past the base point, where the slope is 108 above the entry:
+        // the thirds are 36, 72 and 108 up, which is 180, 360 and 540 pixels.
+        expect(lines.map((line) => Math.round(line.y2))).toEqual([320, 140, -40]);
+        expect(lines.every((line) => line.x1 === 100 && line.x2 === WIDTH)).toBe(true);
+    });
+
+    it('draws every level even when the price scale cannot show it', () => {
+        // The chart answers with null for a price it cannot place, and an extension's far levels
+        // sit above the candles: dropping them would leave the tool showing a single line.
+        const windowed = (point: DrawPoint): ScreenPoint | null =>
+            point.price > 130 || point.price < 80 ? null : { x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 };
+
+        const extension = renderTool('fibext', [base, top, third], [], windowed);
+        expect(extension.lines.length).toBe(8);
+
+        const fan = renderTool('fibfan', [base, top], [], windowed);
+        expect(fan.lines.length).toBe(15);
+
+        const fan2 = renderTool('fibspeed', [base, top], [], windowed);
+        expect(fan2.lines.length).toBe(3);
+    });
+});
 
 describe('the basic line tools on the chart', () => {
     it('draws a ray from its first point to the panel edge', () => {

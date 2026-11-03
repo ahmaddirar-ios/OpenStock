@@ -88,7 +88,7 @@ describe('the tool registry', () => {
             'trendangle',
             'info',
         ]);
-        expect(toolsInGroup('fib').map((d) => d.tool)).toEqual(['fib']);
+        expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fib');
         expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual(['text']);
         expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3']);
         expect(toolsInGroup('gann').map((d) => d.tool)).toEqual(['gann', 'cycles', 'sine']);
