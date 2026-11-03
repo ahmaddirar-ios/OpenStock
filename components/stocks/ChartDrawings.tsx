@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+    anchoredVwap,
+    candlesBetween,
+    ICON_GLYPHS,
+    isImageUrl,
+    volumeProfile,
     annotationText,
     carriesText,
     cleanText,
@@ -53,6 +58,7 @@ import {
     sinePoints,
     toolDef,
     trendAngleDeg,
+    type DrawCandle,
     type DrawPoint,
     type Drawing,
     type ScreenPoint,
@@ -74,8 +80,8 @@ type Props = {
     editRequest?: { id: string; nonce: number } | null;
     /** Bar times of the interval on screen, so a cycle can land on real bars. */
     barTimes: number[];
-    /** The closes on screen, which is what a regression channel is fitted to. */
-    closes?: { time: number; close: number }[];
+    /** The candles on screen: a regression channel is fitted to them and the volume tools count them. */
+    candles?: DrawCandle[];
     /** Chart pixels for a drawing point, or null when the chart is not ready or the point is off screen. */
     toScreen: (point: DrawPoint) => ScreenPoint | null;
     /** The inverse, so a pointer position can be stored as a chart point. */
@@ -114,7 +120,7 @@ export default function ChartDrawings({
     labels,
     editRequest,
     barTimes,
-    closes = [],
+    candles = [],
     toScreen,
     fromScreen,
     onCommit,
@@ -1269,7 +1275,7 @@ export default function ChartDrawings({
         if (kind === 'regression') {
             const [p0, p1] = drawing.points;
             if (!p1) return null;
-            const channel = regressionChannel(p0, p1, closes);
+            const channel = regressionChannel(p0, p1, candles);
             const at = (point: DrawPoint) => toScreen({ time: point.time, price: point.price });
             const line = channel.line.map(at);
             const upper = channel.upper.map(at);
@@ -1323,6 +1329,152 @@ export default function ChartDrawings({
                     {pair(channel.base, `${drawing.id}-b`, width)}
                     {pair(channel.parallel, `${drawing.id}-p`, width)}
                     {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        // --- the exotics ---------------------------------------------------------
+        // A sticker is a glyph; an image is a web picture the trader pasted by its address. The three
+        // volume tools read the candles themselves (lib/chart-drawings does the counting): a bars
+        // pattern copies the shape of a range forward, a VWAP averages it, and a profile counts it
+        // into price rows.
+        if (kind === 'icon') {
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <text x={screen[0].x} y={screen[0].y + 8} textAnchor="middle" fontSize={22} fill={color} opacity={opacity}>
+                        {drawing.text ?? ICON_GLYPHS[0]}
+                    </text>
+                    {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, 0.55, TEXT_DOT)}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'image') {
+            if (screen.length < 2) return null;
+            const x = Math.min(screen[0].x, screen[1].x);
+            const y = Math.min(screen[0].y, screen[1].y);
+            const w = Math.abs(screen[1].x - screen[0].x);
+            const h = Math.abs(screen[1].y - screen[0].y);
+            const url = (drawing.text ?? '').trim();
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {isImageUrl(url) ? (
+                        <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="none" opacity={opacity} />
+                    ) : (
+                        // Nothing to show until an address is pasted: a frame says where the picture goes.
+                        <text x={x + w / 2} y={y + h / 2 + 4} textAnchor="middle" fontSize={11.5} fill={color} opacity={0.8}>
+                            {label('chart.imagePlaceholder')}
+                        </text>
+                    )}
+                    <rect x={x} y={y} width={w} height={h} fill="none" stroke={color} strokeWidth={1} opacity={0.7} />
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'avwap') {
+            // toScreen wants a chart point; a VWAP point is a time and a value, which is the same shape.
+            const points = anchoredVwap(candles, drawing.points[0].time)
+                .map((point) => toScreen({ time: point.time, price: point.value }))
+                .filter((point): point is ScreenPoint => point != null);
+            const path = points.length > 1 ? polylinePath(points) : null;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {path && <path d={path} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />}
+                    {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, opacity, TEXT_DOT)}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'vprofile') {
+            if (screen.length < 2) return null;
+            const profile = volumeProfile(candles, drawing.points[0].time, drawing.points[1].time);
+            if (profile.rows.length === 0) return null;
+            const left = Math.min(screen[0].x, screen[1].x);
+            const span = Math.max(24, Math.abs(screen[1].x - screen[0].x));
+            const stepY = (price: number) => priceY(drawing.points[0].time, price);
+            const rowH = Math.max(1, Math.abs((stepY(profile.rows[0].price) ?? 0) - (stepY(profile.rows[0].price + profile.step) ?? 0)));
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {/* The range itself, faintly shaded, the way a profile marks what it counted. */}
+                    <rect x={left} y={Math.min(screen[0].y, screen[1].y)} width={span} height={Math.abs(screen[1].y - screen[0].y)} fill={`color-mix(in oklab, ${color} 7%, transparent)`} stroke="none" />
+                    {profile.rows.map((row) => {
+                        const y = stepY(row.price);
+                        if (y == null || row.volume <= 0) return null;
+                        const barWidth = (row.volume / profile.max) * span;
+                        const isPoc = row.volume === profile.max;
+                        return (
+                            <rect
+                                key={`${drawing.id}-r${row.price}`}
+                                x={left}
+                                y={y - rowH / 2}
+                                width={barWidth}
+                                height={rowH}
+                                fill={color}
+                                opacity={isPoc ? 0.55 : 0.28}
+                            />
+                        );
+                    })}
+                    {/* The row that traded most: the point of control, with its price. */}
+                    {(() => {
+                        const poc = profile.rows.find((row) => row.volume === profile.max);
+                        const y = poc ? stepY(poc.price) : null;
+                        if (!poc || y == null) return null;
+                        return (
+                            <text x={left + span + 4} y={y + 4} fontSize={10.5} className="mono" fill={color}>
+                                {priceLabel(poc.price)}
+                            </text>
+                        );
+                    })()}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'bars') {
+            if (screen.length < 3) return null;
+            const source = candlesBetween(candles, drawing.points[0].time, drawing.points[1].time);
+            if (source.length < 2) return null;
+            const anchor = screen[2];
+            const first = toScreen({ time: source[0].time, price: source[0].open });
+            if (!first) return null;
+            const shiftX = anchor.x - first.x;
+            const shiftY = anchor.y - first.y;
+            // The bar width comes from the spacing of the range that was copied.
+            const second = toScreen({ time: source[1].time, price: source[1].open });
+            const candleW = second ? Math.max(1, Math.min(14, Math.abs(second.x - first.x) * 0.62)) : 5;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {source.map((candle) => {
+                        const high = toScreen({ time: candle.time, price: candle.high });
+                        const low = toScreen({ time: candle.time, price: candle.low });
+                        const open = toScreen({ time: candle.time, price: candle.open });
+                        const close = toScreen({ time: candle.time, price: candle.close });
+                        if (!high || !low || !open || !close) return null;
+                        const x = high.x + shiftX;
+                        const bodyTop = Math.min(open.y, close.y) + shiftY;
+                        const bodyBottom = Math.max(open.y, close.y) + shiftY;
+                        const up = candle.close >= candle.open;
+                        return (
+                            <g key={`${drawing.id}-b${candle.time}`}>
+                                <line x1={x} y1={high.y + shiftY} x2={x} y2={low.y + shiftY} stroke={color} strokeWidth={1} opacity={opacity} />
+                                <rect
+                                    x={x - candleW / 2}
+                                    y={bodyTop}
+                                    width={candleW}
+                                    height={Math.max(1, bodyBottom - bodyTop)}
+                                    fill={up ? color : 'transparent'}
+                                    stroke={color}
+                                    strokeWidth={1}
+                                    opacity={up ? 0.75 : opacity}
+                                />
+                            </g>
+                        );
+                    })}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, 0.6, TEXT_DOT))}
                     {selectionHandles(screen)}
                 </g>
             );

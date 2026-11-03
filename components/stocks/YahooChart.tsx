@@ -1283,8 +1283,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         [t],
     );
 
-    // A regression channel is fitted to the closes on screen, so the drawing layer gets them.
-    const closes = useMemo(() => (data?.candles ?? []).map((candle) => ({ time: candle.time, close: candle.close })), [data]);
+    // The drawing layer gets the candles themselves: a regression channel is fitted to them and the
+    // anchored VWAP and volume profile count them.
+    const drawingCandles = useMemo(() => data?.candles ?? [], [data]);
 
     const body = (
         // dir=ltr on the plotting area too: the labels drawn on the canvas overlay are SVG text
@@ -1329,7 +1330,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     labels={pendingLabels}
                     editRequest={editRequest}
                     barTimes={barTimes}
-                    closes={closes}
+                    candles={drawingCandles}
                     toScreen={toScreen}
                     fromScreen={fromScreen}
                     onCommit={commit}
@@ -1654,8 +1655,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     <input
                         value={noteText}
                         onChange={(event) => setNoteText(event.target.value)}
-                        placeholder={t('chart.notePlaceholder')}
-                        maxLength={80}
+                        placeholder={t(tool === 'image' ? 'chart.imagePlaceholder' : 'chart.notePlaceholder')}
+                        maxLength={tool === 'image' ? 300 : 80}
                         className="h-7 w-40 rounded-full bg-page px-3 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
                         dir="auto"
                     />

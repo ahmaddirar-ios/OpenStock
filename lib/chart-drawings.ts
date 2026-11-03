@@ -61,6 +61,11 @@ export type ShapeKind =
     | 'regression'
     | 'flattop'
     | 'disjoint'
+    | 'icon'
+    | 'image'
+    | 'bars'
+    | 'avwap'
+    | 'vprofile'
     | 'fib'
     | 'gann'
     | 'text'
@@ -88,6 +93,8 @@ export type ShapeTool =
     // Gann, pitchforks and the measured channels
     | 'gannfan' | 'gannbox' | 'gannsquare' | 'pitchfork' | 'schiffpitchfork' | 'modpitchfork' | 'insidepitchfork'
     | 'regression' | 'flattop' | 'disjoint'
+    // the exotics: a sticker, a pasted image, and the three tools that read the candles themselves
+    | 'icon' | 'image' | 'bars' | 'avwap' | 'vprofile'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -247,6 +254,16 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'flattop', group: 'gann', kind: 'flattop', clicks: 2, defaultColor: 'cyan' },
     { tool: 'disjoint', group: 'gann', kind: 'disjoint', clicks: 3, defaultColor: 'violet' },
 
+    // The exotics. A sticker marks a point and is re-worded by the same double click a note uses; an
+    // image is pasted by its web address. The three volume tools read the candles: a bars pattern
+    // copies a range of them forward, an anchored VWAP averages them from its anchor, and a volume
+    // profile counts a range's volume into price rows.
+    { tool: 'icon', group: 'annotation', kind: 'icon', clicks: 1, defaultColor: 'gold' },
+    { tool: 'image', group: 'annotation', kind: 'image', clicks: 2, defaultColor: 'white' },
+    { tool: 'bars', group: 'forecast', kind: 'bars', clicks: 3, defaultColor: 'teal' },
+    { tool: 'avwap', group: 'forecast', kind: 'avwap', clicks: 1, defaultColor: 'violet' },
+    { tool: 'vprofile', group: 'forecast', kind: 'vprofile', clicks: 2, defaultColor: 'cyan' },
+
     { tool: 'xabcd', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
     { tool: 'cypher', group: 'patterns', kind: 'poly', clicks: 5, pointLabels: ['X', 'A', 'B', 'C', 'D'], defaultColor: 'teal' },
     { tool: 'hs', group: 'patterns', kind: 'hs', clicks: 5, pointLabels: ['LS', 'N1', 'H', 'N2', 'RS'], defaultColor: 'teal' },
@@ -288,7 +305,7 @@ export const pointsNeeded = (tool: ShapeTool): number => toolDef(tool).clicks;
  * chart stores their text and re-opens the editor on a double click. The price markers derive their
  * label instead, so nothing of theirs has to be stored.
  */
-const TEXT_TOOLS = new Set<ShapeTool>(['text', 'callout', 'balloon', 'signpost', 'flag']);
+const TEXT_TOOLS = new Set<ShapeTool>(['text', 'callout', 'balloon', 'signpost', 'flag', 'icon', 'image']);
 export const carriesText = (tool: ShapeTool): boolean => TEXT_TOOLS.has(tool);
 
 /** A price the way the chart prints it: two decimals, thousands separated. */
@@ -304,6 +321,10 @@ export const priceLabel = (price: number): string =>
 export function annotationText(tool: ShapeTool, price: number, typed?: string | null): string | undefined {
     if (!carriesText(tool)) return undefined;
     if (tool === 'signpost' || tool === 'flag') return priceLabel(price);
+    // A sticker starts on the first glyph of the set; an image starts empty until its address is
+    // pasted, because a price would not be an address.
+    if (tool === 'icon') return cleanText(typed ?? '') ?? ICON_GLYPHS[0];
+    if (tool === 'image') return cleanText(typed ?? '', IMAGE_URL_MAX) ?? undefined;
     return cleanText(typed ?? '') ?? priceLabel(price);
 }
 
@@ -580,6 +601,83 @@ export function disjointChannel(a: DrawPoint, b: DrawPoint, c: DrawPoint): { bas
     const move = { time: b.time - a.time, price: b.price - a.price };
     return { base: [a, b], parallel: [c, { time: c.time + move.time, price: c.price + move.price }] };
 }
+
+// --- the volume-based tools --------------------------------------------------
+// These read the candles themselves, not just the two points the trader clicked: a VWAP averages the
+// typical price by volume from its anchor forward, and a volume profile counts the volume of a range
+// into price rows. The window is the series on screen — the same one the chart is drawing.
+
+/** The candle fields the volume tools need; the chart's own candle set already has them. */
+export type DrawCandle = { time: number; open: number; high: number; low: number; close: number; volume: number };
+
+/** The candles inside a time range, in order — what a profile or a copied pattern is built from. */
+export function candlesBetween(candles: readonly DrawCandle[], fromTime: number, toTime: number): DrawCandle[] {
+    const from = Math.min(fromTime, toTime);
+    const to = Math.max(fromTime, toTime);
+    return candles.filter((candle) => candle.time >= from && candle.time <= to);
+}
+
+/**
+ * Anchored VWAP: from the anchor bar forward, the volume-weighted average of each bar's typical price
+ * (high + low + close over three, the usual reading). A bar with no volume counts as one unit, so the
+ * line keeps moving on a symbol the feed reports no volume for instead of freezing at its anchor.
+ */
+export function anchoredVwap(candles: readonly DrawCandle[], anchorTime: number): { time: number; value: number }[] {
+    const start = candles.findIndex((candle) => candle.time >= anchorTime);
+    if (start === -1) return [];
+    let weighted = 0;
+    let volume = 0;
+    const line: { time: number; value: number }[] = [];
+    for (let i = start; i < candles.length; i += 1) {
+        const candle = candles[i];
+        const typical = (candle.high + candle.low + candle.close) / 3;
+        const weight = candle.volume > 0 ? candle.volume : 1;
+        weighted += typical * weight;
+        volume += weight;
+        line.push({ time: candle.time, value: weighted / volume });
+    }
+    return line;
+}
+
+/** One price row of a volume profile: the volume traded in the band around `price`. */
+export type ProfileRow = { price: number; volume: number };
+
+/**
+ * Volume by price over a range. Each candle's volume is spread evenly across the rows its high–low
+ * spans, which is how a profile reads a long bar as covering its whole range rather than one price.
+ * Rows come back from the highest price down, the way the histogram is drawn.
+ */
+export function volumeProfile(
+    candles: readonly DrawCandle[],
+    fromTime: number,
+    toTime: number,
+    rowCount = 24,
+): { rows: ProfileRow[]; max: number; step: number; from: number; to: number } {
+    const inside = candlesBetween(candles, fromTime, toTime);
+    if (inside.length === 0 || rowCount < 1) return { rows: [], max: 0, step: 0, from: 0, to: 0 };
+    const high = Math.max(...inside.map((candle) => candle.high));
+    const low = Math.min(...inside.map((candle) => candle.low));
+    const step = (high - low) / rowCount || 1;
+    const buckets = new Array(rowCount).fill(0);
+    for (const candle of inside) {
+        // The rows this candle covers. A candle that spans one row puts everything in it.
+        const first = Math.min(rowCount - 1, Math.max(0, Math.floor((candle.low - low) / step)));
+        const last = Math.min(rowCount - 1, Math.max(0, Math.floor((candle.high - low) / step)));
+        const share = candle.volume / (last - first + 1);
+        for (let row = first; row <= last; row += 1) buckets[row] += share;
+    }
+    // Row 0 is the bottom band; the histogram is drawn top-down.
+    const rows = buckets
+        .map((volume, index) => ({ price: low + step * (index + 0.5), volume }))
+        .reverse();
+    return { rows, max: Math.max(...buckets), step, from: Math.min(fromTime, toTime), to: Math.max(fromTime, toTime) };
+}
+
+/** The glyphs the sticker tool cycles through — the small set a trader marks a chart with. */
+export const ICON_GLYPHS = ['★', '⚑', '✔', '✖', '↑', '↓', '⚡', '!' ] as const;
+
+/** An image may only be drawn from a plain web address: never a data: payload or a local path. */
+export const isImageUrl = (value: string): boolean => /^https?:\/\/[^\s]+$/i.test(value.trim());
 
 /** The far end of a projection: the a→b move repeated `steps` times forward from b, drawn as the
  *  dotted continuation a trader reads as "if this move runs again". */
@@ -866,7 +964,7 @@ export function hitTest(
         const drawing = drawings[i];
         const kind = kindOf(drawing);
 
-        if (kind === 'text' || kind === 'horizontal' || kind === 'signpost' || kind === 'flag' || kind === 'pricenote') {
+        if (kind === 'text' || kind === 'horizontal' || kind === 'signpost' || kind === 'flag' || kind === 'pricenote' || kind === 'avwap' || kind === 'icon') {
             if (isNearPoint(cursor, points[0], tolerance)) return drawing;
             continue;
         }
@@ -888,7 +986,7 @@ export function hitTest(
             if (kind === 'tri' && points.length >= 3 && distanceToSegment(cursor, points[points.length - 1], points[0]) <= tolerance) return drawing;
             continue;
         }
-        if (kind === 'ellipse' || kind === 'circle' || kind === 'arc' || kind === 'curve' || kind === 'dcurve' || kind === 'callout' || kind === 'balloon') {
+        if (kind === 'ellipse' || kind === 'circle' || kind === 'arc' || kind === 'curve' || kind === 'dcurve' || kind === 'callout' || kind === 'balloon' || kind === 'image' || kind === 'vprofile' || kind === 'bars') {
             // These are drawn as curves between their anchors, so the anchors are what you grab.
             if (points.some((point) => isNearPoint(cursor, point, tolerance))) return drawing;
             continue;
@@ -920,11 +1018,17 @@ export function handleIndex(screenPoints: ScreenPoint[], cursor: ScreenPoint, to
 
 export const TEXT_MAX = 80;
 
+/** An image is addressed by a URL, which is longer than a note's words. */
+export const IMAGE_URL_MAX = 300;
+
+/** How long a tool's own wording may be. */
+export const textLimit = (tool: ShapeTool): number => (tool === 'image' ? IMAGE_URL_MAX : TEXT_MAX);
+
 /** Trimmed and collapsed, or null when there is nothing worth printing. */
-export function cleanText(text: unknown): string | null {
+export function cleanText(text: unknown, max = TEXT_MAX): string | null {
     if (typeof text !== 'string') return null;
     const clean = text.trim().replace(/\s+/g, ' ');
-    return clean.length === 0 || clean.length > TEXT_MAX ? null : clean;
+    return clean.length === 0 || clean.length > max ? null : clean;
 }
 
 /** The same text on a new anchor: the note is dragged, so its point moves, not its wording. */
@@ -935,7 +1039,7 @@ export const withPoint = (drawing: Drawing, index: number, point: DrawPoint): Dr
 
 /** A note's new wording. Bad text leaves the drawing untouched, so a stray save cannot blank it. */
 export function withText(drawing: Drawing, text: unknown): Drawing {
-    const clean = cleanText(text);
+    const clean = cleanText(text, textLimit(drawing.tool));
     return clean == null ? drawing : { ...drawing, text: clean };
 }
 
@@ -1015,7 +1119,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         Array.isArray(candidate.labels) && candidate.labels.every((l) => typeof l === 'string')
             ? candidate.labels.slice(0, 8)
             : undefined;
-    const text = carriesText(candidate.tool) ? (cleanText(candidate.text) ?? '—') : undefined;
+    const text = carriesText(candidate.tool) ? (cleanText(candidate.text, textLimit(candidate.tool)) ?? '—') : undefined;
     const color = isColorKey(candidate.color) ? candidate.color : undefined;
     const locked = candidate.locked === true ? true : undefined;
     const width = isWidth(candidate.width) ? candidate.width : undefined;

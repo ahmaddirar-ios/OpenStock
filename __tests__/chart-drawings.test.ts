@@ -89,7 +89,17 @@ describe('the tool registry', () => {
             'info',
         ]);
         expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fib');
-        expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual(['text', 'callout', 'balloon', 'signpost', 'flag', 'pricenote']);
+        // The note, the annotation family, and the sticker and image that behave like them.
+        expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual([
+            'text',
+            'callout',
+            'balloon',
+            'signpost',
+            'flag',
+            'pricenote',
+            'icon',
+            'image',
+        ]);
         expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3']);
         // The Gann flyout holds the angles, the pitchforks, the measured channels and the cycles,
         // in the order they sit in the registry (and so in the flyout). The original `gann` tool is

@@ -4,9 +4,10 @@
 // a painter.
 import { describe, expect, it } from 'vitest';
 import {
-    TOOL_DEFS,
+    anchoredVwap,
     annotationText,
     arcThrough,
+    candlesBetween,
     carriesText,
     circleFrom,
     disjointChannel,
@@ -21,6 +22,9 @@ import {
     flattenLines,
     gannBoxGuides,
     gannFanEnds,
+    ICON_GLYPHS,
+    IMAGE_URL_MAX,
+    isImageUrl,
     measureSpan,
     parseDrawings,
     pitchforkLines,
@@ -36,9 +40,15 @@ import {
     regressionChannel,
     serializeDrawings,
     speedFanEnds,
+    TEXT_MAX,
+    textLimit,
+    TOOL_DEFS,
     toolDef,
     toolsInGroup,
     trendAngleDeg,
+    volumeProfile,
+    withText,
+    type DrawCandle,
     type DrawPoint,
 } from '@/lib/chart-drawings';
 
@@ -454,5 +464,109 @@ describe('the Gann and pitchfork family', () => {
             { time: 1600, price: 90 },
             { time: 2600, price: 110 },
         ]);
+    });
+});
+
+describe('the volume-based tools', () => {
+    // Five hourly bars: rising prices, so a VWAP from the first bar sits under the last close.
+    const candles: DrawCandle[] = [
+        { time: 1000, open: 100, high: 102, low: 99, close: 101, volume: 10 },
+        { time: 2000, open: 101, high: 104, low: 100, close: 103, volume: 20 },
+        { time: 3000, open: 103, high: 106, low: 102, close: 105, volume: 30 },
+        { time: 4000, open: 105, high: 108, low: 104, close: 107, volume: 40 },
+        { time: 5000, open: 107, high: 109, low: 106, close: 108, volume: 50 },
+    ];
+
+    it('takes the candles inside a range', () => {
+        expect(candlesBetween(candles, 2000, 4000).map((c) => c.time)).toEqual([2000, 3000, 4000]);
+        expect(candlesBetween(candles, 4000, 2000).map((c) => c.time)).toEqual([2000, 3000, 4000]);
+        expect(candlesBetween(candles, 9000, 9500)).toEqual([]);
+    });
+
+    it('averages the typical price by volume from its anchor forward', () => {
+        const line = anchoredVwap(candles, 1000);
+        expect(line).toHaveLength(5);
+        expect(line.map((p) => p.time)).toEqual([1000, 2000, 3000, 4000, 5000]);
+        // The first bar is its own VWAP: (102 + 99 + 101) / 3.
+        expect(line[0].value).toBeCloseTo(100.6667, 3);
+        // Later bars are pulled up by the rising prices, and stay under each close.
+        expect(line[4].value).toBeGreaterThan(line[0].value);
+        expect(line[4].value).toBeLessThan(108);
+    });
+
+    it('counts a bar with no volume, so the line keeps moving', () => {
+        // A feed that reports no volume at all: the line becomes the average of the typical prices.
+        const quiet = candles.map((candle) => ({ ...candle, volume: 0 }));
+        const line = anchoredVwap(quiet, 1000);
+        expect(line).toHaveLength(5);
+        expect(line[4].value).toBeGreaterThan(line[3].value);
+    });
+
+    it('starts at the first bar at or after the anchor', () => {
+        expect(anchoredVwap(candles, 2500).map((p) => p.time)).toEqual([3000, 4000, 5000]);
+        expect(anchoredVwap(candles, 6000)).toEqual([]);
+    });
+
+    it('counts a range into price rows, highest first', () => {
+        const profile = volumeProfile(candles, 1000, 5000, 5);
+        expect(profile.rows).toHaveLength(5);
+        expect(profile.max).toBeGreaterThan(0);
+        // Rows run high → low, and the top row is the band around the highest prices touched.
+        const prices = profile.rows.map((row) => row.price);
+        expect([...prices].sort((a, b) => b - a)).toEqual(prices);
+        // The top row is the band around the highest price touched (109), so its midpoint is 108.
+        expect(prices[0]).toBeCloseTo(108, 6);
+        // Every candle's volume is in the profile, spread over the rows it spans.
+        const total = profile.rows.reduce((sum, row) => sum + row.volume, 0);
+        expect(total).toBeCloseTo(150, 6);
+    });
+
+    it('returns an empty profile rather than dividing by nothing', () => {
+        expect(volumeProfile(candles, 9000, 9500).rows).toEqual([]);
+        expect(volumeProfile([], 0, 1).max).toBe(0);
+    });
+});
+
+describe('the sticker and the pasted image', () => {
+    it('seeds a sticker with the first glyph', () => {
+        expect(annotationText('icon', 100)).toBe(ICON_GLYPHS[0]);
+        expect(annotationText('icon', 100, '⚑')).toBe('⚑');
+    });
+
+    it('leaves an image blank until an address is pasted, and never seeds it with a price', () => {
+        expect(annotationText('image', 100)).toBeUndefined();
+        expect(annotationText('image', 100, 'https://example.com/a.png')).toBe('https://example.com/a.png');
+    });
+
+    it('only accepts a plain web address for an image', () => {
+        expect(isImageUrl('https://example.com/a.png')).toBe(true);
+        expect(isImageUrl('http://example.com/a.png')).toBe(true);
+        // A data: payload or a local path is not an address this chart will fetch.
+        expect(isImageUrl('data:image/png;base64,AAAA')).toBe(false);
+        expect(isImageUrl('/tmp/a.png')).toBe(false);
+        expect(isImageUrl('javascript:alert(1)')).toBe(false);
+        expect(isImageUrl('https://example.com/a b.png')).toBe(false);
+    });
+});
+
+describe('how much wording a tool may keep', () => {
+    it('lets an image keep a real URL, which is longer than a note', () => {
+        const url = `https://example.com/${'x'.repeat(120)}.png`;
+        expect(url.length).toBeGreaterThan(TEXT_MAX);
+        expect(annotationText('image', 100, url)).toBe(url);
+        // The same wording on a note is refused, so the note falls back to its price.
+        expect(annotationText('text', 100, url)).toBe('100.00');
+    });
+
+    it('keeps an address when it is edited, and still refuses a wording that is too long', () => {
+        const url = `https://example.com/${'y'.repeat(120)}.png`;
+        const image = { id: 'i1', tool: 'image' as const, points: [{ time: 1, price: 1 }] };
+        expect(withText(image, url).text).toBe(url);
+        expect(withText({ ...image, tool: 'text' as const }, `too long ${'z'.repeat(200)}`).text).toBeUndefined();
+    });
+
+    it('bounds the limit by the tool', () => {
+        expect(textLimit('image')).toBe(IMAGE_URL_MAX);
+        expect(textLimit('text')).toBe(TEXT_MAX);
     });
 });

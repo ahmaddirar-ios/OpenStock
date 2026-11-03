@@ -24,7 +24,7 @@ afterEach(cleanup);
 const toScreen = (point: DrawPoint): ScreenPoint => ({ x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 });
 const fromScreen = (x: number, y: number): DrawPoint => ({ time: 1000 + (x - 100) * 10, price: 100 + (500 - y) / 5 });
 
-const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string; closes?: { time: number; close: number }[]; fromScreen?: (x: number, y: number) => DrawPoint | null } = {}) => {
+const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string; candles?: { time: number; open: number; high: number; low: number; close: number; volume: number }[]; fromScreen?: (x: number, y: number) => DrawPoint | null } = {}) => {
     const drawing: Drawing = { id: 'd1', tool, points, ...(extra.text ? { text: extra.text } : {}) };
     const { container } = render(
         <ChartDrawings
@@ -33,7 +33,7 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
             tool={null}
             text={extra.text ?? ""}
             barTimes={barTimes}
-            closes={extra.closes ?? []}
+            candles={extra.candles ?? []}
             toScreen={toScreenOverride ?? toScreen}
             fromScreen={extra.fromScreen ?? fromScreen}
             onCommit={() => {}}
@@ -76,7 +76,7 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
         width: Number(node.getAttribute('stroke-width')),
         opacity: Number(node.getAttribute('opacity')),
     }));
-    return { lines, rects, dashes, ellipses, circles, polygons, paths, strokes, texts, shapes: { rects: Array.from(svg.querySelectorAll('rect') as unknown as HTMLElement[]) } };
+    return { container, lines, rects, dashes, ellipses, circles, polygons, paths, strokes, texts, shapes: { rects: Array.from(svg.querySelectorAll('rect') as unknown as HTMLElement[]) } };
 };
 
 /** The same layer, but with a tool armed, so a drawing gesture can be played against it. */
@@ -577,8 +577,8 @@ describe('the Gann, pitchfork and measured-channel family on the chart', () => {
     });
 
     it('fits a regression channel to the candles on screen', () => {
-        const closes = Array.from({ length: 11 }, (_, i) => ({ time: 1000 + i * 100, close: 100 + i }));
-        const { lines, polygons } = renderTool('regression', [a, { time: 2000, price: 110 }], [], undefined, { closes });
+        const candles = Array.from({ length: 11 }, (_, i) => ({ time: 1000 + i * 100, open: 100 + i - 0.5, high: 100 + i + 1, low: 100 + i - 1, close: 100 + i, volume: 100 }));
+        const { lines, polygons } = renderTool('regression', [a, { time: 2000, price: 110 }], [], undefined, { candles });
         // A perfect line: the channel runs from (1000, 100) up to (2000, 110).
         expect(lines.some((line) => line.x1 === 100 && line.y1 === 500 && line.x2 === 200 && line.y2 === 450)).toBe(true);
         // The two bands are drawn, and the fitted band is filled.
@@ -678,5 +678,61 @@ describe('the pile the drawings are painted in', () => {
     it('follows a move to the front, so the drawing the trader raised is painted last', () => {
         expect(renderList(layerDrawings([under, over], 'under', 'front'))).toEqual([80, 50]);
         expect(renderList(layerDrawings([under, over], 'over', 'back'))).toEqual([80, 50]);
+    });
+});
+
+describe('the exotics on the chart', () => {
+    const a: DrawPoint = { time: 1000, price: 100 }; // (100, 500)
+    // Six rising hourly bars, so a VWAP, a profile and a copied pattern all have something to read.
+    const candles = Array.from({ length: 6 }, (_, i) => ({
+        time: 1000 + i * 100,
+        open: 100 + i,
+        high: 101 + i,
+        low: 99 + i,
+        close: 100.5 + i,
+        volume: 100 * (i + 1),
+    }));
+
+    it('draws a sticker as its glyph', () => {
+        const { texts } = renderTool('icon', [a], [], undefined, { text: '⚑' });
+        expect(texts).toContain('⚑');
+    });
+
+    it('draws a pasted image inside its frame, and says so while it has no address', () => {
+        const withUrl = renderTool('image', [a, { time: 2000, price: 120 }], [], undefined, { text: 'https://example.com/a.png' });
+        expect(withUrl.container.querySelector('image')?.getAttribute('href')).toBe('https://example.com/a.png');
+
+        const empty = renderTool('image', [a, { time: 2000, price: 120 }]);
+        expect(empty.texts).toContain('chart.imagePlaceholder');
+    });
+
+    it('averages the candles from the anchor forward', () => {
+        const { paths } = renderTool('avwap', [a], [], undefined, { candles });
+        expect(paths).toHaveLength(1);
+        // One point per candle from the anchor on, in one path.
+        expect(paths[0].split('L')).toHaveLength(6);
+    });
+
+    it('draws nothing for a VWAP when the drawing layer has no candles', () => {
+        expect(renderTool('avwap', [a]).paths).toHaveLength(0);
+    });
+
+    it('counts a range into a profile, shading the range and naming the busiest row', () => {
+        const { rects, texts } = renderTool('vprofile', [a, { time: 1500, price: 110 }], [], undefined, { candles });
+        // The shaded range plus one bar per price row that traded.
+        expect(rects.length).toBeGreaterThan(2);
+        const prices = texts.filter((text) => /^\d/.test(text));
+        expect(prices).toHaveLength(1); // the point of control
+        expect(Number(prices[0])).toBeGreaterThan(100);
+    });
+
+    it('copies a range of candles to the point it was dropped on', () => {
+        const { lines, rects } = renderTool('bars', [a, { time: 1300, price: 108 }, { time: 2600, price: 120 }], [], undefined, { candles });
+        // Four candles in the range: one wick each, one body each, and the three anchors' dots are circles.
+        expect(lines).toHaveLength(4);
+        expect(rects).toHaveLength(4);
+        // The copy starts where it was dropped (x = 100 + (2600 - 1000)/10 = 260).
+        const bodyX = Math.min(...rects.map((rect) => Number(rect.getAttribute('x')) + Number(rect.getAttribute('width')) / 2));
+        expect(bodyX).toBeCloseTo(260, 0);
     });
 });

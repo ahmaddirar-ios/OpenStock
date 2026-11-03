@@ -100,5 +100,10 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     regression: 'chart.tool.regression',
     flattop: 'chart.tool.flattop',
     disjoint: 'chart.tool.disjoint',
+    icon: 'chart.tool.icon',
+    image: 'chart.tool.image',
+    bars: 'chart.tool.bars',
+    avwap: 'chart.tool.avwap',
+    vprofile: 'chart.tool.vprofile',
     highlighter: 'chart.tool.highlighter',
 };

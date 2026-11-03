@@ -66,6 +66,10 @@ describe('drawing rail groups', () => {
             'daterange',
             'dprange',
             'projection',
+            // The three that read the candles: a copied bars pattern, an anchored VWAP and a profile.
+            'bars',
+            'avwap',
+            'vprofile',
         ]);
         expect(railGroupsWithTools().map((g) => g.group)).toContain('forecast');
     });
