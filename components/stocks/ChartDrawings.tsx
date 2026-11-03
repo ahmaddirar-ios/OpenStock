@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import {
     cleanText,
     cycleIndices,
+    circleFrom,
+    doubleCurvePath,
     drawingColor,
+    ellipseFrom,
     fibLevels,
     gannGuides,
     arrowHeadPoints,
@@ -24,8 +27,13 @@ import {
     labelsFor,
     nearestTime,
     newDrawingId,
+    MAX_STROKE_POINTS,
+    polygonPoints,
+    polylinePath,
     positionZones,
     projectionEnds,
+    quadraticPath,
+    arcThrough,
     rangeReadout,
     rayEnd,
     speedFanEnds,
@@ -101,8 +109,7 @@ export default function ChartDrawings({
     onToolConsumed,
     label,
 }: Props) {
-    const svgRef = useRef<SVGSVGElement>(null);
-    const [draft, setDraft] = useState<DrawPoint[]>([]);
+    const svgRef = useRef<SVGSVGElement>(null);    const [draft, setDraft] = useState<DrawPoint[]>([]);
     const [preview, setPreview] = useState<DrawPoint | null>(null);
     const [dragging, setDragging] = useState<{ id: string; index: number } | null>(null);
     // The measure box lives only while the measure tool is on: it is a reading, not a drawing.
@@ -134,6 +141,9 @@ export default function ChartDrawings({
     // Drawings stay on screen when no tool is armed; only the pointer capture is switched off, so the
     // chart underneath keeps panning and zooming normally.
     const interactive = Boolean(tool);
+
+    // 'select' and 'measure' are gestures, not shapes: only a real shape tool has a point count.
+    const shapeTool: ShapeTool | null = tool != null && tool !== 'select' && tool !== 'measure' ? tool : null;
 
     // A range counts its bars from the interval on screen, which is the spacing of the bar times.
     const barSeconds = barTimes.length > 1 ? Math.abs(barTimes[1] - barTimes[0]) : 0;
@@ -175,8 +185,9 @@ export default function ChartDrawings({
         const raw = fromScreen(cursor.x, cursor.y);
         if (!raw) return;
         const point = snapPoint ? snapPoint(raw) : raw;
+        const needed = pointsNeeded(tool as ShapeTool);
         // One-point tools (a level, a note) commit straight away; the rest collect clicks.
-        if (pointsNeeded(tool) === 1) {
+        if (needed === 1) {
             onCommit({
                 id: newDrawingId(),
                 tool,
@@ -186,8 +197,23 @@ export default function ChartDrawings({
             onToolConsumed();
             return;
         }
+        // An open-ended tool takes as many points as the trader gives it and is finished with a
+        // double click. The second click of that double click lands on the last point again, so a
+        // repeat within a few pixels replaces it instead of doubling it.
+        if (needed === 0) {
+            const next = [...draft];
+            const last = next.length > 0 ? toScreen(next[next.length - 1]) : null;
+            if (last && Math.hypot(last.x - cursor.x, last.y - cursor.y) <= 4) {
+                next[next.length - 1] = point;
+            } else {
+                next.push(point);
+            }
+            setDraft(next.slice(0, MAX_STROKE_POINTS));
+            setPreview(null);
+            return;
+        }
         const next = [...draft, point];
-        if (next.length < pointsNeeded(tool)) {
+        if (next.length < needed) {
             setDraft(next);
             return;
         }
@@ -227,6 +253,14 @@ export default function ChartDrawings({
     };
     // Rewriting a note is a double click: a single click on its dot has to stay free for dragging it.
     const onDoubleClick = (event: React.MouseEvent) => {
+        // An open-ended stroke (a polyline, and later the brush) is finished by this double click.
+        if (shapeTool && pointsNeeded(shapeTool) === 0 && draft.length >= 2) {
+            onCommit({ id: newDrawingId(), tool: shapeTool, points: draft });
+            setDraft([]);
+            setPreview(null);
+            onToolConsumed();
+            return;
+        }
         if (tool !== 'select') return;
         const rect = svgRef.current?.getBoundingClientRect();
         const cursor = { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
@@ -900,6 +934,98 @@ export default function ChartDrawings({
             );
         }
 
+        // --- geometric shapes ----------------------------------------------------
+        // Drawn in pixels: an ellipse has to stay round, a circle a circle, and an arc is defined by
+        // three points. Each helper returns what the SVG element wants, so these branches stay short.
+        if (kind === 'ellipse' || kind === 'circle') {
+            if (kind === 'circle') {
+                const { cx, cy, r } = circleFrom(screen[0], screen[1]);
+                return (
+                    <g key={drawing.id} strokeDasharray={dash}>
+                        <circle cx={cx} cy={cy} r={r} fill={`color-mix(in oklab, ${color} 10%, transparent)`} stroke={color} strokeWidth={width} opacity={opacity} />
+                        {dot(cx, cy, `${drawing.id}-c`, color, opacity, TEXT_DOT)}
+                        {selectionHandles(screen)}
+                    </g>
+                );
+            }
+            const { cx, cy, rx, ry } = ellipseFrom(screen[0], screen[1]);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`color-mix(in oklab, ${color} 10%, transparent)`} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'tri') {
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <polygon
+                        points={polygonPoints(screen)}
+                        fill={`color-mix(in oklab, ${color} 10%, transparent)`}
+                        stroke={color}
+                        strokeWidth={width}
+                        opacity={opacity}
+                    />
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'polyline') {
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <path d={polylinePath(screen)} fill="none" stroke={color} strokeWidth={width} strokeLinejoin="round" strokeLinecap="round" opacity={opacity} />
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'curve' || kind === 'dcurve') {
+            const d =
+                kind === 'curve'
+                    ? quadraticPath(screen[0], screen[1], screen[2] ?? screen[1])
+                    : doubleCurvePath(screen[0], screen[1], screen[2], screen[3] ?? screen[2]);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <path d={d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" opacity={opacity} />
+                    {/* The points between the ends are handles, not corners. */}
+                    {screen.map((point, i) => (
+                        <rect
+                            key={`${drawing.id}-h${i}`}
+                            x={point.x - 3}
+                            y={point.y - 3}
+                            width={6}
+                            height={6}
+                            fill={i === 0 || i === screen.length - 1 ? color : 'none'}
+                            stroke={color}
+                            strokeWidth={1}
+                            opacity={opacity}
+                        />
+                    ))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'arc') {
+            const arc = arcThrough(screen[0], screen[1], screen[2] ?? screen[1]);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {arc ? (
+                        <path d={arc.path} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" opacity={opacity} />
+                    ) : (
+                        // Three points in a row have no circle: the straight line is the honest picture.
+                        <line x1={screen[0].x} y1={screen[0].y} x2={screen[2]?.x ?? screen[0].x} y2={screen[2]?.y ?? screen[0].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    )}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
         // trend: a segment between its two points
         return (
             <g key={drawing.id} strokeDasharray={dash}>
@@ -909,6 +1035,17 @@ export default function ChartDrawings({
             </g>
         );
     };
+
+    // While an open-ended stroke is being drawn, the line so far follows the pointer: without it a
+    // polyline of ten points would be ten dots and no line.
+    const draftPath = (() => {
+        if (shapeTool == null || pointsNeeded(shapeTool) !== 0) return null;
+        const points = [...draft, ...(preview ? [preview] : [])]
+            .map((point) => toScreen(point))
+            .filter((point): point is ScreenPoint => point != null);
+        return points.length >= 2 ? polylinePath(points) : null;
+    })();
+    const lastDraftAt = draft.length > 0 ? toScreen(draft[draft.length - 1]) : null;
 
     // The note editor sits over the chart at the note's own position, as the interface promised.
     const editorTarget = editing ? drawings.find((drawing) => drawing.id === editing.id) : null;
@@ -931,6 +1068,12 @@ export default function ChartDrawings({
             >
                 {shapes.map((drawing) => shapeFor(drawing))}
                 {tool === 'measure' && measureBox}
+                {draftPath && <path d={draftPath} fill="none" stroke="var(--brand)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />}
+                {draftPath && draft.length >= 2 && lastDraftAt && (
+                    <text x={lastDraftAt.x + 8} y={lastDraftAt.y - 8} fontSize={11} className="mono" fill="var(--brand)" opacity={0.9}>
+                        {label('chart.tool.finish')}
+                    </text>
+                )}
                 {/* Dots already placed, while a multi-click shape is being drawn. */}
                 {draft.map((point, i) => {
                     const spot = toScreen(point);

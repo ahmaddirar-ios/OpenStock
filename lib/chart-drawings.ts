@@ -37,6 +37,13 @@ export type ShapeKind =
     | 'fibtime'
     | 'fibarc'
     | 'fibspeed'
+    | 'ellipse'
+    | 'circle'
+    | 'tri'
+    | 'polyline'
+    | 'arc'
+    | 'curve'
+    | 'dcurve'
     | 'fib'
     | 'gann'
     | 'text'
@@ -55,6 +62,8 @@ export type ShapeTool =
     | 'longpos' | 'shortpos' | 'pricerange' | 'daterange' | 'dprange' | 'projection'
     // the Fibonacci family
     | 'fibext' | 'fibtrendext' | 'fibfan' | 'fibchannel' | 'fibtime' | 'fibarc' | 'fibspeed'
+    // geometric shapes (a polyline is open-ended: it takes clicks until it is finished)
+    | 'ellipse' | 'circle' | 'tri' | 'polyline' | 'arc' | 'curve' | 'dcurve'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
     // Elliott wave shapes
@@ -170,6 +179,16 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'fibtime', group: 'fib', kind: 'fibtime', clicks: 2, defaultColor: 'cyan' },
     { tool: 'fibarc', group: 'fib', kind: 'fibarc', clicks: 3, defaultColor: 'gold' },
     { tool: 'fibspeed', group: 'fib', kind: 'fibspeed', clicks: 2, defaultColor: 'violet' },
+
+    // Geometric shapes. A polyline is open-ended (`clicks: 0`): it keeps taking points until the
+    // trader double-clicks to finish it.
+    { tool: 'ellipse', group: 'shapes', kind: 'ellipse', clicks: 2, defaultColor: 'cyan' },
+    { tool: 'circle', group: 'shapes', kind: 'circle', clicks: 2, defaultColor: 'cyan' },
+    { tool: 'tri', group: 'shapes', kind: 'tri', clicks: 3, defaultColor: 'cyan' },
+    { tool: 'polyline', group: 'shapes', kind: 'polyline', clicks: 0, defaultColor: 'cyan' },
+    { tool: 'arc', group: 'shapes', kind: 'arc', clicks: 3, defaultColor: 'cyan' },
+    { tool: 'curve', group: 'shapes', kind: 'curve', clicks: 3, defaultColor: 'cyan' },
+    { tool: 'dcurve', group: 'shapes', kind: 'dcurve', clicks: 4, defaultColor: 'cyan' },
     { tool: 'gann', group: 'gann', kind: 'gann', clicks: 2, defaultColor: 'violet' },
     { tool: 'text', group: 'annotation', kind: 'text', clicks: 1, defaultColor: 'white' },
 
@@ -204,8 +223,13 @@ export const isShapeTool = (value: unknown): value is ShapeTool => typeof value 
 
 export const toolDef = (tool: ShapeTool): ToolDef => TOOL_BY_ID[tool];
 
-/** How many chart clicks the tool needs; shapes with one point are placed in a single click. */
+/** How many chart clicks the tool needs; shapes with one point are placed in a single click, and an
+ *  open-ended tool (a polyline, a freehand stroke) reports 0 because it takes points until the
+ *  trader finishes it. */
 export const pointsNeeded = (tool: ShapeTool): number => toolDef(tool).clicks;
+
+/** The most points an open-ended stroke keeps, so a freehand line cannot fill the storage quota. */
+export const MAX_STROKE_POINTS = 240;
 
 export const toolsInGroup = (group: ToolGroup): ToolDef[] => TOOL_DEFS.filter((d) => d.group === group);
 
@@ -398,6 +422,62 @@ export function speedFanEnds(a: DrawPoint, b: DrawPoint, edgeTime: number, ratio
     return ratios.map((ratio) => ({ ratio, end: { time: edgeTime, price: a.price + slope * ratio * (edgeTime - a.time) } }));
 }
 
+// --- geometric shapes -------------------------------------------------------
+// These read better in screen pixels than in chart space: an ellipse that must stay round, a circle
+// that must stay a circle, and an arc through three points are all about what the eye sees. Each
+// helper returns either the numbers an SVG element takes or the path data itself.
+
+/** The ellipse a two-corner box makes. */
+export function ellipseFrom(a: ScreenPoint, b: ScreenPoint): { cx: number; cy: number; rx: number; ry: number } {
+    return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, rx: Math.abs(b.x - a.x) / 2, ry: Math.abs(b.y - a.y) / 2 };
+}
+
+/** The circle through a centre and one point on it. */
+export function circleFrom(centre: ScreenPoint, edge: ScreenPoint): { cx: number; cy: number; r: number } {
+    return { cx: centre.x, cy: centre.y, r: distance(centre, edge) };
+}
+
+/** The `points` attribute of a closed polygon. */
+export const polygonPoints = (points: ScreenPoint[]): string => points.map((point) => `${point.x},${point.y}`).join(' ');
+
+/** The `d` attribute of an open path through every point. */
+export const polylinePath = (points: ScreenPoint[]): string =>
+    points.map((point, i) => `${i === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
+
+/** A quadratic curve: from `a` to `c`, pulled towards its handle `b`. */
+export const quadraticPath = (a: ScreenPoint, b: ScreenPoint, c: ScreenPoint): string => `M${a.x},${a.y} Q${b.x},${b.y} ${c.x},${c.y}`;
+
+/** Two quadratics joined at the middle of their handles: the S-shaped double curve. */
+export function doubleCurvePath(a: ScreenPoint, b: ScreenPoint, c: ScreenPoint, d: ScreenPoint): string {
+    const join = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
+    return `M${a.x},${a.y} Q${b.x},${b.y} ${join.x},${join.y} Q${c.x},${c.y} ${d.x},${d.y}`;
+}
+
+/**
+ * The arc that runs from `a` to `c` through `b`, as the circle it sits on plus the path data.
+ * Three points on one line have no circle; the caller draws the straight fallback instead.
+ */
+export function arcThrough(a: ScreenPoint, b: ScreenPoint, c: ScreenPoint): { cx: number; cy: number; r: number; path: string } | null {
+    const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+    if (Math.abs(d) < 1e-6) return null;
+    const aa = a.x * a.x + a.y * a.y;
+    const bb = b.x * b.x + b.y * b.y;
+    const cc = c.x * c.x + c.y * c.y;
+    const cx = (aa * (b.y - c.y) + bb * (c.y - a.y) + cc * (a.y - b.y)) / d;
+    const cy = (aa * (c.x - b.x) + bb * (a.x - c.x) + cc * (b.x - a.x)) / d;
+    const r = Math.hypot(a.x - cx, a.y - cy);    const u = { x: a.x - cx, y: a.y - cy };
+    const v = { x: b.x - cx, y: b.y - cy };
+    const w = { x: c.x - cx, y: c.y - cy };
+    // In SVG's coordinates (y down) sweep-flag 1 draws clockwise; the arc must turn the way the
+    // middle point lies, and only the long way round is a large arc.
+    const sweep = u.x * v.y - u.y * v.x > 0 ? 1 : 0;
+    const turn = Math.atan2(u.x * w.y - u.y * w.x, u.x * w.x + u.y * w.y);
+    const delta = sweep === 1 ? turn : -turn;
+    const largeArc = ((delta % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) > Math.PI ? 1 : 0;
+    // `+ 0` keeps a centre on an axis at +0: an SVG attribute should never print "-0".
+    return { cx: cx + 0, cy: cy + 0, r, path: `M${a.x},${a.y} A ${r} ${r} 0 ${largeArc} ${sweep} ${c.x},${c.y}` };
+}
+
 /** A pointer for an arrow tip, in SVG coordinates: the two barbs of a head that points at `to`. */
 export function arrowHeadPoints(from: { x: number; y: number }, to: { x: number; y: number }, size = 10): string {
     const dx = to.x - from.x;
@@ -569,10 +649,17 @@ export function hitTest(
             if (points.some((p) => isNearPoint(cursor, p, tolerance))) return drawing;
             continue;
         }
-        if (kind === 'poly' || kind === 'hs' || kind === 'triangle') {
+        if (kind === 'poly' || kind === 'hs' || kind === 'triangle' || kind === 'polyline' || kind === 'tri') {
             for (let s = 0; s + 1 < points.length; s += 1) {
                 if (distanceToSegment(cursor, points[s], points[s + 1]) <= tolerance) return drawing;
             }
+            // A polyline of two points is a segment; a triangle closes back to its first point.
+            if (kind === 'tri' && points.length >= 3 && distanceToSegment(cursor, points[points.length - 1], points[0]) <= tolerance) return drawing;
+            continue;
+        }
+        if (kind === 'ellipse' || kind === 'circle' || kind === 'arc' || kind === 'curve' || kind === 'dcurve') {
+            // These are drawn as curves between their anchors, so the anchors are what you grab.
+            if (points.some((point) => isNearPoint(cursor, point, tolerance))) return drawing;
             continue;
         }
         if (kind === 'trend') {
@@ -686,7 +773,11 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const candidate = value as Drawing;
     if (typeof candidate.id !== 'string' || !candidate.id) return null;
     if (!isShapeTool(candidate.tool)) return null;
-    if (!Array.isArray(candidate.points) || candidate.points.length !== pointsNeeded(candidate.tool)) return null;
+    // A fixed-count tool must hold exactly its own number of points; an open-ended one needs at
+    // least the two a line takes, and is capped so a stroke cannot grow without bound.
+    const needed = pointsNeeded(candidate.tool);
+    if (!Array.isArray(candidate.points)) return null;
+    if (needed === 0 ? candidate.points.length < 2 || candidate.points.length > MAX_STROKE_POINTS : candidate.points.length !== needed) return null;
     if (!candidate.points.every(isPoint)) return null;
 
     const labels =

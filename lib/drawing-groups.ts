@@ -77,4 +77,11 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     fibtime: 'chart.tool.fibtime',
     fibarc: 'chart.tool.fibarc',
     fibspeed: 'chart.tool.fibspeed',
+    ellipse: 'chart.tool.ellipse',
+    circle: 'chart.tool.circle',
+    tri: 'chart.tool.tri',
+    polyline: 'chart.tool.polyline',
+    arc: 'chart.tool.arc',
+    curve: 'chart.tool.curve',
+    dcurve: 'chart.tool.dcurve',
 };

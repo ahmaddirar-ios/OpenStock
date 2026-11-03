@@ -3,8 +3,8 @@
 // edge, an extended line to both, a horizontal ray and a vertical line are fixed by one point.
 // These tests pin that contract at the SVG level, because the chart's own time→pixel lookup
 // stops at the last bar and cannot place an end that belongs to the panel's edge.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import ChartDrawings from '@/components/stocks/ChartDrawings';
 import type { DrawPoint, Drawing, ScreenPoint, ShapeTool } from '@/lib/chart-drawings';
 
@@ -60,9 +60,42 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
         rx: Number(node.getAttribute('rx')),
         ry: Number(node.getAttribute('ry')),
     }));
+    const circles = Array.from(svg.querySelectorAll('circle')).map((node) => ({
+        cx: Number(node.getAttribute('cx')),
+        cy: Number(node.getAttribute('cy')),
+        r: Number(node.getAttribute('r')),
+    }));
+    const polygons = Array.from(svg.querySelectorAll('polygon')).map((node) => node.getAttribute('points') ?? '');
+    const paths = Array.from(svg.querySelectorAll('path')).map((node) => node.getAttribute('d') ?? '');
     const dashes = Array.from(svg.querySelectorAll('line')).map((line) => line.getAttribute('stroke-dasharray'));
     const texts = Array.from(svg.querySelectorAll('text')).map((node) => node.textContent ?? '');
-    return { lines, rects, dashes, ellipses, texts };
+    return { lines, rects, dashes, ellipses, circles, polygons, paths, texts };
+};
+
+/** The same layer, but with a tool armed, so a drawing gesture can be played against it. */
+const renderDrawing = (options: { tool: ShapeTool | 'select'; points?: DrawPoint[] }, onCommit: (drawing: Drawing) => void = () => {}) => {
+    const { container } = render(
+        <ChartDrawings
+            drawings={options.points ? [{ id: 'd1', tool: options.tool as ShapeTool, points: options.points }] : []}
+            selectedId={null}
+            tool={options.tool}
+            text=""
+            barTimes={[]}
+            toScreen={toScreen}
+            fromScreen={fromScreen}
+            onCommit={onCommit}
+            onSelect={() => {}}
+            onMoveHandle={() => {}}
+            onEditText={() => {}}
+            onToolConsumed={() => {}}
+            onGestureStart={() => {}}
+            onGestureEnd={() => {}}
+            label={(key) => key}
+        />,
+    );
+    const svg = container.querySelector('svg[role="application"]');
+    if (!svg) throw new Error('the drawing layer did not render');
+    return { svg, container };
 };
 
 // A shallow line: (1000, 100) → (2000, 105), i.e. 100px right and 25px up on this scale.
@@ -70,6 +103,104 @@ const rise: DrawPoint[] = [
     { time: 1000, price: 100 },
     { time: 2000, price: 105 },
 ];
+
+describe('the geometric shapes on the chart', () => {
+    it('draws an ellipse from its two corners', () => {
+        const { ellipses } = renderTool('ellipse', [{ time: 1000, price: 100 }, { time: 2000, price: 112 }]);
+        expect(ellipses).toHaveLength(1);
+        expect(ellipses[0]).toEqual({ cx: 150, cy: 470, rx: 50, ry: 30 });
+    });
+
+    it('draws a circle through the point it was given', () => {
+        const { circles } = renderTool('circle', [{ time: 1000, price: 100 }, { time: 1300, price: 108 }]);
+        // The centre carries a dot too, so the filled shape is the one with the translucent fill.
+        const shape = circles.filter((c) => c.r === 50);
+        expect(shape).toHaveLength(1);
+        expect(shape[0]).toEqual({ cx: 100, cy: 500, r: 50 });
+    });
+
+    it('closes a triangle through its three points', () => {
+        const { polygons } = renderTool('tri', [
+            { time: 1000, price: 100 },
+            { time: 2000, price: 100 },
+            { time: 1500, price: 110 },
+        ]);
+        expect(polygons).toHaveLength(1);
+        expect(polygons[0]).toBe('100,500 200,500 150,450');
+    });
+
+    it('runs a polyline through every point it was given', () => {
+        const { paths } = renderTool('polyline', [
+            { time: 1000, price: 100 },
+            { time: 1500, price: 110 },
+            { time: 2000, price: 104 },
+        ]);
+        expect(paths).toContain('M100,500 L150,450 L200,480');
+    });
+
+    it('bends a curve towards its handle', () => {
+        const { paths } = renderTool('curve', [
+            { time: 1000, price: 100 },
+            { time: 1500, price: 90 },
+            { time: 2000, price: 100 },
+        ]);
+        expect(paths.some((d) => d.startsWith('M100,500 Q150,550'))).toBe(true);
+    });
+
+    it('joins two curves for a double curve', () => {
+        const { paths } = renderTool('dcurve', [
+            { time: 1000, price: 100 },
+            { time: 1200, price: 90 },
+            { time: 1800, price: 110 },
+            { time: 2000, price: 100 },
+        ]);
+        const path = paths.find((d) => d.startsWith('M100,500')) ?? '';
+        expect(path.match(/Q/g)).toHaveLength(2);
+    });
+
+    it('draws an arc through three points, and a straight line when they are in a row', () => {
+        const bent = renderTool('arc', [
+            { time: 1500, price: 110 },
+            { time: 1000, price: 100 },
+            { time: 2000, price: 100 },
+        ]);
+        expect(bent.paths.some((d) => /A \d/.test(d))).toBe(true);
+
+        const flat = renderTool('arc', [
+            { time: 1000, price: 100 },
+            { time: 1500, price: 100 },
+            { time: 2000, price: 100 },
+        ]);
+        // Three points in a row have no circle: the straight line is what is drawn instead.
+        expect(flat.paths).toHaveLength(0);
+        expect(flat.lines.length).toBeGreaterThan(0);
+    });
+
+    it('keeps taking clicks for a polyline and finishes it on a double click', () => {
+        const onCommit = vi.fn();
+        const { svg } = renderDrawing({ tool: 'polyline' }, onCommit);
+
+        const point = (x: number, y: number) => {
+            fireEvent.pointerDown(svg, { clientX: x, clientY: y, pointerId: 1 });
+            fireEvent.pointerUp(svg, { clientX: x, clientY: y, pointerId: 1 });
+        };
+
+        point(100, 500);
+        point(150, 450);
+        point(200, 480);
+        // Nothing is committed while the line is still being drawn.
+        expect(onCommit).not.toHaveBeenCalled();
+        expect(svg.querySelectorAll('path').length).toBeGreaterThan(0);
+
+        // The double click lands on the last point again: it must not be stored twice.
+        point(200, 480);
+        fireEvent.doubleClick(svg, { clientX: 200, clientY: 480 });
+
+        expect(onCommit).toHaveBeenCalledTimes(1);
+        expect(onCommit.mock.calls[0][0].tool).toBe('polyline');
+        expect(onCommit.mock.calls[0][0].points).toHaveLength(3);
+    });
+});
 
 describe('the Fibonacci family on the chart', () => {
     const base: DrawPoint = { time: 1000, price: 100 };

@@ -64,6 +64,18 @@ describe('drawing rail groups', () => {
         ]);
     });
 
+    it('offers the geometric shapes on the shapes group', () => {
+        expect(toolsInGroup('shapes').map((d) => d.tool)).toEqual([
+            'ellipse',
+            'circle',
+            'tri',
+            'polyline',
+            'arc',
+            'curve',
+            'dcurve',
+        ]);
+    });
+
     it('labels every tool in both languages', () => {
         // The rail prints TOOL_LABEL_KEYS, so a tool without a key would render an empty row.
         expect(Object.keys(TOOL_LABEL_KEYS).sort()).toEqual(TOOL_DEFS.map((d) => d.tool).sort());

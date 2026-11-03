@@ -5,6 +5,10 @@
 import { describe, expect, it } from 'vitest';
 import {
     TOOL_DEFS,
+    arcThrough,
+    circleFrom,
+    doubleCurvePath,
+    ellipseFrom,
     extendedEnds,
     fibArcRadii,
     fibChannelLevels,
@@ -12,11 +16,16 @@ import {
     fibFanEnds,
     fibTimeMultiples,
     measureSpan,
+    parseDrawings,
     pointsNeeded,
+    polygonPoints,
+    polylinePath,
     positionZones,
     projectionEnds,
+    quadraticPath,
     rangeReadout,
     rayEnd,
+    serializeDrawings,
     speedFanEnds,
     toolDef,
     toolsInGroup,
@@ -208,6 +217,78 @@ describe('the Fibonacci family', () => {
         expect(ends.map((e) => Math.round(e.end.price))).toEqual([127, 153, 180]);
         // A vertical pair has no slope to fan.
         expect(speedFanEnds(base, { time: 1000, price: 130 }, 5000)).toEqual([]);
+    });
+});
+
+describe('the geometric shapes', () => {
+    it('builds an ellipse from the box its two corners make', () => {
+        expect(ellipseFrom({ x: 100, y: 100 }, { x: 200, y: 160 })).toEqual({ cx: 150, cy: 130, rx: 50, ry: 30 });
+    });
+
+    it('builds a circle from its centre and one point on it', () => {
+        // A 30/40/50 triangle: the radius is the distance between the two points.
+        expect(circleFrom({ x: 100, y: 100 }, { x: 130, y: 140 })).toEqual({ cx: 100, cy: 100, r: 50 });
+    });
+
+    it('prints the point lists the SVG wants', () => {
+        expect(polygonPoints([{ x: 100, y: 100 }, { x: 200, y: 100 }, { x: 150, y: 50 }])).toBe('100,100 200,100 150,50');
+        expect(polylinePath([{ x: 100, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 200 }])).toBe('M100,100 L200,100 L200,200');
+    });
+
+    it('curves through its middle point', () => {
+        expect(quadraticPath({ x: 100, y: 100 }, { x: 200, y: 50 }, { x: 300, y: 100 })).toBe('M100,100 Q200,50 300,100');
+        // A double curve is two of those, joined at the middle of the two handles.
+        expect(
+            doubleCurvePath({ x: 100, y: 100 }, { x: 150, y: 0 }, { x: 250, y: 200 }, { x: 300, y: 100 }),
+        ).toBe('M100,100 Q150,0 200,100 Q250,200 300,100');
+    });
+
+    it('finds the circle three points sit on and draws the arc through them', () => {
+        // Three points on the circle of radius 50 around the origin.
+        expect(arcThrough({ x: 50, y: 0 }, { x: 0, y: -50 }, { x: -50, y: 0 })).toEqual({
+            cx: 0,
+            cy: 0,
+            r: 50,
+            path: 'M50,0 A 50 50 0 0 0 -50,0',
+        });
+        // Three points on one line have no circle to sit on.
+        expect(arcThrough({ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 })).toBeNull();
+    });
+
+    it('picks the arc that reaches the middle point, and the long way when it has to', () => {
+        // a and c are ends of a diameter here, so the arc is exactly half the circle: it turns the
+        // way b lies (sweep 1) and is not a large arc.
+        const half = arcThrough({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 });
+        expect(half?.r).toBeCloseTo(Math.hypot(50, 50), 6);
+        expect(half?.path).toMatch(/^M0,0 A 70\.7106\d* 70\.7106\d* 0 0 1 100,100$/);
+
+        // A tall b pushes the circle up, and the arc that reaches it goes the long way round:
+        // centre (50, 200/3), radius 250/3, sweep 0 and large-arc 1.
+        const long = arcThrough({ x: 0, y: 0 }, { x: 50, y: 150 }, { x: 100, y: 0 });
+        expect(long?.cy).toBeCloseTo(200 / 3, 6);
+        expect(long?.r).toBeCloseTo(250 / 3, 6);
+        expect(long?.path).toMatch(/^M0,0 A 83\.33\d* 83\.33\d* 0 1 0 100,0$/);
+    });
+});
+
+describe('an open-ended tool', () => {
+    it('takes as many points as the trader clicks', () => {
+        expect(pointsNeeded('polyline')).toBe(0);
+    });
+
+    it('keeps a stored stroke of any length, but not one too short to draw', () => {
+        const stroke = (count: number) => [
+            {
+                id: 'p1',
+                tool: 'polyline' as const,
+                points: Array.from({ length: count }, (_, i) => ({ time: 1000 + i * 60, price: 100 + i })),
+            },
+        ];
+        expect(parseDrawings(serializeDrawings(stroke(5)))).toHaveLength(1);
+        expect(parseDrawings(serializeDrawings(stroke(2)))).toHaveLength(1);
+        expect(parseDrawings(serializeDrawings(stroke(1)))).toHaveLength(0);
+        // A fixed-count tool still has to match its own count exactly.
+        expect(parseDrawings(JSON.stringify([{ id: 't1', tool: 'trend', points: [{ time: 1, price: 1 }] }]))).toHaveLength(0);
     });
 });
 
