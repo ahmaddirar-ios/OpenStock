@@ -173,7 +173,7 @@ export const sendWeeklyNewsSummary = inngest.createFunction(
                                                 <p style="margin: 0;">
                                                     <a href="{{ unsubscribe_url }}" style="color: #C9F36A; text-decoration: underline;">Unsubscribe</a>
                                                     <span style="margin: 0 10px;">•</span>
-                                                    <a href="https://openstock.rovexjo.com" style="color: #C9F36A; text-decoration: underline;">Visit Rovex</a>
+                                                    <a href="https://rovexjo.com" style="color: #C9F36A; text-decoration: underline;">Visit Rovex</a>
                                                 </p>
                                                 <p style="margin: 20px 0 0 0; font-size: 12px;">&copy; ${new Date().getFullYear()} Rovex · Powered by Rovex · AGPL-3.0</p>
                                             </td>
@@ -503,7 +503,7 @@ export const checkInactiveUsers = inngest.createFunction(
                                         <table border="0" cellspacing="0" cellpadding="0" width="100%">
                                             <tr>
                                                 <td align="center">
-                                                    <a href="https://openstock.rovexjo.com" style="display: inline-block; background-color: #C9F36A; color: #000000; font-weight: bold; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-size: 16px;">Return to Dashboard</a>
+                                                    <a href="https://rovexjo.com" style="display: inline-block; background-color: #C9F36A; color: #000000; font-weight: bold; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-size: 16px;">Return to Dashboard</a>
                                                 </td>
                                             </tr>
                                         </table>
