@@ -736,3 +736,26 @@ describe('the exotics on the chart', () => {
         expect(bodyX).toBeCloseTo(260, 0);
     });
 });
+
+describe('the preview of a shape that is still being drawn', () => {
+    // A draft has fewer points than its tool needs: after the first click of a three-point channel the
+    // painter used to read a point that did not exist yet and crash the chart. Padding the preview to
+    // the tool's own count is what makes a partial draft paintable.
+    const placeFirstPointThenMove = (tool: ShapeTool) => {
+        const { svg } = renderDrawing({ tool });
+        fireEvent.pointerMove(svg, { clientX: 100, clientY: 500, pointerId: 1 });
+        fireEvent.pointerDown(svg, { clientX: 100, clientY: 500, pointerId: 1 });
+        fireEvent.pointerUp(svg, { clientX: 100, clientY: 500, pointerId: 1 });
+        fireEvent.pointerMove(svg, { clientX: 320, clientY: 380, pointerId: 1 });
+        return svg;
+    };
+
+    it('paints a multi-point tool after its first point instead of throwing', () => {
+        for (const tool of ['channel', 'pitchfork', 'xabcd', 'fibext', 'tri', 'dcurve', 'triangle', 'regression'] as const) {
+            const svg = placeFirstPointThenMove(tool);
+            // Something is painted for the draft, and the layer still holds the interactive surface.
+            expect(svg.querySelectorAll('line, path, polygon, rect, text').length, tool).toBeGreaterThan(0);
+            cleanup();
+        }
+    });
+});

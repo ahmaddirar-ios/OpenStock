@@ -386,9 +386,21 @@ export default function ChartDrawings({
         );
     })();
 
-    // Everything stored, plus the shape being drawn right now.
-    const shapes: Drawing[] = draft.length > 0 && preview && tool && tool !== 'select'
-        ? [...drawings, { id: 'draft', tool: tool as ShapeTool, points: [...draft, preview], labels: labels ?? toolDef(tool as ShapeTool).pointLabels }]
+    // Everything stored, plus the shape being drawn right now. A draft is padded up to the number of
+    // points its tool needs, by repeating the point under the cursor: a channel's preview is painted
+    // the moment its first leg is placed, and every painter can read the points it expects — before
+    // this, a three-click tool crashed the chart on the first mouse move (its painter read a point
+    // that did not exist yet).
+    const draftPoints = (() => {
+        if (draft.length === 0 || !preview || !tool) return null;
+        const points = [...draft, preview];
+        const needed = pointsNeeded(tool as ShapeTool);
+        if (needed === 0) return points;
+        while (points.length < needed) points.push(preview);
+        return points.slice(0, Math.max(needed, points.length));
+    })();
+    const shapes: Drawing[] = draftPoints && tool && tool !== 'select'
+        ? [...drawings, { id: 'draft', tool: tool as ShapeTool, points: draftPoints, labels: labels ?? toolDef(tool as ShapeTool).pointLabels }]
         : drawings;
 
     const dot = (x: number, y: number, key: string, color: string, opacity: number, radius = 4) => (
