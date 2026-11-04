@@ -45,6 +45,11 @@ describe('the registry', () => {
                     expect(param.choices.map((choice) => choice.value)).toContain(param.default);
                     continue;
                 }
+                // Only a number carries bounds; a formula's bounds are the language's grammar.
+                if (param.kind === 'text') {
+                    expect(param.default.trim().length).toBeGreaterThan(0);
+                    continue;
+                }
                 expect(param.default).toBeGreaterThanOrEqual(param.min);
                 expect(param.default).toBeLessThanOrEqual(param.max);
                 expect(param.step).toBeGreaterThan(0);

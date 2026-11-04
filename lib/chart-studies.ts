@@ -34,6 +34,7 @@ import {
 } from '@/lib/indicators';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
+import { evaluateFormula } from '@/lib/formula';
 
 /** The list is capped at the pane budget: every oscillator study opens its own pane. */
 export const MAX_STUDIES = 12;
@@ -64,7 +65,8 @@ export type StudyId =
     | 'roc'
     | 'aroon'
     | 'trix'
-    | 'mfi';
+    | 'mfi'
+    | 'formula';
 
 /** Theme tokens a study may paint with; the host resolves them, the legend maps them to classes. */
 export type ColorToken = 'brand' | 'warn' | 'up' | 'down' | 'faint' | 'muted';
@@ -106,9 +108,20 @@ export type ChoiceParam = {
     choices: { value: string; label: StringKey }[];
 };
 
-export type StudyParam = NumberParam | ChoiceParam;
+/** Free text: a formula, and nothing else so far. */
+export type TextParam = {
+    kind: 'text';
+    key: string;
+    label: StringKey;
+    default: string;
+    /** Shown under the box, so the writer does not have to guess the vocabulary. */
+    hint?: StringKey;
+};
+
+export type StudyParam = NumberParam | ChoiceParam | TextParam;
 
 const isChoice = (param: StudyParam): param is ChoiceParam => param.kind === 'choice';
+const isText = (param: StudyParam): param is TextParam => param.kind === 'text';
 
 export type StudyLine = {
     key: string;
@@ -201,13 +214,20 @@ const define = (def: Def): StudyDef => ({
             candles,
             (key) => {
                 const spec = def.params.find((param) => param.key === key);
-                if (!spec || isChoice(spec)) return 0;
+                // Only a number parameter has a number to give; a name or a formula reads through pick().
+                if (!spec || isChoice(spec) || isText(spec)) return 0;
                 const value = params[key];
                 return typeof value === 'number' && Number.isFinite(value) ? value : spec.default;
             },
             (key) => {
                 const spec = def.params.find((param) => param.key === key);
-                if (!spec || !isChoice(spec)) return '';
+                if (!spec) return '';
+                // Text parameters come back as they were typed; a choice only if it is still on offer.
+                if (isText(spec)) {
+                    const value = params[key];
+                    return typeof value === 'string' && value.trim() ? value : spec.default;
+                }
+                if (!isChoice(spec)) return '';
                 const value = params[key];
                 return typeof value === 'string' && spec.choices.some((choice) => choice.value === value)
                     ? value
@@ -505,6 +525,24 @@ const DEFINITIONS: StudyDef[] = [
         ],
         compute: (candles) => pivots(candles),
     }),
+    define({
+        id: 'formula',
+        label: 'study.formula',
+        group: 'overlay',
+        params: [{ kind: 'text', key: 'expression', label: 'study.param.expression', default: 'close - sma(close, 20)', hint: 'study.param.expressionHint' }],
+        lines: [valueLine('brand')],
+        compute: (candles, _param, pick) => {
+            const result = evaluateFormula(pick('expression'), candles);
+            // A formula that does not run draws nothing rather than breaking the chart: the menu
+            // already prints the reason while it is being typed. A warm-up bar (an average of 20 has
+            // nothing to say in bar 3) is a gap, which the series type spells null.
+            return {
+                value: result.ok
+                    ? result.values.map((value) => (Number.isFinite(value) ? value : null))
+                    : candles.map(() => null),
+            };
+        },
+    }),
 ];
 
 export const STUDIES = Object.fromEntries(DEFINITIONS.map((def) => [def.id, def])) as Record<
@@ -561,7 +599,7 @@ export function studyColor(study: StudyConfig, line: StudyLine): ColorToken {
 export function studiesParam(study: StudyConfig, key: string): number {
     const def = STUDIES[study.id];
     const param = def?.params.find((entry) => entry.key === key);
-    if (!param || isChoice(param)) return 0;
+    if (!param || isChoice(param) || isText(param)) return 0;
     const value = study.params[key];
     return typeof value === 'number' && Number.isFinite(value) ? value : param.default;
 }
@@ -576,6 +614,18 @@ export function studiesChoice(study: StudyConfig, key: string): string {
     return param.default;
 }
 
+/** How long a formula may get: long enough for a real expression, short enough for a settings row. */
+export const MAX_FORMULA_LENGTH = 200;
+
+/** The string value a text parameter ended up with. */
+export function studiesText(study: StudyConfig, key: string): string {
+    const def = STUDIES[study.id];
+    const param = def?.params.find((entry) => entry.key === key);
+    if (!param || !isText(param)) return '';
+    const value = study.params[key];
+    return typeof value === 'string' && value.trim() ? value : param.default;
+}
+
 const shortNumber = (value: number) => String(Number(value.toFixed(2)));
 
 /** `SMA 20`, `BB 20 · 2`, `MACD 12 · 26 · 9` — the name plus its parameters, in declared order. */
@@ -583,6 +633,7 @@ export function describeStudy(study: StudyConfig, lang: Lang): string {
     const def = STUDIES[study.id];
     if (!def) return '';
     const values = def.params.map((param) => {
+        if (isText(param)) return studiesText(study, param.key);
         if (isChoice(param)) {
             const chosen = param.choices.find((choice) => choice.value === studiesChoice(study, param.key));
             return chosen ? tx(lang, chosen.label) : '';
@@ -620,6 +671,11 @@ export function parseStudies(value: unknown): StudyConfig[] {
         const params: StudyParams = {};
         for (const param of def.params) {
             const raw = stored[param.key];
+            if (isText(param)) {
+                const text = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, MAX_FORMULA_LENGTH) : '';
+                params[param.key] = text || param.default;
+                continue;
+            }
             if (isChoice(param)) {
                 params[param.key] =
                     typeof raw === 'string' && param.choices.some((choice) => choice.value === raw)

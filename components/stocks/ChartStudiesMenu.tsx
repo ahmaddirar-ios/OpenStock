@@ -2,26 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Plus, Search, X } from 'lucide-react';
-import {
-    MAX_STUDIES,
-    STUDIES,
-    STUDY_COLOR_SOURCES,
-    STUDY_COLOR_TOKENS,
-    STUDY_IDS,
-    STUDY_LINE_DASHES,
-    STUDY_WIDTHS,
-    defaultStudy,
-    describeStudy,
-    studiesChoice,
-    studiesParam,
-    studyLineStyle,
-    studyWidth,
-    type StudyConfig,
-    type StudyId,
-    type StudyLineStyle,
-} from '@/lib/chart-studies';
+import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_COLOR_TOKENS, STUDY_IDS, STUDY_LINE_DASHES, STUDY_WIDTHS, defaultStudy, describeStudy, studiesChoice, studiesParam, studiesText, studyLineStyle, studyWidth, type StudyConfig, type StudyId, type StudyLineStyle } from '@/lib/chart-studies';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { checkFormula } from '@/lib/formula';
 
 // The indicators menu: search a study, add it, tune its parameters, remove it. It owns no state of
 // its own beyond what is being typed — the list belongs to the page (and through it, the browser),
@@ -90,6 +74,17 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                 i === index ? { ...study, params: { ...study.params, [key]: clamped } } : study,
             ),
         );
+    };
+
+    /**
+     * Applies a formula the moment it parses, so the chart follows the typing and a half-written
+     * expression is simply not applied yet. The box keeps the text either way.
+     */
+    const setText = (index: number, key: string, raw: string) => {
+        const next = raw.replace(/\s+/g, ' ').trim().slice(0, MAX_FORMULA_LENGTH);
+        setDrafts((current) => ({ ...current, [`${index}:${key}`]: next }));
+        if (!next || !checkFormula(next).ok) return;
+        onChange(studies.map((study, i) => (i === index ? { ...study, params: { ...study.params, [key]: next } } : study)));
     };
 
     /** Picks a named parameter (a source): a select, so there is no half-typed state to keep. */
@@ -300,6 +295,31 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                     {def.params.length > 0 && (
                                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                                             {def.params.map((param) => {
+                                                if (param.kind === 'text') {
+                                                    const value = studiesText(study, param.key);
+                                                    const checked = checkFormula(value);
+                                                    return (
+                                                        <label key={param.key} className="flex w-full flex-col gap-0.5 text-[10.5px] text-faint">
+                                                            {t(param.label)}
+                                                            <input
+                                                                type="text"
+                                                                dir="ltr"
+                                                                value={drafts[`${index}:${param.key}`] ?? value}
+                                                                onChange={(event) => setDrafts((current) => ({ ...current, [`${index}:${param.key}`]: event.target.value }))}
+                                                                onBlur={(event) => setText(index, param.key, event.target.value)}
+                                                                onKeyDown={(event) => {
+                                                                    if (event.key === 'Enter') event.currentTarget.blur();
+                                                                }}
+                                                                aria-label={t(param.label)}
+                                                                aria-invalid={!checked.ok}
+                                                                className="mono w-full rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                            />
+                                                            <span className={checked.ok ? 'text-faint' : 'text-down'}>
+                                                                {checked.ok ? (param.hint ? t(param.hint) : '') : checked.error}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                }
                                                 if (param.kind === 'choice') {
                                                     return (
                                                         <label
