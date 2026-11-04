@@ -179,6 +179,9 @@ export default async function LandingPage() {
                         </StaggerItem>
                     ))}
                 </Stagger>
+                <div className="mt-6 flex justify-center">
+                    <Link href="/pricing" className="btn btn-ghost h-10 px-5">Compare plans in full</Link>
+                </div>
             </section>
 
             <section id="self-host" className="mx-auto mt-28 grid max-w-[1200px] scroll-mt-24 items-start gap-10 px-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">

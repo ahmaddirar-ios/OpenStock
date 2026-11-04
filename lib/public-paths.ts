@@ -4,6 +4,8 @@ export const PUBLIC_EXACT_PATHS = [
     '/',
     '/about',
     '/help',
+    '/pricing',
+    '/privacy',
     '/terms',
     '/api-docs',
     '/s',

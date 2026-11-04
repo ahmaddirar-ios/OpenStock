@@ -9,10 +9,12 @@ import { REPO_URL } from "@/lib/constants";
 const FOOTER_LINKS = [
     { href: '/s', label: 'Stocks' },
     { href: '/compare', label: 'Guides' },
+    { href: '/pricing', label: 'Pricing' },
     { href: '/about', label: 'About' },
     { href: '/help', label: 'Help' },
     { href: '/api-docs', label: 'Architecture' },
     { href: '/terms', label: 'Terms' },
+    { href: '/privacy', label: 'Privacy' },
     { href: REPO_URL, label: 'Source' },
 ];
 
@@ -38,7 +40,7 @@ export default async function MarketingLayout({ children }: { children: React.Re
                         <RovexLogo size={27} />
                     </Link>
                     <nav className="hidden items-center gap-1 md:flex">
-                        {[['/#inside', 'Product'], ['/#data', 'Data'], ['/#self-host', 'Self-host'], ['/about', 'About']].map(([href, label]) => (
+                        {[['/#inside', 'Product'], ['/#data', 'Data'], ['/#self-host', 'Self-host'], ['/pricing', 'Pricing'], ['/about', 'About']].map(([href, label]) => (
                             <Link key={href} href={href} className="side-item h-8 font-semibold">{label}</Link>
                         ))}
                     </nav>
