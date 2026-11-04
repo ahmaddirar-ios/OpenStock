@@ -3,7 +3,7 @@
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCKS } from '@/lib/constants';
 import { cache } from 'react';
-import { QUOTE_TTL_SECONDS } from '@/lib/market-data';
+import { quoteTtlSeconds } from '@/lib/market-data';
 import { hasFinnhubQuotes } from '@/lib/markets';
 import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
 import { isTadawulSymbol } from '@/lib/yahoo';
@@ -28,8 +28,8 @@ const FETCH_TIMEOUT_MS = 5000;
 const MAX_IN_FLIGHT_PER_KEY = 2;
 const MAX_CACHE_ENTRIES = 1000;
 const FAILURE_TTL_MS = 60_000;
-// Quotes are shared across everyone looking at a symbol: Finnhub cost scales with symbols, not users
-const LIVE_QUOTE_TTL = QUOTE_TTL_SECONDS;
+// Quotes are shared across everyone looking at a symbol: Finnhub cost scales with symbols, not users.
+// The TTL follows the session: a minute while the tape moves, an hour once it is shut.
 // Long-lived responses also go to the Next data cache, which Vercel shares across all instances
 const SHARED_CACHE_MIN_TTL = 60;
 
@@ -189,8 +189,10 @@ export async function getQuote(symbol: string, revalidateSeconds = 0) {
 
 // Shared, short-lived quotes for anything shown live on screen (pages and /api/quotes)
 export async function getLiveQuotes(symbols: string[]) {
+    // One TTL for the whole batch, priced by how many symbols it has to keep up with
+    const ttl = quoteTtlSeconds(symbols);
     // Symbols the free plan can't price are skipped instead of spending a request on a 403
-    const quotes = await Promise.all(symbols.map((s) => (hasFinnhubQuotes(s) ? getQuote(s, LIVE_QUOTE_TTL) : null)));
+    const quotes = await Promise.all(symbols.map((s) => (hasFinnhubQuotes(s) ? getQuote(s, ttl) : null)));
     return Object.fromEntries(symbols.map((s, i) => [s, quotes[i]?.c ? quotes[i] : null]));
 }
 
@@ -238,7 +240,7 @@ export async function getWatchlistData(symbols: string[]) {
         if (y) return { symbol: sym, price: y.price, change: y.change, changePercent: y.changePercent, currency: y.currency, name: y.name || sym, logo: undefined, marketCap: undefined, peRatio: 0 };
         const covered = hasFinnhubQuotes(sym);
         const [quote, profile] = covered
-            ? await Promise.all([getQuote(sym, LIVE_QUOTE_TTL), getCompanyProfile(sym)])
+            ? await Promise.all([getQuote(sym, quoteTtlSeconds([sym])), getCompanyProfile(sym)])
             : [null, null];
 
         return {

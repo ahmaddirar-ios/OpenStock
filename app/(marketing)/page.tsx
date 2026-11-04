@@ -26,8 +26,8 @@ type Tier = {
 
 const TIERS: Tier[] = [
     {
-        name: 'Rovex', price: 'Free', cadence: 'Hourly', perHour: 1,
-        body: 'The hosted app. Quotes refresh hourly and are shared by everyone; charts stay live from the exchange feed.',
+        name: 'Rovex', price: 'Free', cadence: 'Every minute in session', perHour: 60,
+        body: 'The hosted app. While the market is open quotes refresh every minute, and hourly once it closes; charts stay live from the exchange feed.',
         cta: { label: 'Get started', href: '/sign-up' },
     },
     {

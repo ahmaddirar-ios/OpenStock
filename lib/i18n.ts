@@ -882,6 +882,7 @@ const en = {
     'donate.later': 'Maybe later',
     // How old a number is
     'fresh.live': 'Live · 15s',
+    'fresh.liveMin': 'Live · 1m',
     'fresh.asOf': 'As of {t}',
     'fresh.delayed': 'Delayed',
     'fresh.hourly': 'refreshed hourly',
@@ -1884,6 +1885,7 @@ const ar: Record<StringKey, string> = {
     'donate.cta': 'كن راعياً',
     'donate.later': 'لاحقاً',
     'fresh.live': 'مباشر · ١٥ ث',
+    'fresh.liveMin': 'مباشر · دقيقة',
     'fresh.asOf': 'حتى {t}',
     'fresh.delayed': 'متأخر',
     'fresh.hourly': 'يُحدّث كل ساعة',

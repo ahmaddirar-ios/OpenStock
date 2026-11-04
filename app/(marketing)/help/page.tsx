@@ -22,7 +22,7 @@ const FAQS = [
     },
     {
         question: 'Where does the market data come from?',
-        answer: 'Charts come live from TradingView. Quotes, watchlist prices and alerts come from Finnhub; on this site they refresh hourly and every price shows when it was last traded.',
+        answer: 'Charts come live from TradingView. Quotes, watchlist prices and alerts come from Finnhub; on this site they refresh every minute while the market is open and hourly once it closes, and every price shows when it was last traded.',
     },
     {
         question: 'Which markets are supported?',

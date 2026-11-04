@@ -10,7 +10,7 @@ export const metadata = {
 };
 
 const DATA_MODES = [
-    { name: 'Cached', cadence: 'Hourly', body: 'Default for the public site. Quotes are fetched once an hour and shared by every user, so cost grows with symbols, not people.' },
+    { name: 'Cached', cadence: 'Every minute in session', body: 'Default for the public site. Quotes refresh every minute while the market is open and hourly once it closes, shared by every user, so cost grows with symbols, not people.' },
     { name: 'Realtime', cadence: 'Every 15 seconds', body: 'For Rovex Cloud and self-hosting. Set NEXT_PUBLIC_OPENSTOCK_DATA_MODE=realtime and on-screen prices refresh live and email price alerts turn on.' },
 ];
 

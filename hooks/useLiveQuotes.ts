@@ -1,19 +1,22 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { isRealtime } from "@/lib/market-data";
+import { isQuoteLive, quoteTtlSeconds } from "@/lib/market-data";
 
 export type LiveQuote = { c?: number; d?: number; dp?: number; h?: number; l?: number; o?: number; pc?: number; t?: number };
 
-// Realtime mode only: polls the shared /api/quotes cache while the tab is visible.
-// In cached mode prices come from the server render and refresh hourly for everyone.
-export function useLiveQuotes(symbols: string[], intervalMs = 15_000) {
+// Polls the shared /api/quotes cache while a session is running and the tab is visible.
+// When the market is shut (and the symbol isn't crypto) prices come from the server render instead.
+export function useLiveQuotes(symbols: string[], intervalMs?: number) {
     const [quotes, setQuotes] = useState<Record<string, LiveQuote | null>>({});
     const key = symbols.join(",");
 
     useEffect(() => {
-        if (!key || !isRealtime) return;
+        const list = key ? key.split(",") : [];
+        if (!list.length || !isQuoteLive(list)) return;
         let cancelled = false;
+        // Ask exactly as often as the server is willing to refresh, so a poll never returns the same number.
+        const every = intervalMs ?? quoteTtlSeconds(list) * 1000;
 
         const load = async () => {
             if (document.visibilityState !== "visible") return;
@@ -24,7 +27,8 @@ export function useLiveQuotes(symbols: string[], intervalMs = 15_000) {
         };
         const onVisibility = () => { if (document.visibilityState === "visible") load(); };
 
-        const interval = setInterval(load, intervalMs);
+        load();
+        const interval = setInterval(load, every);
         document.addEventListener("visibilitychange", onVisibility);
         return () => {
             cancelled = true;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { isRealtime } from "@/lib/market-data";
+import { isQuoteLive, isRealtime } from "@/lib/market-data";
 import { arNumberDigits, tx, type Lang } from "@/lib/i18n";
 
 // Honest label for how old a number is: "Live" in realtime mode, otherwise the time of the last trade.
@@ -15,8 +15,8 @@ const DataFreshness = ({ tradeTime, lang = 'en' }: { tradeTime?: number; lang?: 
             : null);
     }, [tradeTime, lang]);
 
-    if (isRealtime) {
-        return <span className="inline-flex items-center gap-1.5 text-[12px] text-faint"><span className="live-dot" /> {tx(lang, 'fresh.live')}</span>;
+    if (isRealtime || isQuoteLive()) {
+        return <span className="inline-flex items-center gap-1.5 text-[12px] text-faint"><span className="live-dot" /> {tx(lang, isRealtime ? 'fresh.live' : 'fresh.liveMin')}</span>;
     }
     return (
         <span className="text-[12px] text-faint">
