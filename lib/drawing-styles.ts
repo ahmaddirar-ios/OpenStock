@@ -17,7 +17,15 @@ import {
 
 export const DRAWING_STYLES_KEY = 'openstock-drawing-styles';
 
-export type DrawingStyle = { color?: ColorKey; width?: DrawingWidth; dash?: DrawingDash };
+export type DrawingStyle = {
+    color?: ColorKey;
+    width?: DrawingWidth;
+    dash?: DrawingDash;
+    // The parts of a text style and of a fill that a template can carry too.
+    italic?: boolean;
+    fill?: ColorKey;
+    fillOpacity?: number;
+};
 export type DrawingStyleMap = Partial<Record<ShapeTool, DrawingStyle>>;
 
 const isWidth = (value: unknown): value is DrawingWidth => typeof value === 'number' && (DRAWING_WIDTHS as readonly number[]).includes(value);
@@ -31,11 +39,21 @@ function cleanStyle(raw: unknown): DrawingStyle {
         ...(isColorKey(candidate.color) ? { color: candidate.color } : {}),
         ...(isWidth(candidate.width) ? { width: candidate.width } : {}),
         ...(isDash(candidate.dash) ? { dash: candidate.dash } : {}),
+        ...(candidate.italic === true ? { italic: true } : {}),
+        ...(isColorKey(candidate.fill) ? { fill: candidate.fill } : {}),
+        ...(typeof candidate.fillOpacity === 'number' && Number.isFinite(candidate.fillOpacity) && candidate.fillOpacity >= 0 && candidate.fillOpacity <= 100
+            ? { fillOpacity: candidate.fillOpacity }
+            : {}),
     };
 }
 
 const isEmptyStyle = (style: DrawingStyle): boolean =>
-    style.color === undefined && style.width === undefined && style.dash === undefined;
+    style.color === undefined &&
+    style.width === undefined &&
+    style.dash === undefined &&
+    style.italic === undefined &&
+    style.fill === undefined &&
+    style.fillOpacity === undefined;
 
 /** Parses whatever was stored. Anything malformed is dropped, never thrown. */
 export function parseDrawingStyles(raw: string | null): DrawingStyleMap {

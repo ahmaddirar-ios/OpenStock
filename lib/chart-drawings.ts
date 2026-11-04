@@ -127,7 +127,20 @@ export type Drawing = {
     textSize?: TextSize;
     /** Heavier glyphs, so a note can stand out from the rest of the markup. */
     bold?: boolean;
+    /** Slanted glyphs, the third half of a text style. */
+    italic?: boolean;
+    /** Fill palette key for the closed shapes; unset means the stroke's own colour. */
+    fill?: ColorKey;
+    /** Fill strength in percent (0 is invisible); unset means the tool's own look. */
+    fillOpacity?: number;
+    /** Interval ids this drawing is allowed on; empty or unset means every interval. */
+    timeframes?: string[];
 };
+
+/** The fill steps the toolbar offers, in percent. Zero is "no fill". */
+export const FILL_OPACITIES = [0, 5, 10, 15, 20, 25, 30, 40, 50] as const;
+const isFillOpacity = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
 
 export const TEXT_SIZES = ['sm', 'md', 'lg'] as const;
 export type TextSize = (typeof TEXT_SIZES)[number];
@@ -136,10 +149,37 @@ export type TextSize = (typeof TEXT_SIZES)[number];
 export const TEXT_FONT_PX: Record<TextSize, number> = { sm: 11, md: 12, lg: 15 };
 
 /** How a note should be painted, with the defaults applied in one place. */
-export const textStyleOf = (drawing: Pick<Drawing, 'textSize' | 'bold'>) => ({
+export const textStyleOf = (drawing: Pick<Drawing, 'textSize' | 'bold' | 'italic'>) => ({
     fontSize: TEXT_FONT_PX[drawing.textSize ?? 'md'],
     fontWeight: drawing.bold ? 700 : 500,
+    fontStyle: drawing.italic ? 'italic' : 'normal',
 });
+
+/** The tool's own fill strength, so a box and a circle keep the look they had before fills were editable. */
+const TOOL_FILL_DEFAULT: Partial<Record<ShapeTool, number>> = {
+    rectangle: 12,
+    xrect: 12,
+    ellipse: 10,
+    circle: 10,
+    tri: 10,
+};
+
+/**
+ * Whether a drawing belongs on this interval. An empty list means everywhere — the default, because
+ * a level drawn on a daily chart is useful on an hourly one.
+ */
+export const visibleOn = (drawing: Pick<Drawing, 'timeframes'>, intervalId: string): boolean =>
+    !drawing.timeframes || drawing.timeframes.length === 0 || drawing.timeframes.includes(intervalId);
+
+/** Whether this tool encloses an area at all: a trend line takes a stroke, not a fill. */
+export const hasFill = (tool: ShapeTool): boolean => TOOL_FILL_DEFAULT[tool] !== undefined;
+
+/** How a closed shape should be filled, with the palette and the default strength applied once. */
+export function fillOf(drawing: Pick<Drawing, 'tool' | 'color' | 'fill' | 'fillOpacity'>): { color: ColorKey; opacity: number } {
+    const color = drawing.fill ?? drawing.color ?? toolDef(drawing.tool).defaultColor;
+    const opacity = drawing.fillOpacity ?? TOOL_FILL_DEFAULT[drawing.tool] ?? 0;
+    return { color, opacity };
+}
 
 export const DRAWING_WIDTHS = [1, 2, 3, 4] as const;
 export type DrawingWidth = (typeof DRAWING_WIDTHS)[number];
@@ -1170,6 +1210,13 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     // Type styling only means something on a tool that carries words.
     const textSize = carriesText(candidate.tool) && isTextSize(candidate.textSize) ? candidate.textSize : undefined;
     const bold = carriesText(candidate.tool) && candidate.bold === true ? true : undefined;
+    const italic = carriesText(candidate.tool) && candidate.italic === true ? true : undefined;
+    // A fill only means something on a shape that encloses an area.
+    const fill = hasFill(candidate.tool) && isColorKey(candidate.fill) ? candidate.fill : undefined;
+    const fillOpacity = hasFill(candidate.tool) && isFillOpacity(candidate.fillOpacity) ? candidate.fillOpacity : undefined;
+    const timeframes = Array.isArray(candidate.timeframes)
+        ? [...new Set(candidate.timeframes.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length < 10))].slice(0, 20)
+        : undefined;
 
     return {
         id: candidate.id,
@@ -1184,6 +1231,10 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(dash ? { dash } : {}),
         ...(textSize ? { textSize } : {}),
         ...(bold ? { bold } : {}),
+        ...(italic ? { italic } : {}),
+        ...(fill ? { fill } : {}),
+        ...(fillOpacity !== undefined ? { fillOpacity } : {}),
+        ...(timeframes && timeframes.length > 0 ? { timeframes } : {}),
     };
 };
 

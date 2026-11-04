@@ -95,7 +95,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COUNT_GLYPHS, COUNT_TOOL, DRAWING_DASHES, DRAWING_WIDTHS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fillOf, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -156,7 +156,7 @@ import {
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -422,7 +422,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setDrawings((list) => [...list, copy]);
         setSelectedId(copy.id);
     }, [drawings, selectedId, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold'>>) => {
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'fill' | 'fillOpacity' | 'timeframes'>>) => {
         if (!selectedId) return;
         setDrawings((list) => list.map((d) => (d.id === selectedId ? { ...d, ...patch } : d)));
     };
@@ -1559,7 +1559,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     );
 
     // What the layer paints: everything the trader has not hidden. The list and storage keep them all.
-    const visibleDrawings = useMemo(() => drawings.filter((drawing) => !drawing.hidden), [drawings]);
+    // Hidden means "not now"; timeframes means "not on this interval".
+    const visibleDrawings = useMemo(
+        () => drawings.filter((drawing) => !drawing.hidden && visibleOn(drawing, intervalId)),
+        [drawings, intervalId],
+    );
 
     // The drawing layer gets the candles themselves: a regression channel is fitted to them and the
     // anchored VWAP and volume profile count them.
@@ -1945,6 +1949,41 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 >
                     <Share2 />
                 </button>
+                {/* Fill: the colour and the strength, for the shapes that enclose an area. */}
+                {selectedDrawing && hasFill(selectedDrawing.tool) && (
+                    <>
+                        <div role="group" aria-label={t('chart.tool.fill')} className="flex items-center gap-0.5">
+                            {COLOR_KEYS.map((key) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => restyleDrawing({ fill: key })}
+                                    aria-pressed={(selectedDrawing.fill ?? selectedDrawing.color) === key}
+                                    aria-label={`${t('chart.tool.fill')} ${key}`}
+                                    title={`${t('chart.tool.fill')} ${key}`}
+                                    className={cn(
+                                        'size-4 rounded-[4px] border border-white/25 transition-transform hover:scale-110',
+                                        (selectedDrawing.fill ?? selectedDrawing.color) === key && 'ring-2 ring-brand',
+                                    )}
+                                    style={{ background: DRAWING_COLORS[key] }}
+                                />
+                            ))}
+                        </div>
+                        <label className="flex items-center gap-1 text-[11px] text-faint">
+                            {t('chart.fillOpacity')}
+                            <select
+                                value={selectedDrawing.fillOpacity ?? fillOf(selectedDrawing).opacity}
+                                onChange={(event) => restyleDrawing({ fillOpacity: Number(event.target.value) })}
+                                aria-label={t('chart.fillOpacity')}
+                                className="h-7 rounded-[7px] bg-page px-1.5 text-[11px] text-foreground shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                {FILL_OPACITIES.map((step) => (
+                                    <option key={step} value={step}>{arDigits(step, lang)}%</option>
+                                ))}
+                            </select>
+                        </label>
+                    </>
+                )}
                 <button
                     type="button"
                     onClick={() => setShortcutsOpen(true)}
@@ -2076,6 +2115,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         >
                             B
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => restyleDrawing({ italic: !selectedDrawing.italic })}
+                            aria-pressed={!!selectedDrawing.italic}
+                            aria-label={t('chart.text.italic')}
+                            title={t('chart.text.italic')}
+                            className={cn('icon-btn text-[13px] italic', selectedDrawing.italic && 'text-brand')}
+                        >
+                            I
+                        </button>
                     </>
                 )}
                 <div role="group" aria-label={t('chart.tool.dash')} className="flex items-center gap-0.5">
@@ -2165,6 +2214,51 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         <X className="size-3.5" /> {t('chart.cancel')}
                     </button>
                 )}
+                {/* Where a drawing is allowed to appear: everywhere (default), or the intervals picked. */}
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setMenu((current) => (current === 'visibility' ? null : 'visibility'))}
+                        aria-expanded={menu === 'visibility'}
+                        disabled={!selectedId}
+                        className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', menu === 'visibility' && 'is-up', !selectedId && 'opacity-50')}
+                    >
+                        <Eye className="size-3.5" /> {t('chart.visibility')} <ChevronDown className="size-3" />
+                    </button>
+                    {menu === 'visibility' && selectedDrawing && (
+                        <>
+                            <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
+                            <div className="absolute end-0 z-30 mt-1 flex w-44 flex-col gap-0.5 rounded-[12px] bg-card p-1.5 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
+                                <button
+                                    type="button"
+                                    onClick={() => { restyleDrawing({ timeframes: [] }); }}
+                                    className={cn('flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-start text-[12.5px] font-semibold hover:bg-hover', !selectedDrawing.timeframes?.length && 'text-brand-ink')}
+                                >
+                                    {t('chart.visibilityAll')}
+                                </button>
+                                {CANDLE_INTERVALS.map((interval) => {
+                                    const on = !!selectedDrawing.timeframes?.includes(interval.id);
+                                    return (
+                                        <button
+                                            key={interval.id}
+                                            type="button"
+                                            onClick={() => {
+                                                const current = selectedDrawing.timeframes ?? [];
+                                                const next = on ? current.filter((id) => id !== interval.id) : [...current, interval.id];
+                                                restyleDrawing({ timeframes: next });
+                                            }}
+                                            aria-pressed={on}
+                                            className={cn('flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-start text-[12.5px] font-semibold hover:bg-hover', on && 'text-brand-ink')}
+                                        >
+                                            <span className="flex-1">{interval.id}</span>
+                                            {on && <span className="text-[11px]">●</span>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
+                </div>
                 {/* Named strokes: save the one on screen, then put it on anything. */}
                 <div className="relative ms-auto">
                     <button

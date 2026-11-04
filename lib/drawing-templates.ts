@@ -37,8 +37,15 @@ const isEmptyStyle = (style: DrawingStyle): boolean =>
     style.color === undefined && style.width === undefined && style.dash === undefined;
 
 /** The stroke a drawing is actually wearing, which is what "save this style" captures. */
-export function styleOfDrawing(drawing: Pick<Drawing, 'color' | 'width' | 'dash'>): DrawingStyle {
-    return cleanStyle({ color: drawing.color, width: drawing.width, dash: drawing.dash });
+export function styleOfDrawing(drawing: Pick<Drawing, 'color' | 'width' | 'dash' | 'italic' | 'fill' | 'fillOpacity'>): DrawingStyle {
+    return cleanStyle({
+        color: drawing.color,
+        width: drawing.width,
+        dash: drawing.dash,
+        italic: drawing.italic,
+        fill: drawing.fill,
+        fillOpacity: drawing.fillOpacity,
+    });
 }
 
 /** Parses whatever was stored. Anything malformed is dropped, never thrown. */
@@ -110,8 +117,11 @@ export function templateStyle(templates: DrawingTemplate[], id: string): Drawing
 }
 
 /** A template's style as drawing fields, ready to spread over a drawing. */
-export const stylePatch = (style: DrawingStyle): Pick<Drawing, 'color' | 'width' | 'dash'> => ({
+export const stylePatch = (style: DrawingStyle): Pick<Drawing, 'color' | 'width' | 'dash' | 'italic' | 'fill' | 'fillOpacity'> => ({
     ...(style.color ? { color: style.color as ColorKey } : {}),
     ...(style.width ? { width: style.width } : {}),
     ...(style.dash ? { dash: style.dash } : {}),
+    ...(style.italic ? { italic: true } : {}),
+    ...(style.fill ? { fill: style.fill as ColorKey } : {}),
+    ...(style.fillOpacity !== undefined ? { fillOpacity: style.fillOpacity } : {}),
 });

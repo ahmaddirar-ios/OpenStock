@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibTimeMultiples, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -353,6 +353,10 @@ export default function ChartDrawings({
         const color = drawingColor(drawing);
         const previewing = drawing.id === 'draft';
         const opacity = previewing ? 0.65 : 1;
+        // The fill is its own choice now: a box can be filled with a different colour at a strength
+        // the trader picked, and the tool's original look is the default rather than the only option.
+        const paint = fillOf(drawing);
+        const fill = paint.opacity > 0 ? `color-mix(in oklab, ${DRAWING_COLORS[paint.color]} ${paint.opacity}%, transparent)` : 'none';
         const selected = drawing.id === selectedId;
         const locked = drawing.locked === true;
         // The trader's stroke, with the selection adding a little weight for feedback.
@@ -460,6 +464,7 @@ export default function ChartDrawings({
                         fill={color}
                         fontSize={textStyleOf(drawing).fontSize}
                         fontWeight={textStyleOf(drawing).fontWeight}
+                        fontStyle={textStyleOf(drawing).fontStyle}
                         opacity={opacity}
                         className="mono"
                     >
@@ -479,7 +484,7 @@ export default function ChartDrawings({
                         y={y}
                         width={Math.abs(screen[1].x - screen[0].x)}
                         height={Math.abs(screen[1].y - screen[0].y)}
-                        fill={`color-mix(in oklab, ${color} 12%, transparent)`}
+                        fill={fill}
                         stroke={color}
                         strokeWidth={width}
                         opacity={opacity}
@@ -502,7 +507,7 @@ export default function ChartDrawings({
                         y={top}
                         width={Math.max(0, rightEdge - left)}
                         height={Math.max(0, bottom - top)}
-                        fill={`color-mix(in oklab, ${color} 10%, transparent)`}
+                        fill={fill}
                         stroke={color}
                         strokeWidth={width}
                         opacity={opacity}
@@ -565,7 +570,7 @@ export default function ChartDrawings({
                         y={y}
                         width={Math.abs(screen[1].x - screen[0].x)}
                         height={Math.abs(screen[1].y - screen[0].y)}
-                        fill={`color-mix(in oklab, ${color} 12%, transparent)`}
+                        fill={fill}
                         stroke={color}
                         strokeWidth={width}
                         opacity={opacity}
@@ -971,7 +976,7 @@ export default function ChartDrawings({
                 const { cx, cy, r } = circleFrom(screen[0], screen[1]);
                 return (
                     <g key={drawing.id} strokeDasharray={dash}>
-                        <circle cx={cx} cy={cy} r={r} fill={`color-mix(in oklab, ${color} 10%, transparent)`} stroke={color} strokeWidth={width} opacity={opacity} />
+                        <circle cx={cx} cy={cy} r={r} fill={fill} stroke={color} strokeWidth={width} opacity={opacity} />
                         {dot(cx, cy, `${drawing.id}-c`, color, opacity, TEXT_DOT)}
                         {selectionHandles(screen)}
                     </g>
@@ -980,7 +985,7 @@ export default function ChartDrawings({
             const { cx, cy, rx, ry } = ellipseFrom(screen[0], screen[1]);
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
-                    <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`color-mix(in oklab, ${color} 10%, transparent)`} stroke={color} strokeWidth={width} opacity={opacity} />
+                    <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={fill} stroke={color} strokeWidth={width} opacity={opacity} />
                     {selectionHandles(screen)}
                 </g>
             );
@@ -991,7 +996,7 @@ export default function ChartDrawings({
                 <g key={drawing.id} strokeDasharray={dash}>
                     <polygon
                         points={polygonPoints(screen)}
-                        fill={`color-mix(in oklab, ${color} 10%, transparent)`}
+                        fill={fill}
                         stroke={color}
                         strokeWidth={width}
                         opacity={opacity}
