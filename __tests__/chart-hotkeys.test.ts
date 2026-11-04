@@ -129,3 +129,12 @@ describe('drawing visibility by interval', () => {
         expect(drawing.timeframes).toEqual(['1d']);
     });
 });
+
+describe('note background', () => {
+    it('keeps a chip flag on a note and drops it elsewhere', () => {
+        const [note] = parseDrawings2([{ id: 'n', tool: 'text', points: [{ time: 1, price: 2 }], text: 'x', background: true }]);
+        expect(note.background).toBe(true);
+        const [line] = parseDrawings2([{ id: 'l', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], background: true }]);
+        expect(line.background).toBeUndefined();
+    });
+});

@@ -455,8 +455,25 @@ export default function ChartDrawings({
         }
 
         if (kind === 'text') {
+            const style = textStyleOf(drawing);
+            // The chip is measured from the glyphs themselves: the SVG text has no server-side box,
+            // so the width is the character count at the same size the renderer paints.
+            const chipWidth = Math.max(1, (drawing.text ?? '').length) * style.fontSize * 0.62 + 10;
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
+                    {drawing.background && (
+                        <rect
+                            x={screen[0].x + 4}
+                            y={screen[0].y + 4 - style.fontSize}
+                            width={chipWidth}
+                            height={style.fontSize + 8}
+                            rx={4}
+                            fill={`color-mix(in oklab, var(--page) 78%, black)`}
+                            stroke={`color-mix(in oklab, ${color} 45%, transparent)`}
+                            strokeWidth={1}
+                            opacity={opacity}
+                        />
+                    )}
                     {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, opacity, TEXT_DOT)}
                     <text
                         x={screen[0].x + 8}

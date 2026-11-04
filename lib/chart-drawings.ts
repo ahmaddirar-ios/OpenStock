@@ -129,6 +129,8 @@ export type Drawing = {
     bold?: boolean;
     /** Slanted glyphs, the third half of a text style. */
     italic?: boolean;
+    /** Paint a chip behind a note, so it stays readable over candles. */
+    background?: boolean;
     /** Fill palette key for the closed shapes; unset means the stroke's own colour. */
     fill?: ColorKey;
     /** Fill strength in percent (0 is invisible); unset means the tool's own look. */
@@ -1211,6 +1213,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const textSize = carriesText(candidate.tool) && isTextSize(candidate.textSize) ? candidate.textSize : undefined;
     const bold = carriesText(candidate.tool) && candidate.bold === true ? true : undefined;
     const italic = carriesText(candidate.tool) && candidate.italic === true ? true : undefined;
+    const background = carriesText(candidate.tool) && candidate.background === true ? true : undefined;
     // A fill only means something on a shape that encloses an area.
     const fill = hasFill(candidate.tool) && isColorKey(candidate.fill) ? candidate.fill : undefined;
     const fillOpacity = hasFill(candidate.tool) && isFillOpacity(candidate.fillOpacity) ? candidate.fillOpacity : undefined;
@@ -1232,6 +1235,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(textSize ? { textSize } : {}),
         ...(bold ? { bold } : {}),
         ...(italic ? { italic } : {}),
+        ...(background ? { background } : {}),
         ...(fill ? { fill } : {}),
         ...(fillOpacity !== undefined ? { fillOpacity } : {}),
         ...(timeframes && timeframes.length > 0 ? { timeframes } : {}),

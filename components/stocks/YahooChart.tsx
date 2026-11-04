@@ -422,7 +422,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setDrawings((list) => [...list, copy]);
         setSelectedId(copy.id);
     }, [drawings, selectedId, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'fill' | 'fillOpacity' | 'timeframes'>>) => {
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'fill' | 'fillOpacity' | 'timeframes'>>) => {
         if (!selectedId) return;
         setDrawings((list) => list.map((d) => (d.id === selectedId ? { ...d, ...patch } : d)));
     };
@@ -2114,6 +2114,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                             className={cn('icon-btn text-[13px] font-bold', selectedDrawing.bold && 'text-brand')}
                         >
                             B
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => restyleDrawing({ background: !selectedDrawing.background })}
+                            aria-pressed={!!selectedDrawing.background}
+                            aria-label={t('chart.text.background')}
+                            title={t('chart.text.background')}
+                            className={cn('icon-btn text-[12px]', selectedDrawing.background && 'text-brand')}
+                        >
+                            ▣
                         </button>
                         <button
                             type="button"
