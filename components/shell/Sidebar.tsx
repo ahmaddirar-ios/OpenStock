@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BellRing, BookOpen, CandlestickChart, Code2, FlaskConical, Info, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
+import { BellRing, BookOpen, CandlestickChart, Code2, FlaskConical, Info, Landmark, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -50,6 +50,9 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
             <nav className="flex flex-col gap-0.5">
                 <Link href="/dashboard" className={cn('side-item', pathname === '/dashboard' && 'is-active')}>
                     <LayoutDashboard /> {tx(lang, 'nav.overview')}
+                </Link>
+                <Link href="/saudi" className={cn('side-item', pathname === '/saudi' && 'is-active')}>
+                    <Landmark /> {tx(lang, 'nav.saudi')}
                 </Link>
                 <Link href="/watchlist" className={cn('side-item', pathname === '/watchlist' && 'is-active')}>
                     <Star /> <span className="flex-1">{tx(lang, 'nav.watchlist')}</span>

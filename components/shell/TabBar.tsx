@@ -14,6 +14,7 @@ const MAX_TABS = 12;
 
 const PAGE_LABELS: Record<string, StringKey> = {
     '/dashboard': 'nav.overview',
+    '/saudi': 'nav.saudi',
     '/watchlist': 'nav.watchlist',
     '/portfolio': 'nav.portfolio',
     '/screener': 'nav.screener',
