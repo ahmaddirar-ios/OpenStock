@@ -36,6 +36,19 @@ import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 import { evaluateFormula } from '@/lib/formula';
 
+/** Whether this study wants a pane of its own: by definition, or because its maker said so. */
+export function studyWantsPane(id: StudyId, params: StudyParams | undefined): boolean {
+    const def = STUDIES[id];
+    if (!def) return false;
+    if (def.group === 'oscillator') return true;
+    // Only a study that declares the choice can be moved, and a study written before the choice
+    // existed has nothing stored: it takes the default, the pane rather than a formula that
+    // flattens the candles.
+    const declared = def.params.find((param) => param.key === 'placement');
+    if (!declared) return false;
+    return (params?.placement ?? declared.default) === 'pane';
+}
+
 /** The list is capped at the pane budget: every oscillator study opens its own pane. */
 export const MAX_STUDIES = 12;
 
@@ -528,8 +541,23 @@ const DEFINITIONS: StudyDef[] = [
     define({
         id: 'formula',
         label: 'study.formula',
+        // The language writes both kinds of study: `sma(close, 20)` belongs on the price, and
+        // `close - sma(close, 20)` measures a distance that would flatten the candles if it shared
+        // their scale. Which one it is cannot be read off the text, so the trader says it.
         group: 'overlay',
-        params: [{ kind: 'text', key: 'expression', label: 'study.param.expression', default: 'close - sma(close, 20)', hint: 'study.param.expressionHint' }],
+        params: [
+            { kind: 'text', key: 'expression', label: 'study.param.expression', default: 'close - sma(close, 20)', hint: 'study.param.expressionHint' },
+            {
+                kind: 'choice',
+                key: 'placement',
+                label: 'study.param.placement',
+                default: 'pane',
+                choices: [
+                    { value: 'pane', label: 'study.placement.pane' },
+                    { value: 'price', label: 'study.placement.price' },
+                ],
+            },
+        ],
         lines: [valueLine('brand')],
         compute: (candles, _param, pick) => {
             const result = evaluateFormula(pick('expression'), candles);

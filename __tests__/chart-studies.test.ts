@@ -9,6 +9,7 @@ import {
     studiesChoice,
     studyColor,
     studyLineStyle,
+    studyWantsPane,
     studyWidth,
     STUDY_COLOR_TOKENS,
     STUDY_LINE_DASHES,
@@ -335,5 +336,24 @@ describe('source', () => {
     it('is not offered on a study that does not read one', () => {
         expect(STUDIES.atr.params.some((param) => param.key === 'source')).toBe(false);
         expect(STUDIES.donchian.params.some((param) => param.key === 'source')).toBe(false);
+    });
+
+    it('opens a pane only where one is asked for', () => {
+        // By definition: the oscillators.
+        expect(studyWantsPane('rsi', {})).toBe(true);
+        expect(studyWantsPane('macd', {})).toBe(true);
+        // A formula chooses, because the same language writes both kinds of study. A distance from
+        // an average belongs in its own pane; an average of the price belongs on the price.
+        expect(studyWantsPane('formula', {})).toBe(true);
+        expect(studyWantsPane('formula', { placement: 'pane' })).toBe(true);
+        expect(studyWantsPane('formula', { placement: 'price' })).toBe(false);
+        // Overlays never take a pane whatever else is stored.
+        expect(studyWantsPane('sma', { placement: 'pane' })).toBe(false);
+        expect(studyWantsPane('sma', {})).toBe(false);
+    });
+
+    it('starts a formula in its own pane, so a first try does not flatten the candles', () => {
+        expect(defaultStudy('formula').params.placement).toBe('pane');
+        expect(studiesChoice(defaultStudy('formula'), 'placement')).toBe('pane');
     });
 });

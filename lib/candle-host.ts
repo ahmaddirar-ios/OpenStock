@@ -33,16 +33,7 @@ import { LineBreakPaneView, type LineBreakDatum } from '@/lib/linebreak-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
-import {
-    STUDIES,
-    STUDY_COLOR_SOURCES,
-    type StudyLineDash,
-    studyLineStyle,
-    studyWidth,
-    type ColorToken,
-    type StudyConfig,
-    type StudyWidth,
-} from '@/lib/chart-studies';
+import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
 import type { Series } from '@/lib/indicators';
 import type { CandleSet } from '@/lib/yahoo-candles';
 
@@ -496,7 +487,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         const candles = bars();
         if (candles.length === 0) return;
 
-        const oscillators = studies.filter((study) => STUDIES[study.id]?.group === 'oscillator').length;
+        const oscillators = studies.filter((study) => studyWantsPane(study.id, study.params)).length;
         const stretch = oscillators > 1 ? 0.2 : 0.28;
 
         studies.forEach((study, index) => {
@@ -509,7 +500,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
 
             // Oscillators get their own pane under the price, in the order the trader added them.
             let pane = -1;
-            if (def.group === 'oscillator') {
+            if (studyWantsPane(def.id, study.params)) {
                 pane = addPane(stretch);
                 ownedPanes.push(pane);
             }
