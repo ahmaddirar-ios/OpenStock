@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BellRing, BookOpen, CandlestickChart, Code2, FlaskConical, Info, Landmark, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
+import { BellRing, BookOpen, CandlestickChart, Code2, FlaskConical, Globe, Info, Landmark, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
 import ThemeToggle from "@/components/shell/ThemeToggle";
@@ -58,6 +58,9 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 </Link>
                 <Link href="/saudi" className={cn('side-item', pathname === '/saudi' && 'is-active')}>
                     <Landmark /> {tx(lang, 'nav.saudi')}
+                </Link>
+                <Link href="/world" className={cn('side-item', pathname === '/world' && 'is-active')}>
+                    <Globe /> {tx(lang, 'nav.world')}
                 </Link>
 
                 <p className="side-label mt-2">{tx(lang, 'nav.section.mine')}</p>
