@@ -72,6 +72,11 @@ export default function SaudiBoard({ initial, lang }: { initial: SaudiBoardPaylo
 
     return (
         <div className="flex flex-col gap-3">
+            {board.stale && (
+                <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[12px] text-amber-200">
+                    {tx(lang, 'saudi.stale')}
+                </p>
+            )}
             {/* The index, then the breadth of the whole market under it. */}
             <div className="bento grid gap-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
                 <div className="bento-tile">
@@ -85,7 +90,7 @@ export default function SaudiBoard({ initial, lang }: { initial: SaudiBoardPaylo
                     </p>
                     <div className="bento-foot">
                         <ChangePill value={index?.changePercent} lang={lang} />
-                        <DataFreshness delayed lang={lang} />
+                        <DataFreshness tradeTime={Math.floor(board.asOf / 1000)} delayed lang={lang} />
                     </div>
                 </div>
 
