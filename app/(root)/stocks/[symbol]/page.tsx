@@ -51,7 +51,7 @@ async function DividendYield({ symbol, lang }: { symbol: string; lang: Lang }) {
     const dividendYield = await getStockMetrics(symbol);
     return (
         <Panel title={tx(lang, 'stock.dividend')}>
-            <p className="text-2xl font-semibold text-white">
+            <p className="text-2xl font-semibold text-foreground">
                 {dividendYield !== null ? `${arDigits(dividendYield.toFixed(2), lang)}%` : "—"}
             </p>
         </Panel>

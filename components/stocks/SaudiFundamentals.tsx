@@ -15,7 +15,7 @@ const dateLabel = (ms: number | null, lang: Lang) =>
         );
 
 const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="flex items-baseline justify-between gap-3 border-t border-white/5 py-2 first:border-t-0">
+    <div className="flex items-baseline justify-between gap-3 border-t border-line py-2 first:border-t-0">
         <span className="text-[12.5px] text-faint">{label}</span>
         <span className="num text-[13px] font-semibold">{value}</span>
     </div>

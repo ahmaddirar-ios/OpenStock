@@ -113,7 +113,7 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
             </div>
 
             <div className="flex items-center gap-2.5 border-t border-line pt-3 px-1">
-                <Link href="/profile" className={cn('-m-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-[10px] p-1 transition-colors hover:bg-white/5', pathname === '/profile' && 'bg-white/5')}>
+                <Link href="/profile" className={cn('-m-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-[10px] p-1 transition-colors hover:bg-hover', pathname === '/profile' && 'bg-hover')}>
                     <span className="grid size-8 flex-none place-items-center rounded-full bg-brand-soft text-[13px] font-bold text-brand-ink">
                         {user.name?.[0]?.toUpperCase() ?? '?'}
                     </span>

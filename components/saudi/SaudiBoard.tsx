@@ -100,7 +100,7 @@ export default function SaudiBoard({ initial, lang }: { initial: SaudiBoardPaylo
                         <span className="truncate">{tx(lang, 'saudi.breadth')}</span>
                         <span className="mono ms-auto text-xs text-faint">{arDigits(total, lang)} {tx(lang, 'saudi.companies')}</span>
                     </div>
-                    <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-line">
                         <span className="h-full bg-emerald-400" style={{ width: `${up}%` }} />
                         <span className="h-full bg-red-400" style={{ width: `${down}%` }} />
                     </div>
@@ -170,7 +170,7 @@ export default function SaudiBoard({ initial, lang }: { initial: SaudiBoardPaylo
                         </thead>
                         <tbody>
                             {board.sectors.map((row) => (
-                                <tr key={row.sector} className="border-t border-white/5">
+                                <tr key={row.sector} className="border-t border-line">
                                     <td className="py-2 pe-2">{sectorLabel(lang, row.sector)}</td>
                                     <td className="num py-2 text-end text-faint">{arDigits(row.count, lang)}</td>
                                     <td className="num py-2 text-end text-faint">{compact(row.valueTraded)}</td>
