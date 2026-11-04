@@ -38,7 +38,9 @@ export default function ToolPalette({
     // which is the "where is everything" view.
     const sections = useMemo(() => (query.trim() ? null : groupedTools()), [query]);
 
-    const renderRow = (entry: ToolEntry) => (
+    // The badge is only worth its space where families are mixed: under a section header the
+    // heading already says what everything in it is.
+    const renderRow = (entry: ToolEntry, showFamily: boolean) => (
         <button
             key={entry.id}
             type="button"
@@ -49,7 +51,9 @@ export default function ToolPalette({
                 <span className="block truncate text-[12.5px] font-semibold text-foreground">{tx(lang, entry.nameKey)}</span>
                 <span className="block truncate text-[10.5px] text-faint">{describe(entry, lang)}</span>
             </span>
-            <span className="pill shrink-0 text-[10px]">{tx(lang, `tools.family.${entry.family}` as StringKey)}</span>
+            {showFamily && (
+                <span className="pill shrink-0 text-[10px]">{tx(lang, `tools.family.${entry.family}` as StringKey)}</span>
+            )}
         </button>
     );
 
@@ -93,11 +97,11 @@ export default function ToolPalette({
                             <h3 className="sticky top-0 z-10 bg-card px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">
                                 {tx(lang, group.section.nameKey)}
                             </h3>
-                            {group.tools.map(renderRow)}
+                            {group.tools.map((entry) => renderRow(entry, false))}
                         </section>
                     ))
                     : results.length > 0
-                        ? results.map(renderRow)
+                        ? results.map((entry) => renderRow(entry, true))
                         : (
                             <p className="px-2 py-4 text-center text-[12px] text-faint">
                                 {tx(lang, 'tools.searchEmpty').replace('{q}', query.trim())}
@@ -118,6 +122,7 @@ export default function ToolPalette({
 function describe(entry: ToolEntry, lang: Lang): string {
     if (entry.family === 'formula' && entry.example) return entry.example;
     const family = tx(lang, `tools.family.${entry.family}` as StringKey);
+    if (entry.section === 'cursor') return family; // a cursor is clicked, not drawn
     if (entry.hotkey) return `${family} · ${entry.hotkey.toUpperCase()}`;
     if (entry.family !== 'drawing') return family;
     const clicks = entry.clicks ?? 1;
