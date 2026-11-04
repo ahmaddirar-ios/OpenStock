@@ -196,3 +196,28 @@ describe('text colour', () => {
         expect(line.textColor).toBeUndefined();
     });
 });
+
+import { translateDrawing } from '@/lib/chart-drawings';
+
+describe('moving a whole drawing', () => {
+    const line = {
+        id: 'l', tool: 'trend' as const,
+        points: [{ time: 100, price: 10 }, { time: 200, price: 20 }],
+    };
+
+    it('shifts every point and keeps the shape', () => {
+        const moved = translateDrawing(line, { time: 50, price: 2.5 });
+        expect(moved.points).toEqual([{ time: 150, price: 12.5 }, { time: 250, price: 22.5 }]);
+        // Same slope: moving is not stretching.
+        const slope = (d: typeof moved) => (d.points[1].price - d.points[0].price) / (d.points[1].time - d.points[0].time);
+        expect(slope(moved)).toBeCloseTo(slope(line), 10);
+    });
+
+    it('never drags a drawing through zero', () => {
+        expect(translateDrawing(line, { time: 0, price: -100 }).points[0].price).toBe(0);
+    });
+
+    it('returns the same drawing for an empty move', () => {
+        expect(translateDrawing(line, { time: 0, price: 0 })).toBe(line);
+    });
+});

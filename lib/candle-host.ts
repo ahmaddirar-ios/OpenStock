@@ -79,6 +79,8 @@ export type CandleHost = {
     setPnfReversal: (value: number | undefined) => void;
     /** Collapses closed-market gaps by inserting empty slots. */
     setSessionBreaks: (on: boolean) => void;
+    /** Shows or hides the volume histogram under the price. */
+    setVolumeVisible: (on: boolean) => void;
     setTimeVisible: (visible: boolean) => void;
     /** The chart as an image, for the export button; null before the library is ready. */
     screenshot: () => HTMLCanvasElement | null;
@@ -122,6 +124,8 @@ export type CandleHostOptions = {
     pnfBox?: number;
     /** The Point & Figure reversal, in boxes; undefined means the classic three. */
     pnfReversal?: number;
+    /** Whether the volume histogram opens visible. */
+    volumeVisible?: boolean;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -337,6 +341,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     });
     chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
 
+    let volumeVisible = options.volumeVisible ?? true;
     let data: CandleSet | null = options.data ?? null;
     let studies: StudyConfig[] = options.studies ?? [];
     const overlays: ISeriesApi<'Line'>[] = [];
@@ -618,6 +623,13 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         setSessionBreaks: (on) => {
             sessionBreaks = on;
             applyCandles();
+        },
+        setVolumeVisible: (on) => {
+            volumeVisible = on;
+            // The pane is hidden by taking its scale out of the layout, so the price keeps the room
+            // the volume was using instead of leaving a gap.
+            chart.priceScale('volume').applyOptions({ visible: on, scaleMargins: on ? { top: 0.82, bottom: 0 } : { top: 1, bottom: 0 } });
+            volume.applyOptions({ visible: on });
         },
         setChartType: (next) => {
             if (next === chartType) return;

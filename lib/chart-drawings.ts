@@ -181,6 +181,22 @@ const TOOL_FILL_DEFAULT: Partial<Record<ShapeTool, number>> = {
 export const visibleOn = (drawing: Pick<Drawing, 'timeframes'>, intervalId: string): boolean =>
     !drawing.timeframes || drawing.timeframes.length === 0 || drawing.timeframes.includes(intervalId);
 
+/**
+ * Shifts every point of a drawing by a time and a price offset — the whole shape moves, its shape
+ * does not change. Used when a trader grabs the line itself rather than one of its handles.
+ */
+export function translateDrawing(drawing: Drawing, delta: { time: number; price: number }): Drawing {
+    if (delta.time === 0 && delta.price === 0) return drawing;
+    return {
+        ...drawing,
+        points: drawing.points.map((point) => ({
+            ...point,
+            time: point.time + delta.time,
+            price: Math.max(0, point.price + delta.price),
+        })),
+    };
+}
+
 /** Whether this tool encloses an area at all: a trend line takes a stroke, not a fill. */
 export const hasFill = (tool: ShapeTool): boolean => TOOL_FILL_DEFAULT[tool] !== undefined;
 

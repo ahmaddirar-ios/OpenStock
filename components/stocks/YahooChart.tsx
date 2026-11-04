@@ -16,6 +16,7 @@ import {
     Bell,
     Bookmark,
     BookmarkCheck,
+    BarChart3,
     BellPlus,
     BringToFront,
     Camera,
@@ -95,7 +96,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -228,6 +229,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const [timeZone, setTimeZone] = useState<TimeZoneId>('local');
     const timeZoneRef = useRef<TimeZoneId>(timeZone);
     timeZoneRef.current = timeZone;
+    const [volumeVisible, setVolumeVisible] = useState(true);
+    const volumeVisibleRef = useRef(true);
+    volumeVisibleRef.current = volumeVisible;
     const [sessionBreaks, setSessionBreaks] = useState(false);
     const sessionBreaksRef = useRef(false);
     sessionBreaksRef.current = sessionBreaks;
@@ -865,6 +869,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             scaleMode: scaleModeRef.current,
             timeZone: timeZoneRef.current,
             sessionBreaks: sessionBreaksRef.current,
+            volumeVisible: volumeVisibleRef.current,
             invertScale: invertScaleRef.current,
             renkoBox: renkoBoxRef.current,
             kagiReversal: kagiReversalRef.current,
@@ -945,6 +950,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     useEffect(() => {
         candleHostRef.current?.setLineBreakCount(lineBreakCount);
     }, [lineBreakCount]);
+    useEffect(() => {
+        candleHostRef.current?.setVolumeVisible(volumeVisible);
+    }, [volumeVisible]);
     useEffect(() => {
         candleHostRef.current?.setSessionBreaks(sessionBreaks);
     }, [sessionBreaks]);
@@ -1231,6 +1239,23 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             )}
         </div>
     );
+    // The anchor is taken once per gesture: a body drag is one edit, and translating from the
+    // anchor (not from the last position) keeps it exact however fast the pointer moves.
+    const bodyAnchor = useRef<{ id: string; points: DrawPoint[] } | null>(null);
+    const beginBodyDrag = (id: string) => {
+        const drawing = drawings.find((d) => d.id === id);
+        if (!drawing) return;
+        beginGesture();
+        bodyAnchor.current = { id, points: drawing.points.map((point) => ({ ...point })) };
+    };
+    const moveBody = (id: string, delta: { time: number; price: number }) => {
+        const anchor = bodyAnchor.current;
+        if (!anchor || anchor.id !== id) return;
+        setTimeline((history) => ({
+            ...history,
+            present: history.present.map((d) => (d.id === id ? { ...translateDrawing({ ...d, points: anchor.points }, delta) } : d)),
+        }));
+    };
     const moveHandle = (id: string, index: number, point: DrawPoint) =>
         setTimeline((history) => ({
             ...history,
@@ -1627,6 +1652,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     onCommit={commit}
                     onSelect={setSelectedId}
                     onMoveHandle={moveHandle}
+                    onMoveBody={moveBody}
+                    onMoveBodyStart={beginBodyDrag}
                     onGestureStart={beginGesture}
                     onGestureEnd={endGesture}
                     snapPoint={snapDrawingPoint}
@@ -1864,6 +1891,15 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     title={t('chart.scale.invert')}
                 >
                     {t('chart.scale.invert')}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setVolumeVisible((value) => !value)}
+                    aria-pressed={volumeVisible}
+                    className={cn('pill h-7 px-2.5 text-[12px]', !volumeVisible && 'is-up')}
+                    title={t('chart.volume')}
+                >
+                    <BarChart3 className="size-3.5" />
                 </button>
                 <button
                     type="button"

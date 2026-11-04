@@ -39,6 +39,8 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
             onCommit={() => {}}
             onSelect={() => {}}
             onMoveHandle={() => {}}
+            onMoveBody={() => {}}
+            onMoveBodyStart={() => {}}
             onEditText={() => {}}
             onToolConsumed={() => {}}
             onGestureStart={() => {}}
@@ -93,6 +95,8 @@ const renderDrawing = (options: { tool: ShapeTool | 'select'; points?: DrawPoint
             onCommit={onCommit}
             onSelect={() => {}}
             onMoveHandle={() => {}}
+            onMoveBody={() => {}}
+            onMoveBodyStart={() => {}}
             onEditText={() => {}}
             onToolConsumed={() => {}}
             onGestureStart={() => {}}
@@ -658,6 +662,8 @@ describe('the pile the drawings are painted in', () => {
                 onCommit={() => {}}
                 onSelect={() => {}}
                 onMoveHandle={() => {}}
+                onMoveBody={() => {}}
+                onMoveBodyStart={() => {}}
                 onEditText={() => {}}
                 onToolConsumed={() => {}}
                 onGestureStart={() => {}}

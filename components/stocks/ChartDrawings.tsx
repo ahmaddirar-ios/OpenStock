@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -27,6 +27,10 @@ type Props = {
     onCommit: (drawing: Drawing) => void;
     onSelect: (id: string | null) => void;
     onMoveHandle: (id: string, index: number, point: DrawPoint) => void;
+    /** The whole drawing moved: the parent translates it from the anchor it kept for this gesture. */
+    onMoveBody: (id: string, delta: { time: number; price: number }) => void;
+    /** Called once when a body drag starts, so the parent can snapshot the drawing for one undo step. */
+    onMoveBodyStart: (id: string) => void;
     /** A note's new wording, saved from the editor on the chart. */
     onEditText: (id: string, text: string) => void;
     /** Called once a drawing is finished, so the toolbar can drop the tool. */
@@ -64,6 +68,8 @@ export default function ChartDrawings({
     onCommit,
     onSelect,
     onMoveHandle,
+    onMoveBody,
+    onMoveBodyStart,
     onGestureStart,
     onGestureEnd,
     snapPoint,
@@ -76,6 +82,9 @@ export default function ChartDrawings({
     const strokingRef = useRef(false);    const [draft, setDraft] = useState<DrawPoint[]>([]);
     const [preview, setPreview] = useState<DrawPoint | null>(null);
     const [dragging, setDragging] = useState<{ id: string; index: number } | null>(null);
+    // Grabbing the shape itself: the anchor is the chart point the gesture started on, so every move
+    // is a delta from where the line was, not from where it has already been pushed.
+    const bodyDrag = useRef<{ id: string; anchor: DrawPoint } | null>(null);
     // The measure box lives only while the measure tool is on: it is a reading, not a drawing.
     const [measure, setMeasure] = useState<{ from: DrawPoint; to: DrawPoint } | null>(null);
     const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
@@ -113,6 +122,7 @@ export default function ChartDrawings({
     const barSeconds = barTimes.length > 1 ? Math.abs(barTimes[1] - barTimes[0]) : 0;
 
     const screenOf = (drawing: Drawing): ScreenPoint[] => drawing.points.map((point) => toScreen(point) ?? { x: NaN, y: NaN });
+    const kindOf = (drawing: Drawing): ShapeKind => toolDef(drawing.tool).kind;
     const usable = (points: ScreenPoint[]) => (points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) ? points : []);
 
     const cursorOf = (event: React.PointerEvent): ScreenPoint => {
@@ -148,6 +158,16 @@ export default function ChartDrawings({
                     onGestureStart();
                     setDragging({ id: drawings[selectedIndex].id, index: grabbed });
                     return;
+                }
+                // Not a handle but on the line: drag the whole shape.
+                const onBody = hitTest([drawings[selectedIndex]], [drawn[selectedIndex]], cursor, GRAB, () => kindOf(drawings[selectedIndex]));
+                if (onBody) {
+                    const anchor = fromScreen(cursor.x, cursor.y);
+                    if (anchor) {
+                        onMoveBodyStart(drawings[selectedIndex].id);
+                        bodyDrag.current = { id: drawings[selectedIndex].id, anchor };
+                        return;
+                    }
                 }
             }
             setEditing(null);
@@ -224,6 +244,14 @@ export default function ChartDrawings({
             if (point) setMeasure({ from: measure.from, to: point });
             return;
         }
+        if (bodyDrag.current) {
+            const current = fromScreen(cursor.x, cursor.y);
+            if (current) {
+                const { id, anchor } = bodyDrag.current;
+                onMoveBody(id, { time: current.time - anchor.time, price: current.price - anchor.price });
+            }
+            return;
+        }
         if (dragging) {
             const point = fromScreen(cursor.x, cursor.y);
             if (point) onMoveHandle(dragging.id, dragging.index, snapPoint ? snapPoint(point) : point);
@@ -247,6 +275,10 @@ export default function ChartDrawings({
                 onToolConsumed();
             }
             return;
+        }
+        if (bodyDrag.current) {
+            bodyDrag.current = null;
+            onGestureEnd();
         }
         if (dragging) onGestureEnd();
         setDragging(null);
