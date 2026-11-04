@@ -29,6 +29,7 @@ import {
     Eye,
     GitCompare,
     History,
+    Keyboard,
     Loader2,
     Lock,
     Unlock,
@@ -45,6 +46,7 @@ import {
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import { nearestBar, snapPoint } from '@/lib/chart-magnet';
+import { EDIT_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
 import {
     TIME_ZONES,
     readTimeZone,
@@ -320,6 +322,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
     const [tool, setTool] = useState<ActiveTool | null>(null);
+    const [shortcutsOpen, setShortcutsOpen] = useState(false);
     // Hide-all: the drawings stay in memory, the layer just stops rendering.
     const [drawingsHidden, setDrawingsHidden] = useState(false);
     // Magnet is a working mode, not a preference: it starts off and is one click away.
@@ -932,6 +935,34 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [undo, redo, copySelected, pasteClipboard, duplicateSelected]);
+
+    // Bare letters arm a drawing tool, the way every charting terminal does it. Anything with a
+    // modifier belongs to the editor shortcuts above, and a field keeps its own typing.
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            const target = event.target as HTMLElement | null;
+            if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
+
+            if (event.key === 'Escape') {
+                setTool(null);
+                setShortcutsOpen(false);
+                return;
+            }
+            if (event.key === '?') {
+                event.preventDefault();
+                setShortcutsOpen((open) => !open);
+                return;
+            }
+            const next = toolForKey(event.key);
+            if (next) {
+                event.preventDefault();
+                setTool((current) => (current === next ? null : next));
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
@@ -1823,8 +1854,17 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 {!replay && <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />}
                 <button
                     type="button"
-                    onClick={() => void exportImage()}
+                    onClick={() => setShortcutsOpen(true)}
                     className="icon-btn ms-auto"
+                    aria-label={t('chart.shortcuts.title')}
+                    title={t('chart.shortcuts.title')}
+                >
+                    <Keyboard />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => void exportImage()}
+                    className="icon-btn"
                     aria-label={t('chart.export')}
                     title={t('chart.export')}
                 >
@@ -2201,6 +2241,51 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     {t('stock.openTV')}
                 </a>
             </p>
+
+            {/* The whole keyboard on one card: the tool letters and the editing chords, from the same
+                tables the handlers read, so the help can never drift from what the keys do. */}
+            {shortcutsOpen && (
+                <div
+                    className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={t('chart.shortcuts.title')}
+                    onClick={() => setShortcutsOpen(false)}
+                >
+                    <div className="card w-full max-w-lg p-5" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-[15px] font-bold">{t('chart.shortcuts.title')}</h2>
+                            <button type="button" onClick={() => setShortcutsOpen(false)} className="icon-btn" aria-label={t('chart.shortcuts.close')}>
+                                <X className="size-4" />
+                            </button>
+                        </div>
+                        <div className="mt-4 grid gap-6 sm:grid-cols-2">
+                            <div>
+                                <p className="form-label">{t('chart.shortcuts.tools')}</p>
+                                <ul className="mt-2 flex flex-col gap-1.5">
+                                    {TOOL_SHORTCUTS.map((shortcut) => (
+                                        <li key={shortcut.key} className="flex items-center justify-between gap-3 text-[13px]">
+                                            <span className="text-muted-foreground">{t(`chart.tool.${shortcut.tool}` as StringKey)}</span>
+                                            <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div>
+                                <p className="form-label">{t('chart.shortcuts.edit')}</p>
+                                <ul className="mt-2 flex flex-col gap-1.5">
+                                    {EDIT_SHORTCUTS.map((shortcut) => (
+                                        <li key={shortcut.keys} className="flex items-center justify-between gap-3 text-[13px]">
+                                            <span className="text-muted-foreground">{t(shortcut.labelKey)}</span>
+                                            <kbd className="kbd">{shortcut.keys}</kbd>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
