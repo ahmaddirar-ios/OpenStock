@@ -237,6 +237,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const [renkoBox, setRenkoBox] = useState<number | undefined>(undefined);
     const renkoBoxRef = useRef<number | undefined>(undefined);
     renkoBoxRef.current = renkoBox;
+    const [pnfBox, setPnfBox] = useState<number | undefined>(undefined);
+    const pnfBoxRef = useRef<number | undefined>(undefined);
+    pnfBoxRef.current = pnfBox;
+    const [pnfReversal, setPnfReversal] = useState<number | undefined>(undefined);
+    const pnfReversalRef = useRef<number | undefined>(undefined);
+    pnfReversalRef.current = pnfReversal;
     const [kagiReversal, setKagiReversal] = useState<number | undefined>(undefined);
     const kagiReversalRef = useRef<number | undefined>(undefined);
     kagiReversalRef.current = kagiReversal;
@@ -854,6 +860,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             renkoBox: renkoBoxRef.current,
             kagiReversal: kagiReversalRef.current,
             lineBreakCount: lineBreakCountRef.current,
+            pnfBox: pnfBoxRef.current,
+            pnfReversal: pnfReversalRef.current,
             onPriceSeries: (series) => {
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
@@ -916,6 +924,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     useEffect(() => {
         candleHostRef.current?.setRenkoBox(renkoBox);
     }, [renkoBox]);
+    useEffect(() => {
+        candleHostRef.current?.setPnfBox(pnfBox);
+    }, [pnfBox]);
+    useEffect(() => {
+        candleHostRef.current?.setPnfReversal(pnfReversal);
+    }, [pnfReversal]);
     useEffect(() => {
         candleHostRef.current?.setKagiReversal(kagiReversal);
     }, [kagiReversal]);
@@ -1729,6 +1743,43 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                             className="num w-14 rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         />
                     </label>
+                )}
+                {chartType === 'pnf' && (
+                    <>
+                        <label className="flex items-center gap-1 text-[11px] text-faint">
+                            {t('chart.pnfBox')}
+                            <input
+                                type="number"
+                                inputMode="decimal"
+                                min={0.01}
+                                step={0.01}
+                                value={pnfBox ?? ''}
+                                placeholder={t('chart.auto')}
+                                onChange={(event) => {
+                                    const next = Number(event.target.value);
+                                    setPnfBox(Number.isFinite(next) && next > 0 ? next : undefined);
+                                }}
+                                className="num h-7 w-20 rounded-[7px] bg-page px-2 text-foreground shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                        </label>
+                        <label className="flex items-center gap-1 text-[11px] text-faint">
+                            {t('chart.pnfReversal')}
+                            <input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={10}
+                                step={1}
+                                value={pnfReversal ?? ''}
+                                placeholder="3"
+                                onChange={(event) => {
+                                    const next = Number(event.target.value);
+                                    setPnfReversal(Number.isFinite(next) && next >= 1 ? Math.floor(next) : undefined);
+                                }}
+                                className="num h-7 w-14 rounded-[7px] bg-page px-2 text-foreground shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                        </label>
+                    </>
                 )}
                 {chartType === 'kagi' && (
                     <label className="flex items-center gap-1 text-[11px] text-faint">

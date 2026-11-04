@@ -26,6 +26,8 @@ import {
 import { heikinAshi, renko, type ChartType, type ScaleMode } from '@/lib/chart-view';
 import { kagi } from '@/lib/chart-kagi';
 import { KagiPaneView, type KagiDatum } from '@/lib/kagi-series';
+import { PnfPaneView, type PnfDatum } from '@/lib/pnf-series';
+import { pointAndFigure } from '@/lib/chart-pnf';
 import { lineBreak } from '@/lib/chart-linebreak';
 import { LineBreakPaneView, type LineBreakDatum } from '@/lib/linebreak-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
@@ -71,6 +73,10 @@ export type CandleHost = {
     setKagiReversal: (value: number | undefined) => void;
     /** The Line Break count; undefined means the classic three. */
     setLineBreakCount: (value: number | undefined) => void;
+    /** The Point & Figure box; 0 or undefined derives one from the first close. */
+    setPnfBox: (box: number | undefined) => void;
+    /** The Point & Figure reversal, in boxes. */
+    setPnfReversal: (value: number | undefined) => void;
     /** Collapses closed-market gaps by inserting empty slots. */
     setSessionBreaks: (on: boolean) => void;
     setTimeVisible: (visible: boolean) => void;
@@ -112,6 +118,10 @@ export type CandleHostOptions = {
     kagiReversal?: number;
     /** The Line Break count to open with. */
     lineBreakCount?: number;
+    /** The Point & Figure box size; 0 or undefined derives one from the first close. */
+    pnfBox?: number;
+    /** The Point & Figure reversal, in boxes; undefined means the classic three. */
+    pnfReversal?: number;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -233,6 +243,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let renkoBox = options.renkoBox;
     let kagiReversal = options.kagiReversal;
     let lineBreakCount = options.lineBreakCount;
+    let pnfBox = options.pnfBox;
+    let pnfReversal = options.pnfReversal;
     const tickFormatter = () => (time: Time, type: TickMarkType) =>
         tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone);
 
@@ -289,6 +301,10 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         if (chartType === 'kagi') {
             // A custom series: the Kagi staircase has no built-in equivalent.
             return chart.addCustomSeries(new KagiPaneView(), {}) as unknown as ISeriesApi<SeriesType>;
+        }
+        if (chartType === 'pnf') {
+            // Point & Figure has no time axis to hang bars on: columns of X's and O's, drawn here.
+            return chart.addCustomSeries(new PnfPaneView(), {}) as unknown as ISeriesApi<SeriesType>;
         }
         if (chartType === 'hollow') {
             // The up body is not filled: its outline and wick carry the colour instead.
@@ -393,6 +409,16 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 lineBreakCount,
             );
             (price as unknown as ISeriesApi<'Custom'>).setData(boxes as LineBreakDatum[]);
+            volume.setData([]);
+            return;
+        }
+        if (chartType === 'pnf') {
+            const columns = pointAndFigure(
+                bars().map((candle) => ({ time: candle.time, close: candle.close })),
+                pnfBox,
+                pnfReversal,
+            );
+            (price as unknown as ISeriesApi<'Custom'>).setData(columns as PnfDatum[]);
             volume.setData([]);
             return;
         }
@@ -548,6 +574,21 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         setLineBreakCount: (value) => {
             lineBreakCount = value;
             if (chartType === 'linebreak') {
+                applyCandles();
+                emitReadout();
+            }
+        },
+        setPnfBox: (box) => {
+            pnfBox = box;
+            if (chartType === 'pnf') {
+                applyCandles();
+                buildStudies();
+                emitReadout();
+            }
+        },
+        setPnfReversal: (value) => {
+            pnfReversal = value;
+            if (chartType === 'pnf') {
                 applyCandles();
                 emitReadout();
             }
