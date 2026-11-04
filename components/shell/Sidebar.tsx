@@ -48,13 +48,19 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 <kbd className="kbd bg-on-brand/10">⌘K</kbd>
             </button>
 
+            {/* The sidebar is grouped, not a flat list: what the market says, what is yours, and
+                the tools that read both. It is the shape a trader arrives with — the sections come
+                before the pages. */}
             <nav className="flex flex-col gap-0.5">
+                <p className="side-label mt-1">{tx(lang, 'nav.section.markets')}</p>
                 <Link href="/dashboard" className={cn('side-item', pathname === '/dashboard' && 'is-active')}>
                     <LayoutDashboard /> {tx(lang, 'nav.overview')}
                 </Link>
                 <Link href="/saudi" className={cn('side-item', pathname === '/saudi' && 'is-active')}>
                     <Landmark /> {tx(lang, 'nav.saudi')}
                 </Link>
+
+                <p className="side-label mt-2">{tx(lang, 'nav.section.mine')}</p>
                 <Link href="/watchlist" className={cn('side-item', pathname === '/watchlist' && 'is-active')}>
                     <Star /> <span className="flex-1">{tx(lang, 'nav.watchlist')}</span>
                     <span className="num text-xs text-faint">{watchlist.length}</span>
@@ -62,6 +68,11 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 <Link href="/portfolio" className={cn('side-item', pathname === '/portfolio' && 'is-active')}>
                     <Wallet /> {tx(lang, 'nav.portfolio')}
                 </Link>
+                <Link href="/alerts" className={cn('side-item', pathname.startsWith('/alerts') && 'is-active')}>
+                    <BellRing /> {tx(lang, 'nav.alerts')}
+                </Link>
+
+                <p className="side-label mt-2">{tx(lang, 'nav.section.analysis')}</p>
                 <Link href="/screener" className={cn('side-item', pathname === '/screener' && 'is-active')}>
                     <SlidersHorizontal /> {tx(lang, 'nav.screener')}
                 </Link>
@@ -71,9 +82,8 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 <Link href="/strategies" className={cn('side-item', pathname.startsWith('/strategies') && 'is-active')}>
                     <FlaskConical /> {tx(lang, 'nav.strategies')}
                 </Link>
-                <Link href="/alerts" className={cn('side-item', pathname.startsWith('/alerts') && 'is-active')}>
-                    <BellRing /> {tx(lang, 'nav.alerts')}
-                </Link>
+
+                <p className="side-label mt-2">{tx(lang, 'nav.section.display')}</p>
                 <ThemeToggle lang={lang} />
             </nav>
 
