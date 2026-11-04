@@ -131,6 +131,8 @@ export type Drawing = {
     italic?: boolean;
     /** Paint a chip behind a note, so it stays readable over candles. */
     background?: boolean;
+    /** Glyph colour for the tools that carry words; unset means the stroke's own colour. */
+    textColor?: ColorKey;
     /** Fill palette key for the closed shapes; unset means the stroke's own colour. */
     fill?: ColorKey;
     /** Fill strength in percent (0 is invisible); unset means the tool's own look. */
@@ -158,6 +160,10 @@ export const textStyleOf = (drawing: Pick<Drawing, 'textSize' | 'bold' | 'italic
     fontWeight: drawing.bold ? 700 : 500,
     fontStyle: drawing.italic ? 'italic' : 'normal',
 });
+
+/** The colour a drawing's words are painted in: its own, or the stroke's. */
+export const textColorOf = (drawing: Pick<Drawing, 'textColor' | 'color' | 'tool'>): ColorKey =>
+    drawing.textColor ?? drawing.color ?? toolDef(drawing.tool).defaultColor;
 
 /** The tool's own fill strength, so a box and a circle keep the look they had before fills were editable. */
 const TOOL_FILL_DEFAULT: Partial<Record<ShapeTool, number>> = {
@@ -1235,6 +1241,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const bold = carriesText(candidate.tool) && candidate.bold === true ? true : undefined;
     const italic = carriesText(candidate.tool) && candidate.italic === true ? true : undefined;
     const background = carriesText(candidate.tool) && candidate.background === true ? true : undefined;
+    const textColor = carriesText(candidate.tool) && isColorKey(candidate.textColor) ? candidate.textColor : undefined;
     // Levels are kept sorted and unique: two labels on one line is not a feature.
     const fibLevels = hasFibLevels(candidate.tool) && Array.isArray(candidate.fibLevels)
         ? [...new Set(candidate.fibLevels.filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n >= -10 && n <= 10))]
@@ -1263,6 +1270,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(bold ? { bold } : {}),
         ...(italic ? { italic } : {}),
         ...(background ? { background } : {}),
+        ...(textColor ? { textColor } : {}),
         ...(fill ? { fill } : {}),
         ...(fillOpacity !== undefined ? { fillOpacity } : {}),
         ...(timeframes && timeframes.length > 0 ? { timeframes } : {}),

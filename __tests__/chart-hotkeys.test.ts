@@ -180,3 +180,19 @@ describe('Fibonacci levels', () => {
         expect(level?.price).toBe(150);
     });
 });
+
+import { textColorOf } from '@/lib/chart-drawings';
+
+describe('text colour', () => {
+    it('follows the stroke until a colour of its own is chosen', () => {
+        const [plain] = parseDrawings2([{ id: 'n', tool: 'text', points: [{ time: 1, price: 2 }], text: 'x', color: 'gold' }]);
+        expect(textColorOf(plain)).toBe('gold');
+        const [own] = parseDrawings2([{ id: 'n2', tool: 'text', points: [{ time: 1, price: 2 }], text: 'x', color: 'gold', textColor: 'white' }]);
+        expect(textColorOf(own)).toBe('white');
+    });
+
+    it('ignores a text colour on a tool with no words', () => {
+        const [line] = parseDrawings2([{ id: 'l', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], textColor: 'white' }]);
+        expect(line.textColor).toBeUndefined();
+    });
+});

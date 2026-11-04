@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -356,6 +356,8 @@ export default function ChartDrawings({
         // The fill is its own choice now: a box can be filled with a different colour at a strength
         // the trader picked, and the tool's original look is the default rather than the only option.
         const paint = fillOf(drawing);
+        // Words can wear their own colour: a note in white over a busy candle is a choice, not a bug.
+        const ink = DRAWING_COLORS[textColorOf(drawing)];
         const fill = paint.opacity > 0 ? `color-mix(in oklab, ${DRAWING_COLORS[paint.color]} ${paint.opacity}%, transparent)` : 'none';
         const selected = drawing.id === selectedId;
         const locked = drawing.locked === true;
@@ -478,7 +480,7 @@ export default function ChartDrawings({
                     <text
                         x={screen[0].x + 8}
                         y={screen[0].y + 4}
-                        fill={color}
+                        fill={ink}
                         fontSize={textStyleOf(drawing).fontSize}
                         fontWeight={textStyleOf(drawing).fontWeight}
                         fontStyle={textStyleOf(drawing).fontStyle}

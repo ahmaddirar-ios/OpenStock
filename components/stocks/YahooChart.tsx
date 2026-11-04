@@ -95,7 +95,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -422,7 +422,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setDrawings((list) => [...list, copy]);
         setSelectedId(copy.id);
     }, [drawings, selectedId, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'textColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
         if (!selectedId) return;
         setDrawings((list) => list.map((d) => {
             if (d.id !== selectedId) return d;
@@ -2124,6 +2124,23 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         >
                             B
                         </button>
+                        <div role="group" aria-label={t('chart.text.color')} className="flex items-center gap-0.5">
+                            {COLOR_KEYS.map((key) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => restyleDrawing({ textColor: key })}
+                                    aria-pressed={textColorOf(selectedDrawing) === key}
+                                    aria-label={`${t('chart.text.color')} ${key}`}
+                                    title={`${t('chart.text.color')} ${key}`}
+                                    className={cn(
+                                        'size-4 rounded-[4px] border border-white/25 transition-transform hover:scale-110',
+                                        textColorOf(selectedDrawing) === key && 'ring-2 ring-brand',
+                                    )}
+                                    style={{ background: DRAWING_COLORS[key] }}
+                                />
+                            ))}
+                        </div>
                         <button
                             type="button"
                             onClick={() => restyleDrawing({ background: !selectedDrawing.background })}
