@@ -58,7 +58,9 @@ export default function ToolPalette({
             role="dialog"
             aria-label={tx(lang, 'tools.palette')}
             className={cn(
-                'absolute z-30 mt-1 flex max-h-[26rem] w-[22rem] max-w-[calc(100vw-2rem)] flex-col rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]',
+                // Anchored to the end of its button: the panel grows away from the edge of the
+                // window, so a narrow screen keeps the whole thing on screen instead of clipping it.
+                'absolute end-0 z-30 mt-1 flex max-h-[26rem] w-[22rem] max-w-[calc(100vw-1.5rem)] flex-col rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]',
                 className,
             )}
         >
