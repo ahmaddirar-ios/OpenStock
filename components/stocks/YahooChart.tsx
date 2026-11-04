@@ -953,6 +953,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     useEffect(() => {
         candleHostRef.current?.setVolumeVisible(volumeVisible);
     }, [volumeVisible]);
+    // The theme toggle lives in the shell; the chart repaints itself when it flips.
+    useEffect(() => {
+        const onTheme = () => candleHostRef.current?.setTheme();
+        window.addEventListener('rovex:theme', onTheme);
+        return () => window.removeEventListener('rovex:theme', onTheme);
+    }, []);
     useEffect(() => {
         candleHostRef.current?.setSessionBreaks(sessionBreaks);
     }, [sessionBreaks]);

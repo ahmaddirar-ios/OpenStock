@@ -6,6 +6,7 @@ import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_CO
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { checkFormula } from '@/lib/formula';
+import { addSavedFormula, loadSavedFormulas, removeSavedFormula, saveSavedFormulas, type SavedFormula } from '@/lib/formula-library';
 
 // The indicators menu: search a study, add it, tune its parameters, remove it. It owns no state of
 // its own beyond what is being typed — the list belongs to the page (and through it, the browser),
@@ -25,6 +26,13 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
     // while the chart already follows the last usable number. A draft is dropped on blur, so the box
     // falls back to the clamped value that was actually applied.
     const [drafts, setDrafts] = useState<Record<string, string>>({});
+    // The shelf of formulas this browser keeps: written once, applied to any chart after that.
+    const [savedFormulas, setSavedFormulas] = useState<SavedFormula[]>([]);
+    const [formulaName, setFormulaName] = useState('');
+
+    useEffect(() => {
+        setSavedFormulas(loadSavedFormulas());
+    }, []);
     const box = useRef<HTMLDivElement>(null);
     const t = (key: StringKey) => tx(lang, key);
 
@@ -85,6 +93,16 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
         setDrafts((current) => ({ ...current, [`${index}:${key}`]: next }));
         if (!next || !checkFormula(next).ok) return;
         onChange(studies.map((study, i) => (i === index ? { ...study, params: { ...study.params, [key]: next } } : study)));
+    };
+
+    /** Applies a whole expression at once, as clicking a saved formula does. */
+    const applyText = (index: number, key: string, expression: string) => {
+        setDrafts((current) => {
+            const next = { ...current };
+            delete next[`${index}:${key}`];
+            return next;
+        });
+        setText(index, key, expression);
     };
 
     /** Picks a named parameter (a source): a select, so there is no half-typed state to keep. */
@@ -317,6 +335,60 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                             <span className={checked.ok ? 'text-faint' : 'text-down'}>
                                                                 {checked.ok ? (param.hint ? t(param.hint) : '') : checked.error}
                                                             </span>
+                                                            {/* Save the box as a named formula, or apply one already saved. */}
+                                                            <span className="mt-0.5 flex items-center gap-1">
+                                                                <input
+                                                                    type="text"
+                                                                    value={formulaName}
+                                                                    onChange={(event) => setFormulaName(event.target.value)}
+                                                                    placeholder={t('study.formulaName')}
+                                                                    aria-label={t('study.formulaName')}
+                                                                    className="min-w-0 flex-1 rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const next = addSavedFormula(savedFormulas, formulaName, drafts[`${index}:${param.key}`] ?? value);
+                                                                        if (next === savedFormulas) return;
+                                                                        setSavedFormulas(next);
+                                                                        saveSavedFormulas(next);
+                                                                        setFormulaName('');
+                                                                    }}
+                                                                    disabled={!formulaName.trim()}
+                                                                    className="pill h-6 px-2 text-[10.5px] disabled:opacity-50"
+                                                                >
+                                                                    {t('study.formulaSave')}
+                                                                </button>
+                                                            </span>
+                                                            {savedFormulas.length > 0 && (
+                                                                <span className="mt-0.5 flex flex-wrap gap-1">
+                                                                    {savedFormulas.map((saved) => (
+                                                                        <span key={saved.id} className="inline-flex items-center gap-0.5">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => applyText(index, param.key, saved.expression)}
+                                                                                title={saved.expression}
+                                                                                className="pill h-6 px-2 text-[10.5px]"
+                                                                            >
+                                                                                {saved.name}
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                aria-label={`${t('study.formulaDelete')} ${saved.name}`}
+                                                                                title={t('study.formulaDelete')}
+                                                                                onClick={() => {
+                                                                                    const next = removeSavedFormula(savedFormulas, saved.id);
+                                                                                    setSavedFormulas(next);
+                                                                                    saveSavedFormulas(next);
+                                                                                }}
+                                                                                className="icon-btn text-down"
+                                                                            >
+                                                                                <X className="size-3" />
+                                                                            </button>
+                                                                        </span>
+                                                                    ))}
+                                                                </span>
+                                                            )}
                                                         </label>
                                                     );
                                                 }

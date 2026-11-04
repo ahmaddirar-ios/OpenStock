@@ -57,6 +57,34 @@
     --ring: var(--brand);
 }
 
+:root[data-theme='light'] {
+    /* A light theme for the people who read charts on paper-white: same token names, inverted
+       surfaces, and up/down darkened so they still carry meaning against white. */
+    --page:        oklch(0.985 0.002 240);
+    --side:        oklch(0.965 0.003 240);
+    --frame:       oklch(0.945 0.004 240);
+    --canvas:      oklch(0.975 0.003 240);
+    --card:        oklch(1 0 0);
+    --hover:       oklch(0.945 0.004 240);
+    --line:        oklch(0.90 0.005 240);
+    --line-strong: oklch(0.84 0.006 240);
+    --text:        oklch(0.22 0.01 240);
+    --muted:       oklch(0.42 0.012 240);
+    --faint:       oklch(0.55 0.012 240);
+
+    --brand:        oklch(0.79 0.17 124);
+    --brand-strong: oklch(0.68 0.16 124);
+    --brand-ink:    oklch(0.48 0.13 124);
+    --brand-soft:   oklch(0.93 0.05 124);
+    --on-brand:     oklch(0.22 0.05 124);
+
+    --up:        oklch(0.55 0.15 150);
+    --up-soft:   oklch(0.92 0.05 150);
+    --down:      oklch(0.55 0.19 25);
+    --down-soft: oklch(0.93 0.05 25);
+    --warn:      oklch(0.62 0.13 70);
+}
+
 @theme inline {
     --font-sans: var(--font-inter);
     --font-mono: var(--font-plex-mono);

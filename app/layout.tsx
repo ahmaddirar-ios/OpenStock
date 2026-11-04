@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Anton, Inter, IBM_Plex_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { THEME_SCRIPT } from "@/lib/theme";
 import {Toaster} from "@/components/ui/sonner";
 import { getLang } from "@/lib/i18n-server";
 import "./globals.css";
@@ -58,6 +59,10 @@ export default async function RootLayout({
     const lang = await getLang();
     return (
         <html lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} className="dark" suppressHydrationWarning>
+            <head>
+                {/* Runs before the first paint, so the stored theme is the one that shows. */}
+                <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+            </head>
             <body
                 className={`${inter.variable} ${arabic.variable} ${plexMono.variable} ${display.variable} font-sans antialiased`}
             >

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { BellRing, BookOpen, CandlestickChart, Code2, FlaskConical, Info, Landmark, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
+import ThemeToggle from "@/components/shell/ThemeToggle";
 import { signOut } from "@/lib/actions/auth.actions";
 import { cn } from "@/lib/utils";
 import { tx, type Lang, type StringKey } from "@/lib/i18n";
@@ -73,6 +74,7 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 <Link href="/alerts" className={cn('side-item', pathname.startsWith('/alerts') && 'is-active')}>
                     <BellRing /> {tx(lang, 'nav.alerts')}
                 </Link>
+                <ThemeToggle lang={lang} />
             </nav>
 
             <div className="flex min-h-0 flex-col gap-1">

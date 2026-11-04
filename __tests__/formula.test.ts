@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkFormula, evaluateFormula, FORMULA_FUNCTIONS, FORMULA_SERIES, type FormulaBar } from '@/lib/formula';
+import { checkFormula, evaluateFormula, FORMULA_EXAMPLES, FORMULA_FUNCTIONS, FORMULA_SERIES, type FormulaBar } from '@/lib/formula';
 
 const bars: FormulaBar[] = Array.from({ length: 10 }, (_, i) => ({
     time: 1_700_000_000 + i * 86400,
@@ -52,8 +52,9 @@ describe('formula language', () => {
         const unknown = checkFormula('macd(close, 1, 2)');
         expect(unknown.ok).toBe(false);
         expect(unknown.ok === false && unknown.error).toContain('unknown_function');
+        // A bare word is a variable now, so the reason says name rather than series.
         const series = checkFormula('candle');
-        expect(series.ok === false && series.error).toContain('unknown_series');
+        expect(series.ok === false && series.error).toContain('unknown_name');
         expect(checkFormula('close @ 2').ok).toBe(false);
         expect(checkFormula('(close + 1').ok).toBe(false);
     });
@@ -73,5 +74,48 @@ describe('formula language', () => {
             const args = fn.name === 'abs' || fn.name === 'sqrt' || fn.name === 'change' ? 'close' : fn.name === 'max' || fn.name === 'min' ? 'close, open' : 'close, 5';
             expect(checkFormula(`${fn.name}(${args})`), fn.name).toEqual({ ok: true });
         }
+    });
+
+    it('names a value and reads it back', () => {
+        expect(values('mid = (high + low) / 2; close - mid')).toEqual(bars.map((bar) => bar.close - (bar.high + bar.low) / 2));
+        // Two variables, the second built on the first.
+        expect(values('a = close * 2; b = a + 1; b')[0]).toBe(21);
+    });
+
+    it('decides with comparisons and a ternary', () => {
+        // Closes run 10, 11, 12…: strictly above 11 starts at the third bar.
+        expect(values('close > 11 ? 1 : -1').slice(0, 3)).toEqual([-1, -1, 1]);
+        expect(values('close >= 11 ? 1 : -1')[2]).toBe(1);
+        expect(values('close == 11 ? 1 : 0')[1]).toBe(1);
+        expect(values('close != 11 ? 1 : 0')[0]).toBe(1);
+    });
+
+    it('reports a crossing on the bar it happens', () => {
+        const up = values('crossover(close, 12)');
+        // The first bar at or above 12 is bar 2 (close 12).
+        expect(up).toEqual([0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
+        const under = values('crossunder(close, 12)');
+        expect(under.every((value) => value === 0)).toBe(true);
+    });
+
+    it('measures spread and deviation', () => {
+        expect(values('stdev(close, 3)')[2]).toBeCloseTo(0.8165, 3);
+        expect(values('pow(2, 3)')[0]).toBe(8);
+    });
+
+    it('refuses a name it hides from a series or a function', () => {
+        const reserved = checkFormula('sma = close; sma');
+        expect(reserved.ok).toBe(false);
+        expect(reserved.ok === false && reserved.error).toContain('reserved_name');
+    });
+
+    it('reads a variable only after it is declared', () => {
+        const early = checkFormula('close - mid; mid = sma(close, 3)');
+        expect(early.ok).toBe(false);
+        expect(early.ok === false && early.error).toContain('unknown_name');
+    });
+
+    it('ships examples that all parse', () => {
+        for (const example of FORMULA_EXAMPLES) expect(checkFormula(example), example).toEqual({ ok: true });
     });
 });

@@ -81,6 +81,8 @@ export type CandleHost = {
     setSessionBreaks: (on: boolean) => void;
     /** Shows or hides the volume histogram under the price. */
     setVolumeVisible: (on: boolean) => void;
+    /** The page's theme changed: re-read every token and repaint what depends on them. */
+    setTheme: () => void;
     setTimeVisible: (visible: boolean) => void;
     /** The chart as an image, for the export button; null before the library is ready. */
     screenshot: () => HTMLCanvasElement | null;
@@ -189,11 +191,13 @@ const overlay = (
 };
 
 export function createCandleHost(container: HTMLElement, options: CandleHostOptions = {}): CandleHost {
-    const up = token('--up', '#4ade80');
-    const down = token('--down', '#f87171');
-    const grid = token('--line', '#1c2320');
-    const upFill = token('--up', '#4ade80', 0.4);
-    const downFill = token('--down', '#f87171', 0.4);
+    // Re-resolved on a theme change: the tokens are CSS variables, and the canvas cannot read them,
+    // so every colour the chart paints with is rasterised from the live token at the moment it is used.
+    let up = token('--up', '#4ade80');
+    let down = token('--down', '#f87171');
+    let grid = token('--line', '#1c2320');
+    let upFill = token('--up', '#4ade80', 0.4);
+    let downFill = token('--down', '#f87171', 0.4);
 
     const chartOptions: DeepPartial<TimeChartOptions> = {
         autoSize: true,
@@ -219,8 +223,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
     const chart = createChart(container, chartOptions);
 
-    const brand = token('--brand', '#34d399');
-    const brandFill = token('--brand', '#34d399', 0.24);
+    let brand = token('--brand', '#34d399');
+    let brandFill = token('--brand', '#34d399', 0.24);
     let chartType: ChartType = options.chartType ?? 'candles';
 
     const PRICE_SCALE_MODE: Record<ScaleMode, PriceScaleMode> = {
@@ -623,6 +627,29 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         setSessionBreaks: (on) => {
             sessionBreaks = on;
             applyCandles();
+        },
+        setTheme: () => {
+            colorCache.clear();
+            up = token('--up', '#4ade80');
+            down = token('--down', '#f87171');
+            grid = token('--line', '#1c2320');
+            upFill = token('--up', '#4ade80', 0.4);
+            downFill = token('--down', '#f87171', 0.4);
+            brand = token('--brand', '#34d399');
+            brandFill = token('--brand', '#34d399', 0.24);
+            chart.applyOptions({
+                layout: { textColor: token('--faint', '#7d8a84') },
+                grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+                rightPriceScale: { borderColor: grid },
+                timeScale: { borderColor: grid },
+            });
+            // The price series carries its own colours, so it is rebuilt rather than patched.
+            chart.removeSeries(price);
+            price = createPriceSeries();
+            applyCandles();
+            buildStudies();
+            emitReadout();
+            options.onPriceSeries?.(price);
         },
         setVolumeVisible: (on) => {
             volumeVisible = on;

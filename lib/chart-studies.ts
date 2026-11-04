@@ -615,7 +615,7 @@ export function studiesChoice(study: StudyConfig, key: string): string {
 }
 
 /** How long a formula may get: long enough for a real expression, short enough for a settings row. */
-export const MAX_FORMULA_LENGTH = 200;
+export const MAX_FORMULA_LENGTH = 400;
 
 /** The string value a text parameter ended up with. */
 export function studiesText(study: StudyConfig, key: string): string {
