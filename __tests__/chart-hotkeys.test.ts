@@ -138,3 +138,45 @@ describe('note background', () => {
         expect(line.background).toBeUndefined();
     });
 });
+
+import { fibLevels, fibRatiosOf, hasFibLevels, MAX_FIB_LEVELS } from '@/lib/chart-drawings';
+
+describe('Fibonacci levels', () => {
+    const fib = (extra: Record<string, unknown> = {}) => ({
+        id: 'f1', tool: 'fib', points: [{ time: 1, price: 100 }, { time: 9, price: 200 }], ...extra,
+    });
+
+    it('knows which tools have editable levels', () => {
+        expect(hasFibLevels('fib')).toBe(true);
+        expect(hasFibLevels('fibext')).toBe(true);
+        expect(hasFibLevels('fibfan')).toBe(false);
+        expect(hasFibLevels('trend')).toBe(false);
+    });
+
+    it('draws the classic set until a trader keeps their own', () => {
+        const [defaults] = parseDrawings2([fib()]);
+        expect(fibRatiosOf(defaults)).toContain(0.618);
+        const [custom] = parseDrawings2([fib({ fibLevels: [0, 0.75] })]);
+        expect(fibRatiosOf(custom)).toEqual([0, 0.75]);
+    });
+
+    it('sorts, de-duplicates and caps what it is given', () => {
+        const [drawing] = parseDrawings2([fib({ fibLevels: [1, 0.5, 1, 'x', 0.5] })]);
+        expect(drawing.fibLevels).toEqual([0.5, 1]);
+        const many = Array.from({ length: 40 }, (_, i) => i / 10);
+        const [capped] = parseDrawings2([fib({ fibLevels: many })]);
+        expect(capped.fibLevels).toHaveLength(MAX_FIB_LEVELS);
+    });
+
+    it('drops levels on a tool that draws none', () => {
+        const [line] = parseDrawings2([{ id: 'l', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], fibLevels: [0.5] }]);
+        expect(line.fibLevels).toBeUndefined();
+    });
+
+    it('places a custom level where the ratio says', () => {
+        const a = { time: 1, price: 100 };
+        const b = { time: 9, price: 200 };
+        const level = fibLevels(a, b, [0.5]).find((l) => l.ratio === 0.5);
+        expect(level?.price).toBe(150);
+    });
+});

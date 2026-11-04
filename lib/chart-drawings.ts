@@ -137,6 +137,8 @@ export type Drawing = {
     fillOpacity?: number;
     /** Interval ids this drawing is allowed on; empty or unset means every interval. */
     timeframes?: string[];
+    /** Ratio list for the Fibonacci tools; unset keeps the classic set for that tool. */
+    fibLevels?: number[];
 };
 
 /** The fill steps the toolbar offers, in percent. Zero is "no fill". */
@@ -900,14 +902,33 @@ export const drawingColor = (drawing: Pick<Drawing, 'tool' | 'color'>): string =
  */
 export const FIB_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 0.886, 1, 1.13, 1.272, 1.414, 1.618, 2, 2.618, 3] as const;
 
+/** The tools whose levels a trader can edit, each with the set it ships with. */
+const FIB_DEFAULTS: Partial<Record<ShapeTool, readonly number[]>> = {
+    fib: FIB_RATIOS,
+    fibext: FIB_EXT_RATIOS,
+    fibtrendext: FIB_TREND_EXT_RATIOS,
+};
+
+/** Whether this tool draws levels a trader may add to or trim. */
+export const hasFibLevels = (tool: ShapeTool): boolean => FIB_DEFAULTS[tool] !== undefined;
+
+/** At most this many levels: beyond it the labels overlap and the drawing stops being readable. */
+export const MAX_FIB_LEVELS = 30;
+
+/** The ratios a drawing actually draws: its own list, or the tool's classic set. */
+export function fibRatiosOf(drawing: Pick<Drawing, 'tool' | 'fibLevels'>): readonly number[] {
+    const own = drawing.fibLevels;
+    return own && own.length > 0 ? own : FIB_DEFAULTS[drawing.tool] ?? FIB_RATIOS;
+}
+
 export type FibLevel = { ratio: number; price: number };
 
-export function fibLevels(a: DrawPoint, b: DrawPoint): FibLevel[] {
+export function fibLevels(a: DrawPoint, b: DrawPoint, ratios: readonly number[] = FIB_RATIOS): FibLevel[] {
     const top = Math.max(a.price, b.price);
     const bottom = Math.min(a.price, b.price);
     const span = top - bottom;
     const rising = b.price >= a.price;
-    return FIB_RATIOS.map((ratio) => ({
+    return ratios.map((ratio) => ({
         ratio,
         price:
             ratio <= 1
@@ -1214,6 +1235,12 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const bold = carriesText(candidate.tool) && candidate.bold === true ? true : undefined;
     const italic = carriesText(candidate.tool) && candidate.italic === true ? true : undefined;
     const background = carriesText(candidate.tool) && candidate.background === true ? true : undefined;
+    // Levels are kept sorted and unique: two labels on one line is not a feature.
+    const fibLevels = hasFibLevels(candidate.tool) && Array.isArray(candidate.fibLevels)
+        ? [...new Set(candidate.fibLevels.filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n >= -10 && n <= 10))]
+              .sort((a, b) => a - b)
+              .slice(0, MAX_FIB_LEVELS)
+        : undefined;
     // A fill only means something on a shape that encloses an area.
     const fill = hasFill(candidate.tool) && isColorKey(candidate.fill) ? candidate.fill : undefined;
     const fillOpacity = hasFill(candidate.tool) && isFillOpacity(candidate.fillOpacity) ? candidate.fillOpacity : undefined;
@@ -1239,6 +1266,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(fill ? { fill } : {}),
         ...(fillOpacity !== undefined ? { fillOpacity } : {}),
         ...(timeframes && timeframes.length > 0 ? { timeframes } : {}),
+        ...(fibLevels && fibLevels.length > 0 ? { fibLevels } : {}),
     };
 };
 

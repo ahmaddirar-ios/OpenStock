@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -406,7 +406,7 @@ export default function ChartDrawings({
             let lastLabelY: number | null = null;
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
-                    {fibLevels(drawing.points[0], drawing.points[1]).map(({ ratio, price }) => {
+                    {fibLevels(drawing.points[0], drawing.points[1], fibRatiosOf(drawing)).map(({ ratio, price }) => {
                         const y = toScreen({ time: drawing.points[0].time, price })?.y;
                         if (y == null) return null;
                         const left = Math.min(screen[0].x, screen[1].x);
@@ -861,7 +861,7 @@ export default function ChartDrawings({
         if (kind === 'fibext' || kind === 'fibtrendext') {
             const [p0, p1, p2] = drawing.points;
             if (!p2) return null;
-            const ratios = kind === 'fibext' ? FIB_EXT_RATIOS : FIB_TREND_EXT_RATIOS;
+            const ratios = drawing.fibLevels?.length ? drawing.fibLevels : kind === 'fibext' ? FIB_EXT_RATIOS : FIB_TREND_EXT_RATIOS;
             const levels = fibExtension(p0, p1, p2, ratios);
             const fallbackY = priceYFrom(p0, p1, screen[0], screen[1]);
             const left = Math.min(screen[0].x, screen[1].x);

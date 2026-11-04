@@ -95,7 +95,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fillOf, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -156,7 +156,7 @@ import {
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -422,9 +422,17 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setDrawings((list) => [...list, copy]);
         setSelectedId(copy.id);
     }, [drawings, selectedId, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'fill' | 'fillOpacity' | 'timeframes'>>) => {
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
         if (!selectedId) return;
-        setDrawings((list) => list.map((d) => (d.id === selectedId ? { ...d, ...patch } : d)));
+        setDrawings((list) => list.map((d) => {
+            if (d.id !== selectedId) return d;
+            const next = { ...d, ...patch };
+            // A cleared field must leave the drawing, not sit in it as undefined.
+            for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+                if (patch[key] === undefined) delete next[key];
+            }
+            return next;
+        }));
     };
 
     // A link from the share button carries a view, not a portfolio: apply it once, then drop the
@@ -714,6 +722,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const [templates, setTemplates] = useState<DrawingTemplate[]>([]);
     const shareApplied = useRef(false);
     const [templateName, setTemplateName] = useState('');
+    const [levelDraft, setLevelDraft] = useState('');
     useEffect(() => {
         setDrawingStyles(loadDrawingStyles());
         setTemplates(loadTemplates());
@@ -2223,6 +2232,77 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     <button type="button" onClick={() => startTool(null)} className="pill h-7 px-2.5 text-[12px] gap-1.5">
                         <X className="size-3.5" /> {t('chart.cancel')}
                     </button>
+                )}
+                {/* Fibonacci levels: the classic set, unless the trader keeps their own. */}
+                {selectedDrawing && hasFibLevels(selectedDrawing.tool) && (
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setMenu((current) => (current === 'fib' ? null : 'fib'))}
+                            aria-expanded={menu === 'fib'}
+                            className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', menu === 'fib' && 'is-up')}
+                        >
+                            {t('chart.fibLevels')} <ChevronDown className="size-3" />
+                        </button>
+                        {menu === 'fib' && (
+                            <>
+                                <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
+                                <div className="absolute end-0 z-30 mt-1 flex w-56 flex-col gap-1 rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
+                                    <p className="px-1 text-[11.5px] text-faint">{t('chart.fibLevelsHint')}</p>
+                                    <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
+                                        {fibRatiosOf(selectedDrawing).map((ratio) => (
+                                            <div key={ratio} className="flex items-center gap-1">
+                                                <span className="num flex-1 px-1 text-[12.5px]">{arDigits(ratio, lang)}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const next = fibRatiosOf(selectedDrawing).filter((value) => value !== ratio);
+                                                        restyleDrawing({ fibLevels: next.length ? [...next] : undefined });
+                                                    }}
+                                                    aria-label={`${t('chart.fibRemove')} ${ratio}`}
+                                                    title={t('chart.fibRemove')}
+                                                    className="icon-btn is-danger"
+                                                >
+                                                    <Trash2 className="size-3.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-1 flex gap-1.5 border-t border-white/5 pt-2">
+                                        <input
+                                            value={levelDraft}
+                                            onChange={(event) => setLevelDraft(event.target.value)}
+                                            placeholder="0.75"
+                                            inputMode="decimal"
+                                            dir="ltr"
+                                            className="num h-7 min-w-0 flex-1 rounded-full bg-page px-2.5 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const value = Number(levelDraft);
+                                                if (!Number.isFinite(value) || value < -10 || value > 10) return;
+                                                const next = [...new Set([...fibRatiosOf(selectedDrawing), value])].sort((a, b) => a - b);
+                                                restyleDrawing({ fibLevels: next.slice(0, MAX_FIB_LEVELS) });
+                                                setLevelDraft('');
+                                            }}
+                                            disabled={!levelDraft.trim()}
+                                            className="pill h-7 px-2.5 text-[12px] is-up disabled:opacity-50"
+                                        >
+                                            {t('chart.fibAdd')}
+                                        </button>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => restyleDrawing({ fibLevels: undefined })}
+                                        className="pill h-7 px-2.5 text-[12px]"
+                                    >
+                                        {t('chart.fibReset')}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 )}
                 {/* Where a drawing is allowed to appear: everywhere (default), or the intervals picked. */}
                 <div className="relative">
