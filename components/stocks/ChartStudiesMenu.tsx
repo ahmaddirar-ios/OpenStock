@@ -315,14 +315,18 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                             {def.params.map((param) => {
                                                 if (param.kind === 'text') {
                                                     const value = studiesText(study, param.key);
-                                                    const checked = checkFormula(value);
+                                                    // The box holds the draft while the study holds the last committed
+                                                    // expression, and the reason has to be about what the box says: a
+                                                    // typo should name itself as it is typed, not after a blur.
+                                                    const shown = drafts[`${index}:${param.key}`] ?? value;
+                                                    const checked = checkFormula(shown);
                                                     return (
                                                         <label key={param.key} className="flex w-full flex-col gap-0.5 text-[10.5px] text-faint">
                                                             {t(param.label)}
                                                             <input
                                                                 type="text"
                                                                 dir="ltr"
-                                                                value={drafts[`${index}:${param.key}`] ?? value}
+                                                                value={shown}
                                                                 onChange={(event) => setDrafts((current) => ({ ...current, [`${index}:${param.key}`]: event.target.value }))}
                                                                 onBlur={(event) => setText(index, param.key, event.target.value)}
                                                                 onKeyDown={(event) => {
@@ -348,7 +352,7 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
-                                                                        const next = addSavedFormula(savedFormulas, formulaName, drafts[`${index}:${param.key}`] ?? value);
+                                                                        const next = addSavedFormula(savedFormulas, formulaName, shown);
                                                                         if (next === savedFormulas) return;
                                                                         setSavedFormulas(next);
                                                                         saveSavedFormulas(next);

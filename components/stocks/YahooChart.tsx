@@ -1902,7 +1902,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     type="button"
                     onClick={() => setVolumeVisible((value) => !value)}
                     aria-pressed={volumeVisible}
-                    className={cn('pill h-7 px-2.5 text-[12px]', !volumeVisible && 'is-up')}
+                    className={cn('pill h-7 px-2.5 text-[12px]', volumeVisible && 'is-up')}
                     title={t('chart.volume')}
                 >
                     <BarChart3 className="size-3.5" />
