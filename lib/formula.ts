@@ -279,7 +279,8 @@ const evaluate = (node: Node, bars: readonly FormulaBar[]): number[] => {
 export function checkFormula(expression: string): { ok: true } | { ok: false; error: string } {
     try {
         const parser: Parser = { tokens: tokenize(expression), at: 0 };
-        const tree = parseExpression(parser);
+        parseExpression(parser);
+        // Anything left over is a second expression, which is a typo rather than a feature.
         if (parser.at !== parser.tokens.length) throw new Error(`unexpected:${String(peek(parser)?.value ?? '')}`);
         return { ok: true };
     } catch (error) {
