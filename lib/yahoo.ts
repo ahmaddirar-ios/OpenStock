@@ -37,10 +37,56 @@ export type YahooDailyQuote = {
     name: string;
 };
 
+/** The shape /api/quotes speaks (Finnhub's letters), so a Tadawul symbol can be polled like any other. */
+export type YahooLiveQuote = {
+    c: number;
+    d: number;
+    dp: number;
+    t?: number;
+    name?: string;
+    currency?: string;
+};
+
+type YahooChartMeta = {
+    currency?: string;
+    shortName?: string;
+    longName?: string;
+    regularMarketPrice?: number;
+    regularMarketTime?: number;
+    previousClose?: number;
+    chartPreviousClose?: number;
+    fulldayChange?: number;
+    regularMarketChangePercent?: number;
+    marketState?: string;
+};
+
+/**
+ * The freshest number Yahoo will give for a Tadawul listing: its chart meta carries the last trade
+ * and the time it happened, so the page can say how old the price is instead of implying it is live.
+ */
+export function liveQuoteFromChart(json: unknown): YahooLiveQuote | null {
+    const result = (json as YahooChartJson)?.chart?.result?.[0];
+    const meta = result?.meta;
+    const closes = (result?.indicators?.quote?.[0]?.close ?? []).filter((n): n is number => Number.isFinite(n));
+    const price = meta?.regularMarketPrice ?? closes[closes.length - 1];
+    if (!Number.isFinite(price)) return null;
+    const prev = meta?.previousClose ?? meta?.chartPreviousClose ?? (closes.length > 1 ? closes[closes.length - 2] : null);
+    const change = meta?.fulldayChange ?? (prev != null ? (price as number) - prev : 0);
+    const percent = meta?.regularMarketChangePercent ?? (prev ? (change / prev) * 100 : 0);
+    return {
+        c: price as number,
+        d: change,
+        dp: percent,
+        t: meta?.regularMarketTime,
+        name: meta?.shortName ?? meta?.longName,
+        currency: meta?.currency,
+    };
+}
+
 type YahooChartJson = {
     chart?: {
         result?: Array<{
-            meta?: { currency?: string; shortName?: string; longName?: string; regularMarketPrice?: number; fulldayChange?: number; regularMarketChangePercent?: number };
+            meta?: YahooChartMeta;
             indicators?: { quote?: Array<{ close?: (number | null)[] }> };
         }>;
     };

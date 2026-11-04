@@ -60,3 +60,29 @@ describe('quote freshness', () => {
         expect(quoteTtlSeconds(watchlist, OPEN)).toBeGreaterThanOrEqual(30);
     });
 });
+
+describe('Tadawul freshness', () => {
+    // Sunday 2026-11-01 11:00 in Riyadh: Tadawul trades Sunday to Thursday, and New York is shut.
+    const SAUDI_OPEN = new Date('2026-11-01T08:00:00Z');
+    // Wednesday 2026-11-04 16:00 in Riyadh: the Saudi session has closed, New York has not opened.
+    const SAUDI_CLOSED = new Date('2026-11-04T13:00:00Z');
+
+    it('treats a Riyadh weekday session as live, on the Saudi calendar', async () => {
+        const { isQuoteLive, quoteTtlSeconds } = await load();
+        expect(isQuoteLive(['2222.SR'], SAUDI_OPEN)).toBe(true);
+        expect(quoteTtlSeconds(['2222.SR'], SAUDI_OPEN)).toBe(60);
+        // Same moment, a US listing: no session, so no polling.
+        expect(quoteTtlSeconds(['AAPL'], new Date('2026-11-01T08:00:00Z'))).toBe(3600);
+    });
+
+    it('stops polling at 15:00 Riyadh even though New York is pre-market', async () => {
+        const { quoteTtlSeconds } = await load();
+        expect(quoteTtlSeconds(['2222.SR'], SAUDI_CLOSED)).toBe(300);
+        expect(quoteTtlSeconds(['TADAWUL:1120'], SAUDI_CLOSED)).toBe(300);
+    });
+
+    it('keeps a Saudi quote fresh for five minutes once the session ends', async () => {
+        const { quoteTtlSeconds } = await load();
+        expect(quoteTtlSeconds(['2222.SR', 'TADAWUL:TASI'], new Date('2026-11-07T08:00:00Z'))).toBe(300);
+    });
+});

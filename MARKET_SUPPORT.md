@@ -19,6 +19,7 @@ What Rovex can show depends on two free data sources. This table was tested agai
 ## What that means in the app
 
 - **Dashboard:** pick a market (US, India, Germany, Canada, Australia, Saudi Arabia, Crypto, Forex). US and crypto tiles use our own cached quotes; Saudi tiles, movers and quotes use delayed Yahoo Finance quotes, because TradingView blocks Tadawul in embeds; the others use TradingView quote tiles.
+- **Saudi Arabia:** quotes come from Yahoo Finance and are ~15 minutes behind the exchange. They are fetched with a one-minute cache during the Riyadh session (Sunday-Thursday 10:00-15:00) and five minutes after it, so a page left open follows the feed instead of freezing. Every Saudi price prints the time of its last trade and says `15m delayed`; nothing on that market claims to be live until an official feed is wired in.
 - **Stock pages:** symbols Finnhub can price get the full header (live price, day range, market cap). Others get TradingView's quote panel.
 - **Alerts:** an Rovex Cloud feature (or self-hosted in realtime mode). US stocks and crypto only, because the alert checker needs a quote source it can call every five minutes.
 - **Search:** Finnhub search returns listings worldwide. On exchanges whose chart is blocked, the stock page links to the chart on TradingView instead (the list is `CHART_BLOCKED_EXCHANGES` in `lib/utils.ts`, each confirmed with two tickers).

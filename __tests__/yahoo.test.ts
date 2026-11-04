@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dailyQuoteFromChart, isIndexSymbol, normalizeYahooSymbol, tadawulAppSymbol } from '@/lib/yahoo';
+import { dailyQuoteFromChart, isIndexSymbol, liveQuoteFromChart, normalizeYahooSymbol, tadawulAppSymbol } from '@/lib/yahoo';
 import { formatSymbolForTradingView, isChartEmbeddable } from '@/lib/utils';
 
 describe('Tadawul symbols', () => {
@@ -45,5 +45,34 @@ describe('dailyQuoteFromChart', () => {
     it('returns null when Yahoo has nothing', () => {
         expect(dailyQuoteFromChart({ chart: { result: null } })).toBeNull();
         expect(dailyQuoteFromChart(chart([null]))).toBeNull();
+    });
+});
+
+describe('liveQuoteFromChart', () => {
+    it('reads the last trade and the time it happened', () => {
+        const json = {
+            chart: {
+                result: [{
+                    meta: { currency: 'SAR', shortName: 'Saudi Arabian Oil Co.', regularMarketPrice: 26.24, previousClose: 26.16, regularMarketTime: 1793786909 },
+                    indicators: { quote: [{ close: [26.1, 26.24] }] },
+                }],
+            },
+        };
+        const quote = liveQuoteFromChart(json);
+        expect(quote?.c).toBe(26.24);
+        expect(quote?.t).toBe(1793786909);
+        expect(quote?.d).toBeCloseTo(0.08, 5);
+        expect(quote?.dp).toBeCloseTo(0.3058, 3);
+        expect(quote?.currency).toBe('SAR');
+    });
+
+    it('falls back to the closes when the meta is thin', () => {
+        const json = { chart: { result: [{ meta: {}, indicators: { quote: [{ close: [10, 11] }] } }] } };
+        expect(liveQuoteFromChart(json)?.c).toBe(11);
+        expect(liveQuoteFromChart(json)?.d).toBe(1);
+    });
+
+    it('returns null when there is nothing to price', () => {
+        expect(liveQuoteFromChart({ chart: { result: [] } })).toBeNull();
     });
 });

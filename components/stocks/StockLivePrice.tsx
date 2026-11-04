@@ -4,6 +4,7 @@ import ChangePill from "@/components/ChangePill";
 import DataFreshness from "@/components/DataFreshness";
 import PriceFlash from "@/components/PriceFlash";
 import { useLiveQuotes, type LiveQuote } from "@/hooks/useLiveQuotes";
+import { isTadawulSymbol } from "@/lib/yahoo";
 import type { Lang } from "@/lib/i18n";
 import { arDigits } from "@/lib/i18n";
 import Price from "@/components/Price";
@@ -24,7 +25,8 @@ const StockLivePrice = ({ symbol, initial, currency, lang = 'en' }: { symbol: st
                         {quote?.d != null ? <bdi>{`${quote.d > 0 ? '+' : ''}${arDigits(quote.d.toFixed(2), lang)}`}</bdi> : null}
                     </span>
                 </span>
-                <DataFreshness tradeTime={quote?.t} lang={lang} />
+                {/* Yahoo prices Tadawul and is always ~15 minutes behind, so the label says so. */}
+                <DataFreshness tradeTime={quote?.t} delayed={isTadawulSymbol(symbol)} lang={lang} />
             </div>
         </div>
     );
