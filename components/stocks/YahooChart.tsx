@@ -426,7 +426,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setDrawings((list) => [...list, copy]);
         setSelectedId(copy.id);
     }, [drawings, selectedId, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'textColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'color' | 'textColor' | 'customColor' | 'customFill' | 'customTextColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
         if (!selectedId) return;
         setDrawings((list) => list.map((d) => {
             if (d.id !== selectedId) return d;
@@ -2002,7 +2002,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                                 <button
                                     key={key}
                                     type="button"
-                                    onClick={() => restyleDrawing({ fill: key })}
+                                    onClick={() => restyleDrawing({ fill: key, customFill: undefined })}
                                     aria-pressed={(selectedDrawing.fill ?? selectedDrawing.color) === key}
                                     aria-label={`${t('chart.tool.fill')} ${key}`}
                                     title={`${t('chart.tool.fill')} ${key}`}
@@ -2104,6 +2104,25 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         dir="auto"
                     />
                 )}
+                {/* Any colour, not just the palette: a chart palette (black, grey, a broker's teal). */}
+                <label
+                    className={cn('relative size-6 cursor-pointer rounded-[6px] border border-white/25', !selectedId && 'opacity-50')}
+                    title={t('chart.color.custom')}
+                >
+                    <span className="sr-only">{t('chart.color.custom')}</span>
+                    <span
+                        aria-hidden
+                        className="absolute inset-0 rounded-[5px]"
+                        style={{ background: selectedDrawing ? drawingColor(selectedDrawing) : 'transparent' }}
+                    />
+                    <input
+                        type="color"
+                        value={selectedDrawing ? drawingColor(selectedDrawing) : '#2962ff'}
+                        disabled={!selectedId}
+                        onChange={(event) => restyleDrawing({ customColor: event.target.value })}
+                        className="absolute inset-0 size-full cursor-pointer opacity-0"
+                    />
+                </label>
                 <div role="group" aria-label={t('chart.tool.width')} className="flex items-center gap-0.5">
                     {DRAWING_WIDTHS.map((step) => {
                         const active = (selectedDrawing?.width ?? 1.6) === step;
@@ -2165,7 +2184,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                                 <button
                                     key={key}
                                     type="button"
-                                    onClick={() => restyleDrawing({ textColor: key })}
+                                    onClick={() => restyleDrawing({ textColor: key, customTextColor: undefined })}
                                     aria-pressed={textColorOf(selectedDrawing) === key}
                                     aria-label={`${t('chart.text.color')} ${key}`}
                                     title={`${t('chart.text.color')} ${key}`}

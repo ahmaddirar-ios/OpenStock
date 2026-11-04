@@ -87,14 +87,14 @@ describe('fill and italic', () => {
         const [drawing] = parseDrawings2([box()]);
         expect(hasFill('rectangle')).toBe(true);
         expect(hasFill('trend')).toBe(false);
-        expect(fillOf(drawing)).toEqual({ color: 'blue', opacity: 12 });
+        expect(fillOf(drawing)).toEqual({ color: '#2962FF', opacity: 12 });
     });
 
     it('reads a chosen fill colour and strength', () => {
         const [drawing] = parseDrawings2([box({ fill: 'gold', fillOpacity: 40 })]);
         expect(drawing.fill).toBe('gold');
         expect(drawing.fillOpacity).toBe(40);
-        expect(fillOf(drawing)).toEqual({ color: 'gold', opacity: 40 });
+        expect(fillOf(drawing)).toEqual({ color: '#EAB308', opacity: 40 });
         expect(FILL_OPACITIES).toContain(40);
     });
 
@@ -185,10 +185,13 @@ import { textColorOf } from '@/lib/chart-drawings';
 
 describe('text colour', () => {
     it('follows the stroke until a colour of its own is chosen', () => {
+        // The resolver hands back a paintable colour: the palette key or the free hex behind it.
         const [plain] = parseDrawings2([{ id: 'n', tool: 'text', points: [{ time: 1, price: 2 }], text: 'x', color: 'gold' }]);
-        expect(textColorOf(plain)).toBe('gold');
+        expect(textColorOf(plain)).toBe('#EAB308');
         const [own] = parseDrawings2([{ id: 'n2', tool: 'text', points: [{ time: 1, price: 2 }], text: 'x', color: 'gold', textColor: 'white' }]);
-        expect(textColorOf(own)).toBe('white');
+        expect(textColorOf(own)).toBe('#F0F3FA');
+        const [free] = parseDrawings2([{ id: 'n3', tool: 'text', points: [{ time: 1, price: 2 }], text: 'x', customTextColor: '#000000' }]);
+        expect(textColorOf(free)).toBe('#000000');
     });
 
     it('ignores a text colour on a tool with no words', () => {
@@ -219,5 +222,32 @@ describe('moving a whole drawing', () => {
 
     it('returns the same drawing for an empty move', () => {
         expect(translateDrawing(line, { time: 0, price: 0 })).toBe(line);
+    });
+});
+
+import { CUSTOM_COLOR, drawingColor } from '@/lib/chart-drawings';
+
+describe('custom colours', () => {
+    const line = (extra: Record<string, unknown> = {}) => ({
+        id: 'l', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], ...extra,
+    });
+
+    it('takes any hex, and only a hex', () => {
+        const [black] = parseDrawings2([line({ customColor: '#000000' })]);
+        expect(drawingColor(black)).toBe('#000000');
+        const [broken] = parseDrawings2([line({ customColor: 'black' })]);
+        expect(drawingColor(broken)).toBe('#2962FF');
+        expect(CUSTOM_COLOR.test('#0f0f0f')).toBe(true);
+        expect(CUSTOM_COLOR.test('#0f0f')).toBe(false);
+    });
+
+    it('lets a free colour win over the palette key', () => {
+        const [drawing] = parseDrawings2([line({ color: 'gold', customColor: '#123456' })]);
+        expect(drawingColor(drawing)).toBe('#123456');
+    });
+
+    it('fills with a free colour when one is given', () => {
+        const [box] = parseDrawings2([{ id: 'b', tool: 'rectangle', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], customFill: '#101010', fillOpacity: 20 }]);
+        expect(fillOf(box)).toEqual({ color: '#101010', opacity: 20 });
     });
 });

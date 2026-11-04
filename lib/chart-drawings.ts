@@ -133,6 +133,12 @@ export type Drawing = {
     background?: boolean;
     /** Glyph colour for the tools that carry words; unset means the stroke's own colour. */
     textColor?: ColorKey;
+    /** A free colour (#rrggbb) that wins over the palette key, for the stroke. */
+    customColor?: string;
+    /** A free fill colour (#rrggbb) that wins over the fill palette key. */
+    customFill?: string;
+    /** A free glyph colour (#rrggbb) that wins over the text palette key. */
+    customTextColor?: string;
     /** Fill palette key for the closed shapes; unset means the stroke's own colour. */
     fill?: ColorKey;
     /** Fill strength in percent (0 is invisible); unset means the tool's own look. */
@@ -162,8 +168,12 @@ export const textStyleOf = (drawing: Pick<Drawing, 'textSize' | 'bold' | 'italic
 });
 
 /** The colour a drawing's words are painted in: its own, or the stroke's. */
-export const textColorOf = (drawing: Pick<Drawing, 'textColor' | 'color' | 'tool'>): ColorKey =>
-    drawing.textColor ?? drawing.color ?? toolDef(drawing.tool).defaultColor;
+export const textColorOf = (drawing: Pick<Drawing, 'textColor' | 'color' | 'tool' | 'customColor' | 'customTextColor'>): string =>
+    isCustomColor(drawing.customTextColor)
+        ? drawing.customTextColor.toLowerCase()
+        : drawing.customColor && !drawing.color && !drawing.textColor
+          ? drawing.customColor.toLowerCase()
+          : DRAWING_COLORS[drawing.textColor ?? drawing.color ?? toolDef(drawing.tool).defaultColor];
 
 /** The tool's own fill strength, so a box and a circle keep the look they had before fills were editable. */
 const TOOL_FILL_DEFAULT: Partial<Record<ShapeTool, number>> = {
@@ -201,8 +211,12 @@ export function translateDrawing(drawing: Drawing, delta: { time: number; price:
 export const hasFill = (tool: ShapeTool): boolean => TOOL_FILL_DEFAULT[tool] !== undefined;
 
 /** How a closed shape should be filled, with the palette and the default strength applied once. */
-export function fillOf(drawing: Pick<Drawing, 'tool' | 'color' | 'fill' | 'fillOpacity'>): { color: ColorKey; opacity: number } {
-    const color = drawing.fill ?? drawing.color ?? toolDef(drawing.tool).defaultColor;
+export function fillOf(
+    drawing: Pick<Drawing, 'tool' | 'color' | 'fill' | 'fillOpacity' | 'customColor' | 'customFill'>,
+): { color: string; opacity: number } {
+    const color = isCustomColor(drawing.customFill)
+        ? drawing.customFill.toLowerCase()
+        : DRAWING_COLORS[drawing.fill ?? drawing.color ?? toolDef(drawing.tool).defaultColor];
     const opacity = drawing.fillOpacity ?? TOOL_FILL_DEFAULT[drawing.tool] ?? 0;
     return { color, opacity };
 }
@@ -912,8 +926,14 @@ export function arrowHeadPoints(from: { x: number; y: number }, to: { x: number;
 }
 
 /** The colour a shape is painted with: its own, or its tool's default. */
-export const drawingColor = (drawing: Pick<Drawing, 'tool' | 'color'>): string =>
-    DRAWING_COLORS[isColorKey(drawing.color) ? drawing.color : toolDef(drawing.tool).defaultColor];
+export const drawingColor = (drawing: Pick<Drawing, 'tool' | 'color' | 'customColor'>): string =>
+    isCustomColor(drawing.customColor)
+        ? drawing.customColor.toLowerCase()
+        : DRAWING_COLORS[isColorKey(drawing.color) ? drawing.color : toolDef(drawing.tool).defaultColor];
+
+/** A colour a trader picked themselves: one hex triplet, nothing else gets stored. */
+export const CUSTOM_COLOR = /^#[0-9a-fA-F]{6}$/;
+const isCustomColor = (value: unknown): value is string => typeof value === 'string' && CUSTOM_COLOR.test(value);
 
 // --- Fibonacci -------------------------------------------------------------
 
@@ -1258,6 +1278,9 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const italic = carriesText(candidate.tool) && candidate.italic === true ? true : undefined;
     const background = carriesText(candidate.tool) && candidate.background === true ? true : undefined;
     const textColor = carriesText(candidate.tool) && isColorKey(candidate.textColor) ? candidate.textColor : undefined;
+    const customColor = isCustomColor(candidate.customColor) ? candidate.customColor.toLowerCase() : undefined;
+    const customFill = hasFill(candidate.tool) && isCustomColor(candidate.customFill) ? candidate.customFill.toLowerCase() : undefined;
+    const customTextColor = carriesText(candidate.tool) && isCustomColor(candidate.customTextColor) ? candidate.customTextColor.toLowerCase() : undefined;
     // Levels are kept sorted and unique: two labels on one line is not a feature.
     const fibLevels = hasFibLevels(candidate.tool) && Array.isArray(candidate.fibLevels)
         ? [...new Set(candidate.fibLevels.filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n >= -10 && n <= 10))]
@@ -1287,6 +1310,9 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(italic ? { italic } : {}),
         ...(background ? { background } : {}),
         ...(textColor ? { textColor } : {}),
+        ...(customColor ? { customColor } : {}),
+        ...(customFill ? { customFill } : {}),
+        ...(customTextColor ? { customTextColor } : {}),
         ...(fill ? { fill } : {}),
         ...(fillOpacity !== undefined ? { fillOpacity } : {}),
         ...(timeframes && timeframes.length > 0 ? { timeframes } : {}),

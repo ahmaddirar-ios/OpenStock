@@ -389,8 +389,8 @@ export default function ChartDrawings({
         // the trader picked, and the tool's original look is the default rather than the only option.
         const paint = fillOf(drawing);
         // Words can wear their own colour: a note in white over a busy candle is a choice, not a bug.
-        const ink = DRAWING_COLORS[textColorOf(drawing)];
-        const fill = paint.opacity > 0 ? `color-mix(in oklab, ${DRAWING_COLORS[paint.color]} ${paint.opacity}%, transparent)` : 'none';
+        const ink = textColorOf(drawing);
+        const fill = paint.opacity > 0 ? `color-mix(in oklab, ${paint.color} ${paint.opacity}%, transparent)` : 'none';
         const selected = drawing.id === selectedId;
         const locked = drawing.locked === true;
         // The trader's stroke, with the selection adding a little weight for feedback.
