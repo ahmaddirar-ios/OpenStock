@@ -1,69 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import {
-    anchoredVwap,
-    candlesBetween,
-    ICON_GLYPHS,
-    isImageUrl,
-    volumeProfile,
-    annotationText,
-    carriesText,
-    cleanText,
-    cycleIndices,
-    circleFrom,
-    doubleCurvePath,
-    drawingColor,
-    ellipseFrom,
-    disjointChannel,
-    flattenLines,
-    gannBoxGuides,
-    gannFanEnds,
-    gannSquareCorner,
-    pitchforkLines,
-    regressionChannel,
-    fibLevels,
-    gannGuides,
-    arrowHeadPoints,
-    channelRails,
-    dashOf,
-    extendedEnds,
-    FIB_EXT_RATIOS,
-    FIB_TREND_EXT_RATIOS,
-    fibArcRadii,
-    fibChannelLevels,
-    fibExtension,
-    fibFanEnds,
-    fibTimeMultiples,
-    handleIndex,
-    isFreehand,
-    measureSpan,
-    hitTest,
-    labelsFor,
-    nearestTime,
-    newDrawingId,
-    MAX_STROKE_POINTS,
-    polygonPoints,
-    polylinePath,
-    priceLabel,
-    positionZones,
-    projectionEnds,
-    quadraticPath,
-    arcThrough,
-    rangeReadout,
-    rayEnd,
-    speedFanEnds,
-    strokeWidthOf,
-    pointsNeeded,
-    sinePoints,
-    toolDef,
-    trendAngleDeg,
-    type DrawCandle,
-    type DrawPoint,
-    type Drawing,
-    type ScreenPoint,
-    type ShapeTool,
-} from '@/lib/chart-drawings';
+import { FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibTimeMultiples, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -516,7 +454,15 @@ export default function ChartDrawings({
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
                     {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, opacity, TEXT_DOT)}
-                    <text x={screen[0].x + 8} y={screen[0].y + 4} fill={color} fontSize={12} opacity={opacity} className="mono">
+                    <text
+                        x={screen[0].x + 8}
+                        y={screen[0].y + 4}
+                        fill={color}
+                        fontSize={textStyleOf(drawing).fontSize}
+                        fontWeight={textStyleOf(drawing).fontWeight}
+                        opacity={opacity}
+                        className="mono"
+                    >
                         {drawing.text}
                     </text>
                 </g>

@@ -26,3 +26,35 @@ describe('chart hotkeys', () => {
         }
     });
 });
+
+import { textStyleOf, parseDrawingList, TEXT_SIZES } from '@/lib/chart-drawings';
+
+describe('note text styling', () => {
+    const note = (extra: Record<string, unknown> = {}) => ({
+        id: 'n1', tool: 'text', points: [{ time: 1, price: 2 }], text: 'Watching 26.20', ...extra,
+    });
+
+    it('defaults to the medium weight and size', () => {
+        const [drawing] = parseDrawingList([note()]);
+        expect(textStyleOf(drawing)).toEqual({ fontSize: 12, fontWeight: 500 });
+    });
+
+    it('keeps a chosen size and bold', () => {
+        const [drawing] = parseDrawingList([note({ textSize: 'lg', bold: true })]);
+        expect(drawing.textSize).toBe('lg');
+        expect(drawing.bold).toBe(true);
+        expect(textStyleOf(drawing)).toEqual({ fontSize: 15, fontWeight: 700 });
+    });
+
+    it('drops styling on a tool that carries no words', () => {
+        const [drawing] = parseDrawingList([{ id: 'l1', tool: 'trend', points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], textSize: 'lg', bold: true }]);
+        expect(drawing.textSize).toBeUndefined();
+        expect(drawing.bold).toBeUndefined();
+    });
+
+    it('rejects a size it does not paint', () => {
+        const [drawing] = parseDrawingList([note({ textSize: 'huge' })]);
+        expect(TEXT_SIZES).not.toContain(drawing.textSize);
+        expect(drawing.textSize).toBeUndefined();
+    });
+});

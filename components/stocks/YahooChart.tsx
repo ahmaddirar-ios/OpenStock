@@ -94,40 +94,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import {
-    COUNT_GLYPHS,
-    COUNT_TOOL,
-    buildTransferPayload,
-    drawingColor,
-    isColorKey,
-    DRAWING_DASHES,
-    DRAWING_WIDTHS,
-    cloneDrawing,
-    carriesText,
-    layerDrawings,
-    readStayDrawing,
-    loadDrawings,
-    mergeDrawings,
-    nearestTime,
-    newDrawingId,
-    nextColor,
-    parseTransferPayload,
-    saveDrawings,
-    toolDef,
-    withPoint,
-    withText,
-    writeStayDrawing,
-    type ColorKey,
-    type CountDegree,
-    type CountKind,
-    type Drawing,
-    type DrawingDash,
-    type DrawingWidth,
-    type DrawPoint,
-    type LayerMove,
-    type ScreenPoint,
-    type ShapeTool,
-} from '@/lib/chart-drawings';
+import { COUNT_GLYPHS, COUNT_TOOL, DRAWING_DASHES, DRAWING_WIDTHS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, toolDef, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -445,7 +412,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setDrawings((list) => [...list, copy]);
         setSelectedId(copy.id);
     }, [drawings, selectedId, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash'>>) => {
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold'>>) => {
         if (!selectedId) return;
         setDrawings((list) => list.map((d) => (d.id === selectedId ? { ...d, ...patch } : d)));
     };
@@ -1948,6 +1915,43 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         );
                     })}
                 </div>
+                {/* Type styling, only while a tool that carries words is selected. */}
+                {selectedDrawing && carriesText(selectedDrawing.tool) && (
+                    <>
+                        <div role="group" aria-label={t('chart.text.size')} className="flex items-center gap-0.5">
+                            {TEXT_SIZES.map((size) => {
+                                const active = (selectedDrawing.textSize ?? 'md') === size;
+                                return (
+                                    <button
+                                        key={size}
+                                        type="button"
+                                        onClick={() => restyleDrawing({ textSize: size })}
+                                        aria-pressed={active}
+                                        aria-label={t(`chart.text.${size}`)}
+                                        title={t(`chart.text.${size}`)}
+                                        className={cn(
+                                            'rounded-[5px] px-1.5 py-px text-faint transition-colors hover:bg-hover/40',
+                                            size === 'sm' ? 'text-[10px]' : size === 'md' ? 'text-[12px]' : 'text-[14px]',
+                                            active && 'bg-hover/60 text-foreground',
+                                        )}
+                                    >
+                                        A
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => restyleDrawing({ bold: !selectedDrawing.bold })}
+                            aria-pressed={!!selectedDrawing.bold}
+                            aria-label={t('chart.text.bold')}
+                            title={t('chart.text.bold')}
+                            className={cn('icon-btn text-[13px] font-bold', selectedDrawing.bold && 'text-brand')}
+                        >
+                            B
+                        </button>
+                    </>
+                )}
                 <div role="group" aria-label={t('chart.tool.dash')} className="flex items-center gap-0.5">
                     {DRAWING_DASHES.map((dash) => {
                         const active = (selectedDrawing?.dash ?? 'solid') === dash;

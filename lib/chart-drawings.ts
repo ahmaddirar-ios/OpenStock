@@ -123,7 +123,23 @@ export type Drawing = {
     width?: DrawingWidth;
     /** Stroke pattern, independent of the tool; unset keeps the tool's own (a level is dashed). */
     dash?: DrawingDash;
+    /** Text size for the note family; unset means medium. Ignored by tools that carry no words. */
+    textSize?: TextSize;
+    /** Heavier glyphs, so a note can stand out from the rest of the markup. */
+    bold?: boolean;
 };
+
+export const TEXT_SIZES = ['sm', 'md', 'lg'] as const;
+export type TextSize = (typeof TEXT_SIZES)[number];
+
+/** The sizes the renderer paints, in chart pixels. */
+export const TEXT_FONT_PX: Record<TextSize, number> = { sm: 11, md: 12, lg: 15 };
+
+/** How a note should be painted, with the defaults applied in one place. */
+export const textStyleOf = (drawing: Pick<Drawing, 'textSize' | 'bold'>) => ({
+    fontSize: TEXT_FONT_PX[drawing.textSize ?? 'md'],
+    fontWeight: drawing.bold ? 700 : 500,
+});
 
 export const DRAWING_WIDTHS = [1, 2, 3, 4] as const;
 export type DrawingWidth = (typeof DRAWING_WIDTHS)[number];
@@ -135,6 +151,8 @@ const isWidth = (value: unknown): value is DrawingWidth =>
     typeof value === 'number' && (DRAWING_WIDTHS as readonly number[]).includes(value);
 const isDash = (value: unknown): value is DrawingDash =>
     typeof value === 'string' && (DRAWING_DASHES as string[]).includes(value);
+const isTextSize = (value: unknown): value is TextSize =>
+    typeof value === 'string' && (TEXT_SIZES as readonly string[]).includes(value);
 
 // --- colours ---------------------------------------------------------------
 
@@ -1149,6 +1167,9 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     const hidden = candidate.hidden === true ? true : undefined;
     const width = isWidth(candidate.width) ? candidate.width : undefined;
     const dash = isDash(candidate.dash) ? candidate.dash : undefined;
+    // Type styling only means something on a tool that carries words.
+    const textSize = carriesText(candidate.tool) && isTextSize(candidate.textSize) ? candidate.textSize : undefined;
+    const bold = carriesText(candidate.tool) && candidate.bold === true ? true : undefined;
 
     return {
         id: candidate.id,
@@ -1161,6 +1182,8 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(hidden ? { hidden } : {}),
         ...(width ? { width } : {}),
         ...(dash ? { dash } : {}),
+        ...(textSize ? { textSize } : {}),
+        ...(bold ? { bold } : {}),
     };
 };
 
