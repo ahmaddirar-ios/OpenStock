@@ -17,7 +17,9 @@ import {
 import { getStockSentimentInsights } from '@/lib/actions/adanos.actions';
 import { getStockMetrics } from '@/lib/actions/finnhub.actions';
 import { formatSymbolForTradingView, isChartEmbeddable, tradingViewSymbolUrl } from '@/lib/utils';
-import { isIndexSymbol } from '@/lib/yahoo';
+import { isIndexSymbol, isTadawulSymbol } from '@/lib/yahoo';
+import { fetchSaudiFundamentals } from '@/lib/saudi-fundamentals';
+import SaudiFundamentalsPanel from '@/components/stocks/SaudiFundamentals';
 import { yahooCandleSymbol } from '@/lib/yahoo-candles';
 import { getLang } from '@/lib/i18n-server';
 import { tx, type Lang } from '@/lib/i18n';
@@ -39,6 +41,12 @@ async function Sentiment({ symbol, lang }: { symbol: string; lang: Lang }) {
     );
 }
 
+// Tadawul dividends and results: the exchange data comes from the scanner, not from Finnhub.
+async function SaudiDividends({ symbol, lang }: { symbol: string; lang: Lang }) {
+    const fundamentals = await fetchSaudiFundamentals([symbol]);
+    return <SaudiFundamentalsPanel fundamentals={fundamentals[symbol] ?? null} lang={lang} />;
+}
+
 async function DividendYield({ symbol, lang }: { symbol: string; lang: Lang }) {
     const dividendYield = await getStockMetrics(symbol);
     return (
@@ -58,6 +66,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     const lang = await getLang();
     // The Tadawul All Shares Index is the one symbol here that is not a company.
     const isIndex = isIndexSymbol(symbol);
+    const isTadawul = isTadawulSymbol(symbol);
 
     return (
         <>
@@ -112,7 +121,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                     {!isIndex && (
                         <>
                             <Suspense fallback={null}>
-                                <DividendYield symbol={symbol} lang={lang} />
+                                {isTadawul ? <SaudiDividends symbol={symbol} lang={lang} /> : <DividendYield symbol={symbol} lang={lang} />}
                             </Suspense>
                             <Suspense fallback={null}>
                                 <Sentiment symbol={symbol} lang={lang} />

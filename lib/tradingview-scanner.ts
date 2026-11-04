@@ -31,7 +31,7 @@ export function scannerTicker(symbol: string): string | null {
     return match ? `TADAWUL:${match[1]}` : null;
 }
 
-type ScannerRow = { s: string; d: (number | string | null)[] };
+export type ScannerRow = { s: string; d: (number | string | null)[] };
 
 /**
  * One scanner row -> the quote the app speaks. Returns null when the row cannot be priced: a
@@ -56,26 +56,34 @@ export function saudiQuoteFromRow(row: ScannerRow): SaudiQuote | null {
     };
 }
 
-async function scanBatch(tickers: string[]): Promise<SaudiQuote[]> {
+/**
+ * The raw scanner rows for a set of tickers, values in the order `columns` was asked for.
+ * Shared by quotes and fundamentals so there is one place that knows how the endpoint behaves.
+ */
+export async function scanRows(tickers: string[], columns: string[], revalidate = 60): Promise<ScannerRow[]> {
     try {
         const res = await fetch(SCANNER_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' },
-            body: JSON.stringify({ symbols: { tickers }, columns: COLUMNS }),
+            body: JSON.stringify({ symbols: { tickers }, columns }),
             // The feed itself is 15 minutes behind; one minute of caching costs nothing and keeps
             // a page that polls from turning into traffic.
-            next: { revalidate: 60 },
+            next: { revalidate },
         });
         if (!res.ok) {
             console.error('TradingView scanner failed', res.status);
             return [];
         }
         const json = (await res.json()) as { data?: ScannerRow[] };
-        return (json.data ?? []).map(saudiQuoteFromRow).filter((q): q is SaudiQuote => q !== null);
+        return json.data ?? [];
     } catch (error) {
         console.error('TradingView scanner error', error);
         return [];
     }
+}
+
+async function scanBatch(tickers: string[]): Promise<SaudiQuote[]> {
+    return (await scanRows(tickers, COLUMNS)).map(saudiQuoteFromRow).filter((q): q is SaudiQuote => q !== null);
 }
 
 /**
