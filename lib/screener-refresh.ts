@@ -2,16 +2,27 @@ import { connectToDatabase } from '@/database/mongoose';
 import { ScreenerRowModel } from '@/database/models/screener.model';
 import { SCREENER_UNIVERSE, SCREENER_TOTAL } from '@/lib/screener-universe';
 import { dailyQuoteFromChart } from '@/lib/yahoo';
+import { fetchSaudiQuotes } from '@/lib/tradingview-scanner';
 
 // Shared by the server action (which the page calls to build/refresh) and the Inngest cron, so a
 // refresh behaves the same whether a person asked for it or the schedule did.
 
+export type RefreshProgress = { processed: number; next: number; total: number; priced: number };
+
 export const SCREENER_BATCH_LIMIT = 24;
 const CONCURRENCY = 6;
 
-export type RefreshProgress = { processed: number; next: number; total: number; priced: number };
+type Priced = {
+    price: number;
+    changePercent: number;
+    currency: string;
+    marketCap?: number;
+    peRatio?: number | null;
+    valueTraded?: number;
+    sector?: string;
+};
 
-async function fetchQuote(symbol: string): Promise<{ price: number; changePercent: number; currency: string } | null> {
+async function fetchQuote(symbol: string): Promise<Priced | null> {
     try {
         const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`, {
             headers: { 'User-Agent': 'Mozilla/5.0' },
@@ -30,6 +41,11 @@ async function fetchQuote(symbol: string): Promise<{ price: number; changePercen
 /**
  * Refreshes one slice of the universe: fetches a price for each symbol and upserts the row (metadata
  * stays, prices update). Returns the offset to continue from, so callers walk the universe in chunks.
+ *
+ * Tadawul goes through the TradingView scanner, which answers 200 tickers per request and carries
+ * the sector, market cap, P/E and turnover the screener filters on. Yahoo answers one symbol per
+ * request and rate-limits under load (measured 2026-11-04), so US listings keep that path but the
+ * Saudi half no longer spends 388 calls to fill the same table.
  */
 export async function refreshScreenerSlice(offset = 0, limit = SCREENER_BATCH_LIMIT): Promise<RefreshProgress> {
     const start = Math.max(0, Math.floor(offset));
@@ -44,34 +60,61 @@ export async function refreshScreenerSlice(offset = 0, limit = SCREENER_BATCH_LI
         return { processed: 0, next: start, total: SCREENER_TOTAL, priced: 0 };
     }
 
+    const saudiSymbols = slice.filter((entry) => entry.market === 'sa').map((entry) => entry.symbol);
+    const saudi = saudiSymbols.length > 0 ? await fetchSaudiQuotes(saudiSymbols) : {};
+
     let priced = 0;
-    for (let i = 0; i < slice.length; i += CONCURRENCY) {
-        const group = slice.slice(i, i + CONCURRENCY);
+    const usEntries = slice.filter((entry) => entry.market !== 'sa');
+    const usQuotes = new Map<string, Priced | null>();
+
+    for (let i = 0; i < usEntries.length; i += CONCURRENCY) {
+        const group = usEntries.slice(i, i + CONCURRENCY);
         const quotes = await Promise.all(group.map((entry) => fetchQuote(entry.symbol)));
-        const operations = group.map((entry, index) => {
-            const quote = quotes[index];
-            if (quote) priced += 1;
-            return {
-                updateOne: {
-                    filter: { symbol: entry.symbol },
-                    update: {
-                        $set: {
-                            name: entry.name,
-                            nameAr: entry.nameAr,
-                            market: entry.market,
-                            sector: entry.sector,
-                            exchange: entry.exchange,
-                            indexes: entry.indexes,
-                            ...(quote ? { price: quote.price, changePercent: quote.changePercent, currency: quote.currency } : {}),
-                            updatedAt: now,
-                        },
-                    },
-                    upsert: true,
-                },
-            };
-        });
-        await ScreenerRowModel.bulkWrite(operations, { ordered: false });
+        group.forEach((entry, index) => usQuotes.set(entry.symbol, quotes[index]));
     }
+
+    const operations = slice.map((entry) => {
+        const saudiQuote = saudi[entry.symbol];
+        const quote: Priced | null = saudiQuote
+            ? {
+                price: saudiQuote.price,
+                changePercent: saudiQuote.changePercent,
+                currency: 'SAR',
+                marketCap: saudiQuote.marketCap,
+                peRatio: saudiQuote.peRatio,
+                valueTraded: saudiQuote.volume * saudiQuote.price,
+                sector: saudiQuote.sector,
+            }
+            : usQuotes.get(entry.symbol) ?? null;
+        if (quote) priced += 1;
+        return {
+            updateOne: {
+                filter: { symbol: entry.symbol },
+                update: {
+                    $set: {
+                        name: entry.name,
+                        nameAr: entry.nameAr,
+                        market: entry.market,
+                        // The directory carries no sector for Tadawul; the scanner does, so it wins when present.
+                        sector: quote?.sector || entry.sector,
+                        exchange: entry.exchange,
+                        indexes: entry.indexes,
+                        ...(quote ? {
+                            price: quote.price,
+                            changePercent: quote.changePercent,
+                            currency: quote.currency,
+                            marketCap: quote.marketCap ?? 0,
+                            peRatio: quote.peRatio ?? null,
+                            valueTraded: quote.valueTraded ?? 0,
+                        } : {}),
+                        updatedAt: now,
+                    },
+                },
+                upsert: true,
+            },
+        };
+    });
+    await ScreenerRowModel.bulkWrite(operations, { ordered: false });
 
     return { processed: slice.length, next: start + slice.length, total: SCREENER_TOTAL, priced };
 }

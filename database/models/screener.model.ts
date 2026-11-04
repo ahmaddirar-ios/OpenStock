@@ -13,6 +13,9 @@ export interface IScreenerRow extends Document {
     price: number;
     changePercent: number;
     currency: string;
+    marketCap: number;
+    peRatio: number | null;
+    valueTraded: number;
     updatedAt: Date;
 }
 
@@ -28,6 +31,9 @@ const ScreenerRowSchema = new Schema<IScreenerRow>(
         price: { type: Number, default: 0 },
         changePercent: { type: Number, default: 0 },
         currency: { type: String, default: 'USD' },
+        marketCap: { type: Number, default: 0 },
+        peRatio: { type: Number, default: null },
+        valueTraded: { type: Number, default: 0 },
         updatedAt: { type: Date, default: Date.now },
     },
     { timestamps: false }

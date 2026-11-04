@@ -20,6 +20,9 @@ export async function getScreenerRows(): Promise<ScreenerRow[]> {
             price: row.price,
             changePercent: row.changePercent,
             currency: row.currency,
+            marketCap: row.marketCap ?? 0,
+            peRatio: row.peRatio ?? null,
+            valueTraded: row.valueTraded ?? 0,
             updatedAt: row.updatedAt ? new Date(row.updatedAt).getTime() : 0,
         }));
     } catch (error) {

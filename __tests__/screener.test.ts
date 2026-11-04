@@ -18,6 +18,9 @@ const row = (over: Partial<ScreenerRow>): ScreenerRow => ({
     exchange: 'Nasdaq',
     indexes: ['SP500', 'NDX100'],
     price: 100,
+    marketCap: 1e9,
+    peRatio: 12,
+    valueTraded: 5e6,
     changePercent: 1,
     currency: 'USD',
     updatedAt: 1,
@@ -37,7 +40,11 @@ describe('parseCriteria', () => {
 
     it('keeps the recognised values and drops the rest', () => {
         const c = parseCriteria({ q: ' oil ', market: 'sa', sector: 'Energy', index: 'NDX100', minChange: '1.5', maxChange: '-2' });
-        expect(c).toEqual({ q: 'oil', market: 'sa', sector: 'Energy', index: 'NDX100', minChange: 1.5, maxChange: -2 });
+        expect(c).toEqual({
+            q: 'oil', market: 'sa', sector: 'Energy', index: 'NDX100',
+            minChange: 1.5, maxChange: -2,
+            minValue: null, minMarketCap: null, maxPe: null,
+        });
     });
 
     it('falls back when market or index are unknown', () => {
@@ -118,8 +125,8 @@ describe('toCsv', () => {
     it('writes a header and one line per row', () => {
         const csv = toCsv([row({ symbol: 'AAPL' })]);
         const [header, line] = csv.split('\n');
-        expect(header).toBe('Symbol,Name,Market,Sector,Exchange,Price,Change %,Currency');
-        expect(line).toBe('AAPL,Apple Inc.,US,Information Technology,Nasdaq,100,1,USD');
+        expect(header).toBe('Symbol,Name,Market,Sector,Exchange,Price,Change %,Value traded,Market cap,P/E,Currency');
+        expect(line).toBe('AAPL,Apple Inc.,US,Information Technology,Nasdaq,100,1,5000000,1000000000,12,USD');
     });
 
     it('quotes cells that contain a comma', () => {
@@ -130,5 +137,34 @@ describe('toCsv', () => {
     it('escapes embedded quotes', () => {
         const csv = toCsv([row({ name: 'The "X" Corp' })]);
         expect(csv.split('\n')[1]).toContain('"The ""X"" Corp"');
+    });
+
+    it('filters on turnover, size and P/E', () => {
+        const quiet = row({ symbol: 'A', valueTraded: 1e6, marketCap: 5e8, peRatio: 8 });
+        const busy = row({ symbol: 'B', valueTraded: 50e6, marketCap: 4e9, peRatio: 40 });
+        const unprofitable = row({ symbol: 'C', valueTraded: 20e6, marketCap: 2e9, peRatio: null });
+
+        // Ten million of turnover is the floor, and only B and C clear it.
+        expect(filterRows([quiet, busy, unprofitable], { ...DEFAULT_CRITERIA, minValue: 10 }).map((r) => r.symbol)).toEqual(['B', 'C']);
+        expect(filterRows([quiet, busy], { ...DEFAULT_CRITERIA, minMarketCap: 1000 }).map((r) => r.symbol)).toEqual(['B']);
+        // A company with no P/E is not a cheap company.
+        expect(filterRows([quiet, busy, unprofitable], { ...DEFAULT_CRITERIA, maxPe: 20 }).map((r) => r.symbol)).toEqual(['A']);
+    });
+
+    it('carries the new filters through the query string', () => {
+        const query = criteriaToQuery({ ...DEFAULT_CRITERIA, minValue: 10, minMarketCap: 500, maxPe: 15 });
+        expect(query).toContain('minValue=10');
+        expect(query).toContain('minMarketCap=500');
+        expect(query).toContain('maxPe=15');
+        const parsed = parseCriteria(Object.fromEntries(new URLSearchParams(query)));
+        expect(parsed).toMatchObject({ minValue: 10, minMarketCap: 500, maxPe: 15 });
+    });
+
+    it('sorts by turnover, size and P/E', () => {
+        const small = row({ symbol: 'A', valueTraded: 1e6, marketCap: 1e9, peRatio: 30 });
+        const big = row({ symbol: 'B', valueTraded: 9e6, marketCap: 9e9, peRatio: 5 });
+        expect(sortRows([small, big], 'value', 'desc').map((r) => r.symbol)).toEqual(['B', 'A']);
+        expect(sortRows([small, big], 'marketCap', 'desc').map((r) => r.symbol)).toEqual(['B', 'A']);
+        expect(sortRows([small, big], 'pe').map((r) => r.symbol)).toEqual(['B', 'A']);
     });
 });

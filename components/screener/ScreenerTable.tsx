@@ -6,12 +6,23 @@ import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Download, RefreshCw } from "lucide-react";
 import Price from "@/components/Price";
 import ChangePill from "@/components/ChangePill";
+import { sectorLabel } from "@/lib/i18n";
 import { criteriaToQuery, filterRows, sortRows, toCsv, type ScreenerCriteria, type ScreenerRow, type ScreenerSortKey, type SortDirection } from "@/lib/screener";
 import { tx, arDigits, type Lang, type StringKey } from "@/lib/i18n";
 import { toast } from "sonner";
 import { runRefresh, type RefreshState } from "./runRefresh";
 
-type Form = { q: string; market: string; sector: string; index: string; min: string; max: string };
+type Form = {
+    q: string;
+    market: string;
+    sector: string;
+    index: string;
+    min: string;
+    max: string;
+    minValue: string;
+    minMcap: string;
+    maxPe: string;
+};
 
 const numberOrNull = (value: string): number | null => {
     const t = value.trim();
@@ -25,7 +36,13 @@ const COLUMNS: { key: ScreenerSortKey; label: StringKey; numeric?: boolean }[] =
     { key: 'sector', label: 'scr.sector' },
     { key: 'price', label: 'scr.price', numeric: true },
     { key: 'change', label: 'scr.change', numeric: true },
+    { key: 'value', label: 'scr.value', numeric: true },
+    { key: 'marketCap', label: 'scr.mcap', numeric: true },
+    { key: 'pe', label: 'scr.pe', numeric: true },
 ];
+
+// Billions and millions the way a trader reads them, in whatever language the interface is in.
+const compact = (value: number) => (value >= 1e9 ? `${(value / 1e9).toFixed(1)}B` : value >= 1e6 ? `${(value / 1e6).toFixed(0)}M` : value > 0 ? `${Math.round(value / 1e3)}K` : '—');
 
 export default function ScreenerTable({ rows, criteria, sectors, total, lang }: {
     rows: ScreenerRow[];
@@ -42,6 +59,9 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
         index: criteria.index,
         min: criteria.minChange === null ? '' : String(criteria.minChange),
         max: criteria.maxChange === null ? '' : String(criteria.maxChange),
+        minValue: criteria.minValue === null ? '' : String(criteria.minValue),
+        minMcap: criteria.minMarketCap === null ? '' : String(criteria.minMarketCap),
+        maxPe: criteria.maxPe === null ? '' : String(criteria.maxPe),
     });
     const [sortKey, setSortKey] = useState<ScreenerSortKey>('symbol');
     const [sortDir, setSortDir] = useState<SortDirection>('asc');
@@ -54,6 +74,9 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
         index: form.index === 'SP500' || form.index === 'NDX100' ? form.index : 'all',
         minChange: numberOrNull(form.min),
         maxChange: numberOrNull(form.max),
+        minValue: numberOrNull(form.minValue),
+        minMarketCap: numberOrNull(form.minMcap),
+        maxPe: numberOrNull(form.maxPe),
     }), [form]);
 
     // Keep the address bar in step, so a filtered screen can be shared or bookmarked.
@@ -133,6 +156,18 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
                     <span className="form-label">{tx(lang, 'scr.maxChange')}</span>
                     <input type="number" step="any" value={form.max} onChange={(e) => setForm((f) => ({ ...f, max: e.target.value }))} placeholder="%" className="num h-10 w-20 rounded-[11px] border border-line bg-page px-3 text-foreground outline-none focus:border-brand" />
                 </label>
+                <label className="flex flex-col gap-1.5">
+                    <span className="form-label">{tx(lang, 'scr.minValue')}</span>
+                    <input type="number" step="any" value={form.minValue} onChange={(e) => setForm((f) => ({ ...f, minValue: e.target.value }))} placeholder={tx(lang, 'scr.millions')} className="num h-10 w-24 rounded-[11px] border border-line bg-page px-3 text-foreground outline-none focus:border-brand" />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                    <span className="form-label">{tx(lang, 'scr.minMcap')}</span>
+                    <input type="number" step="any" value={form.minMcap} onChange={(e) => setForm((f) => ({ ...f, minMcap: e.target.value }))} placeholder={tx(lang, 'scr.millions')} className="num h-10 w-24 rounded-[11px] border border-line bg-page px-3 text-foreground outline-none focus:border-brand" />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                    <span className="form-label">{tx(lang, 'scr.maxPe')}</span>
+                    <input type="number" step="any" value={form.maxPe} onChange={(e) => setForm((f) => ({ ...f, maxPe: e.target.value }))} placeholder="P/E" className="num h-10 w-20 rounded-[11px] border border-line bg-page px-3 text-foreground outline-none focus:border-brand" />
+                </label>
             </div>
 
             <section className="hatch">
@@ -169,7 +204,7 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
                         </thead>
                         <tbody>
                             {results.length === 0 ? (
-                                <tr><td colSpan={5} className="p-6 text-center text-[13px] text-faint">{tx(lang, 'scr.empty')}</td></tr>
+                                <tr><td colSpan={8} className="p-6 text-center text-[13px] text-faint">{tx(lang, 'scr.empty')}</td></tr>
                             ) : results.map((row) => (
                                 <tr key={row.symbol}>
                                     <td className="max-w-[320px]">
@@ -178,9 +213,12 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
                                             <span dir="ltr" className="mono block text-[12px] text-faint">{row.symbol} · {marketLabel(row)}</span>
                                         </Link>
                                     </td>
-                                    <td className="text-muted-foreground">{row.sector || '—'}</td>
+                                    <td className="text-muted-foreground">{row.sector ? sectorLabel(lang, row.sector) : '—'}</td>
                                     <td className="is-num font-semibold text-foreground">{row.price > 0 ? <Price value={row.price} currency={row.currency} lang={lang} /> : '—'}</td>
                                     <td className="is-num"><ChangePill value={row.price > 0 ? row.changePercent : null} lang={lang} /></td>
+                                    <td className="is-num text-muted-foreground">{row.valueTraded > 0 ? <>{arDigits(compact(row.valueTraded), lang)} <span className="text-[10px] text-faint">{row.currency}</span></> : '—'}</td>
+                                    <td className="is-num text-muted-foreground">{row.marketCap > 0 ? <>{arDigits(compact(row.marketCap), lang)} <span className="text-[10px] text-faint">{row.currency}</span></> : '—'}</td>
+                                    <td className="is-num text-muted-foreground">{row.peRatio != null ? arDigits(row.peRatio.toFixed(1), lang) : '—'}</td>
                                     <td className="text-muted-foreground" dir="ltr">{row.exchange}</td>
                                 </tr>
                             ))}

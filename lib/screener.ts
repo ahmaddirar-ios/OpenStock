@@ -14,6 +14,12 @@ export type ScreenerRow = {
     price: number;
     changePercent: number;
     currency: string;
+    /** Market capitalisation in the listing's own currency. 0 when the feed does not carry it. */
+    marketCap: number;
+    /** Trailing P/E, or null when the company has none (a loss, or a feed that omits it). */
+    peRatio: number | null;
+    /** Today's turnover in the listing's currency: volume × price. */
+    valueTraded: number;
     /** Epoch milliseconds of the last price refresh. */
     updatedAt: number;
 };
@@ -25,6 +31,12 @@ export type ScreenerCriteria = {
     index: 'all' | 'SP500' | 'NDX100';
     minChange: number | null;
     maxChange: number | null;
+    /** Turnover floor, in millions of the listing's currency. */
+    minValue: number | null;
+    /** Market-cap floor, in millions. */
+    minMarketCap: number | null;
+    /** P/E ceiling. Rows without a P/E are dropped when this is set. */
+    maxPe: number | null;
 };
 
 export const DEFAULT_CRITERIA: ScreenerCriteria = {
@@ -34,9 +46,12 @@ export const DEFAULT_CRITERIA: ScreenerCriteria = {
     index: 'all',
     minChange: null,
     maxChange: null,
+    minValue: null,
+    minMarketCap: null,
+    maxPe: null,
 };
 
-export type ScreenerSortKey = 'symbol' | 'name' | 'sector' | 'price' | 'change';
+export type ScreenerSortKey = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'value' | 'marketCap' | 'pe';
 export type SortDirection = 'asc' | 'desc';
 
 const firstValue = (value: string | string[] | undefined): string =>
@@ -60,6 +75,9 @@ export function parseCriteria(params: Record<string, string | string[] | undefin
         index: index === 'SP500' || index === 'NDX100' ? index : 'all',
         minChange: numberOrNull(firstValue(params.minChange)),
         maxChange: numberOrNull(firstValue(params.maxChange)),
+        minValue: numberOrNull(firstValue(params.minValue)),
+        minMarketCap: numberOrNull(firstValue(params.minMarketCap)),
+        maxPe: numberOrNull(firstValue(params.maxPe)),
     };
 }
 
@@ -72,6 +90,9 @@ export function criteriaToQuery(criteria: ScreenerCriteria): string {
     if (criteria.index !== 'all') params.set('index', criteria.index);
     if (criteria.minChange !== null) params.set('minChange', String(criteria.minChange));
     if (criteria.maxChange !== null) params.set('maxChange', String(criteria.maxChange));
+    if (criteria.minValue !== null) params.set('minValue', String(criteria.minValue));
+    if (criteria.minMarketCap !== null) params.set('minMarketCap', String(criteria.minMarketCap));
+    if (criteria.maxPe !== null) params.set('maxPe', String(criteria.maxPe));
     return params.toString();
 }
 
@@ -86,6 +107,11 @@ export function filterRows(rows: ScreenerRow[], criteria: ScreenerCriteria): Scr
         if (criteria.index !== 'all' && !row.indexes.includes(criteria.index)) return false;
         if (criteria.minChange !== null && row.changePercent < criteria.minChange) return false;
         if (criteria.maxChange !== null && row.changePercent > criteria.maxChange) return false;
+        // Million-based inputs: typing 10 means ten million, which is how a trader thinks about turnover.
+        if (criteria.minValue !== null && row.valueTraded < criteria.minValue * 1e6) return false;
+        if (criteria.minMarketCap !== null && row.marketCap < criteria.minMarketCap * 1e6) return false;
+        // A company with no P/E is not a cheap company: it is dropped rather than passed.
+        if (criteria.maxPe !== null && (row.peRatio === null || row.peRatio > criteria.maxPe)) return false;
         if (q && !haystack(row).includes(q)) return false;
         return true;
     });
@@ -98,6 +124,13 @@ export function sortRows(rows: ScreenerRow[], key: ScreenerSortKey, direction: S
             case 'price':
             case 'change':
                 return ((key === 'price' ? a.price : a.changePercent) - (key === 'price' ? b.price : b.changePercent));
+            case 'value':
+                return a.valueTraded - b.valueTraded;
+            case 'marketCap':
+                return a.marketCap - b.marketCap;
+            // A missing P/E sorts as the lowest number rather than breaking the comparison.
+            case 'pe':
+                return (a.peRatio ?? -1) - (b.peRatio ?? -1);
             case 'sector':
                 return a.sector.localeCompare(b.sector);
             case 'name':
@@ -124,7 +157,7 @@ const csvCell = (value: string | number): string => {
 
 /** CSV of the given rows, with a header, ready for a spreadsheet. */
 export function toCsv(rows: ScreenerRow[]): string {
-    const header = ['Symbol', 'Name', 'Market', 'Sector', 'Exchange', 'Price', 'Change %', 'Currency'];
+    const header = ['Symbol', 'Name', 'Market', 'Sector', 'Exchange', 'Price', 'Change %', 'Value traded', 'Market cap', 'P/E', 'Currency'];
     const lines = rows.map((row) => [
         row.symbol,
         row.name,
@@ -133,6 +166,9 @@ export function toCsv(rows: ScreenerRow[]): string {
         row.exchange,
         row.price,
         row.changePercent,
+        Math.round(row.valueTraded),
+        Math.round(row.marketCap),
+        row.peRatio ?? '',
         row.currency,
     ].map(csvCell).join(','));
     return [header.join(','), ...lines].join('\n');
