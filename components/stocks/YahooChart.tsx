@@ -41,6 +41,7 @@ import {
     RefreshCw,
     Repeat,
     Share2,
+    Search,
     SendToBack,
     Trash2,
     Upload,
@@ -112,7 +113,9 @@ import { decodeChartShare, sharePath } from '@/lib/chart-share';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
-import type { StudyConfig } from '@/lib/chart-studies';
+import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
+import ToolPalette from '@/components/stocks/ToolPalette';
+import type { ToolEntry } from '@/lib/tools/catalog';
 import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
 import {
     mergeSetup,
@@ -157,7 +160,7 @@ import {
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib' | 'tools';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -1197,6 +1200,30 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         startTool(next);
     };
 
+    /**
+     * The palette hands back a catalog entry and this decides what "insert" means for its family: a
+     * drawing arms its tool, a study is added with its defaults, a chart type is chosen, and a
+     * formula function opens a Formula study already written with that function's example.
+     */
+    const insertTool = (entry: ToolEntry) => {
+        setMenu(null);
+        if (entry.family === 'drawing') {
+            railPick(entry.key as ActiveTool);
+            return;
+        }
+        if (entry.family === 'chartType') {
+            setChartType(entry.key as ChartType);
+            return;
+        }
+        if (studies.length >= MAX_STUDIES) return;
+        if (entry.family === 'study') {
+            updateStudies([...studies, defaultStudy(entry.key as StudyId)]);
+            return;
+        }
+        const formula = defaultStudy('formula');
+        updateStudies([...studies, { ...formula, params: { ...formula.params, expression: entry.example ?? formula.params.expression } }]);
+    };
+
     // The Elliott flyout also keeps the degree picker and the one-shot auto count.
     const countExtra = (
         <div className="mt-1 border-t border-line pt-1.5">
@@ -1772,6 +1799,24 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     </button>
                 ))}
                 <span className="mx-1 h-4 w-px bg-line" />
+                {/* One field over every drawing, indicator, chart type and formula function. */}
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setMenu((current) => (current === 'tools' ? null : 'tools'))}
+                        aria-expanded={menu === 'tools'}
+                        className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', menu === 'tools' && 'is-up')}
+                        title={t('tools.palette')}
+                    >
+                        <Search className="size-3.5" /> {t('tools.palette')}
+                    </button>
+                    {menu === 'tools' && (
+                        <>
+                            <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
+                            <ToolPalette lang={lang} onInsert={insertTool} onClose={() => setMenu(null)} />
+                        </>
+                    )}
+                </div>
                 <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
                 {chartType === 'linebreak' && (
                     <label className="flex items-center gap-1 text-[11px] text-faint">
