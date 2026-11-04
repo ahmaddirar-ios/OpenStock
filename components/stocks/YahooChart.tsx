@@ -39,13 +39,14 @@ import {
     Plus,
     RefreshCw,
     Repeat,
+    Share2,
     SendToBack,
     Trash2,
     Upload,
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
-import { nearestBar, snapPoint } from '@/lib/chart-magnet';
+import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
 import { EDIT_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
 import {
     TIME_ZONES,
@@ -105,6 +106,8 @@ import {
     type DrawingStyleMap,
 } from '@/lib/drawing-styles';
 import DrawingRail from '@/components/stocks/DrawingRail';
+import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/drawing-templates';
+import { decodeChartShare, sharePath } from '@/lib/chart-share';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
@@ -112,6 +115,7 @@ import type { StudyConfig } from '@/lib/chart-studies';
 import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
 import {
     mergeSetup,
+    mergeStudies,
     readSetupPending,
     serializeChartSetup,
     setupDecision,
@@ -152,7 +156,7 @@ import {
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -292,9 +296,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     // Hide-all: the drawings stay in memory, the layer just stops rendering.
     const [drawingsHidden, setDrawingsHidden] = useState(false);
-    // Magnet is a working mode, not a preference: it starts off and is one click away.
-    const [magnet, setMagnet] = useState(false);
-    const magnetRef = useRef(false);
+    // Magnet is a working mode, not a preference: it starts off and cycles weak → strong → off.
+    const [magnet, setMagnet] = useState<MagnetStrength>('off');
+    const magnetRef = useRef<MagnetStrength>('off');
     magnetRef.current = magnet;
     const [pendingLabels, setPendingLabels] = useState<string[] | null>(null);
     const [noteText, setNoteText] = useState('');
@@ -415,6 +419,49 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold'>>) => {
         if (!selectedId) return;
         setDrawings((list) => list.map((d) => (d.id === selectedId ? { ...d, ...patch } : d)));
+    };
+
+    // A link from the share button carries a view, not a portfolio: apply it once, then drop the
+    // parameter so a reload does not fight whatever the reader changes next.
+    // The studies wait for the account's copy: applying them first would be overwritten by the merge
+    // that runs when the sync settles. The interval and the chart type can go immediately.
+    const pendingShare = useRef<ReturnType<typeof decodeChartShare>>(null);
+    useEffect(() => {
+        const token = new URLSearchParams(window.location.search).get('c');
+        if (!token) return;
+        const shared = decodeChartShare(token);
+        if (shared) {
+            pendingShare.current = shared;
+            setIntervalId(shared.interval);
+            setChartType(shared.chartType);
+        }
+        // The token is spent: a reload keeps whatever the reader changes from here on.
+        const url = new URL(window.location.href);
+        url.searchParams.delete('c');
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+    }, []);
+
+    useEffect(() => {
+        if (shareApplied.current || syncState === 'loading') return;
+        const shared = pendingShare.current;
+        if (!shared) return;
+        shareApplied.current = true;
+        pendingShare.current = null;
+        if (shared.studies.length > 0) updateStudies(mergeStudies(studies, shared.studies));
+    }, [syncState, studies, updateStudies]);
+
+    // A template paints the selected drawing, or arms the current tool for the next one.
+    const applyTemplate = (style: ReturnType<typeof styleOfDrawing>) => {
+        if (selectedId) {
+            setDrawings((list) => list.map((drawing) => (drawing.id === selectedId ? { ...drawing, ...stylePatch(style) } : drawing)));
+            return;
+        }
+        const armed = tool && tool !== 'select' && tool !== 'measure' ? tool : undefined;
+        if (armed) {
+            const next = withDrawingStyle(drawingStyles, armed, style);
+            setDrawingStyles(next);
+            saveDrawingStyles(next);
+        }
     };
 
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
@@ -658,8 +705,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         });
 
     const [drawingStyles, setDrawingStyles] = useState<DrawingStyleMap>({});
+    const [templates, setTemplates] = useState<DrawingTemplate[]>([]);
+    const shareApplied = useRef(false);
+    const [templateName, setTemplateName] = useState('');
     useEffect(() => {
         setDrawingStyles(loadDrawingStyles());
+        setTemplates(loadTemplates());
     }, []);
     const rememberStyle = (tool: ShapeTool | undefined, style: { color?: ColorKey; width?: DrawingWidth; dash?: DrawingDash }) => {
         if (!tool) return;
@@ -1024,13 +1075,14 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     // Snap a point to the nearest bar's O/H/L/C when the magnet is on and a level is close on screen.
     const snapDrawingPoint = useCallback((point: DrawPoint): DrawPoint => {
-        if (!magnetRef.current) return point;
+        const tolerance = magnetPixels(magnetRef.current);
+        if (tolerance === 0) return point;
         const series = seriesRef.current;
         const bars = displayRef.current?.candles ?? [];
         if (!series || bars.length === 0) return point;
         const bar = nearestBar(bars, point.time);
         if (!bar) return point;
-        return snapPoint(point, bar, (price) => series.priceToCoordinate(price));
+        return snapPoint(point, bar, (price) => series.priceToCoordinate(price), tolerance);
     }, []);
 
     const startTool = (next: ActiveTool | null, labels: string[] | null = null) => {
@@ -1440,6 +1492,20 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         }
     };
 
+    // The link carries the view, not the drawings: the next person reads the same chart, and their
+    // own levels are untouched.
+    const shareChart = async () => {
+        const path = sharePath({ symbol, interval: intervalId, chartType, studies });
+        const url = `${window.location.origin}${path}`;
+        try {
+            await navigator.clipboard.writeText(url);
+            toast.success(t('chart.shareCopied'));
+        } catch {
+            // A blocked clipboard still lets the address be copied by hand.
+            window.prompt(t('chart.shareCopyManual'), url);
+        }
+    };
+
     const applyPaste = () => {
         const parsed = parseTransferPayload(paste);
         if (!parsed.ok) {
@@ -1499,8 +1565,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 <DrawingRail
                     tool={tool}
                     onPick={railPick}
-                    magnet={magnet}
-                    onMagnet={setMagnet}
+                    magnetStrength={magnet}
+                    onMagnet={() => setMagnet((current) => nextMagnetStrength(current))}
                     locked={!!selectedDrawing?.locked}
                     canLock={!!selectedId}
                     onToggleLock={() => selectedId && toggleLock(selectedId)}
@@ -1821,8 +1887,17 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 {!replay && <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />}
                 <button
                     type="button"
-                    onClick={() => setShortcutsOpen(true)}
+                    onClick={() => void shareChart()}
                     className="icon-btn ms-auto"
+                    aria-label={t('chart.share')}
+                    title={t('chart.share')}
+                >
+                    <Share2 />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setShortcutsOpen(true)}
+                    className="icon-btn"
                     aria-label={t('chart.shortcuts.title')}
                     title={t('chart.shortcuts.title')}
                 >
@@ -2039,7 +2114,86 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         <X className="size-3.5" /> {t('chart.cancel')}
                     </button>
                 )}
+                {/* Named strokes: save the one on screen, then put it on anything. */}
                 <div className="relative ms-auto">
+                    <button
+                        type="button"
+                        onClick={() => setMenu((current) => (current === 'templates' ? null : 'templates'))}
+                        aria-expanded={menu === 'templates'}
+                        className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', menu === 'templates' && 'is-up')}
+                    >
+                        <Bookmark className="size-3.5" /> {t('chart.templates')} <ChevronDown className="size-3" />
+                    </button>
+                    {menu === 'templates' && (
+                        <>
+                            <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
+                            <div className="absolute end-0 z-30 mt-1 flex w-64 flex-col gap-1.5 rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
+                                <p className="px-1 text-[11.5px] text-faint">{t('chart.templatesHint')}</p>
+                                {templates.length === 0 && <p className="px-1 py-1 text-[12px] text-faint">{t('chart.templatesEmpty')}</p>}
+                                {templates.map((template) => (
+                                    <div key={template.id} className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => { applyTemplate(template.style); setMenu(null); }}
+                                            className="pill h-7 flex-1 gap-2 px-2 text-[12px]"
+                                        >
+                                            <span
+                                                aria-hidden
+                                                className="size-3 shrink-0 rounded-full"
+                                                style={{ background: template.style.color ? `var(--${template.style.color})` : 'currentColor' }}
+                                            />
+                                            <span className="truncate">{template.name}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const next = removeTemplate(templates, template.id);
+                                                setTemplates(next);
+                                                saveTemplates(next);
+                                            }}
+                                            aria-label={`${t('chart.templateDelete')} ${template.name}`}
+                                            title={t('chart.templateDelete')}
+                                            className="icon-btn is-danger"
+                                        >
+                                            <Trash2 className="size-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                                <div className="mt-1 flex gap-1.5 border-t border-white/5 pt-2">
+                                    <input
+                                        value={templateName}
+                                        onChange={(event) => setTemplateName(event.target.value)}
+                                        placeholder={t('chart.templateName')}
+                                        maxLength={24}
+                                        dir="auto"
+                                        className="h-7 min-w-0 flex-1 rounded-full bg-page px-2.5 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const source = selectedDrawing
+                                                ? styleOfDrawing(selectedDrawing)
+                                                : selectedTool
+                                                  ? styleFor(selectedTool, drawingStyles)
+                                                  : {};
+                                            const next = addTemplate(templates, templateName, source);
+                                            if (next !== templates) {
+                                                setTemplates(next);
+                                                saveTemplates(next);
+                                                setTemplateName('');
+                                            }
+                                        }}
+                                        disabled={!templateName.trim()}
+                                        className="pill h-7 px-2.5 text-[12px] is-up disabled:opacity-50"
+                                    >
+                                        {t('chart.templateSave')}
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                <div className="relative">
                     <button
                         type="button"
                         onClick={() => setMenu((current) => (current === 'transfer' ? null : 'transfer'))}

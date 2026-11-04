@@ -14,7 +14,7 @@ const label = (key: Parameters<typeof tx>[1]) => tx('en', key);
 const baseProps = {
     tool: null,
     onPick: () => {},
-    magnet: false,
+    magnetStrength: 'off' as const,
     onMagnet: () => {},
     locked: false,
     canLock: false,
@@ -105,10 +105,11 @@ describe('DrawingRail', () => {
         fireEvent.click(within(menu).getByText('Measure'));
         expect(onPick).toHaveBeenCalledWith('measure');
 
-        // The toggles stay toggles rather than becoming picks.
+        // The toggles stay toggles rather than becoming picks. The magnet cycles its strength
+        // (off → weak → strong), so it is asked to advance rather than handed a boolean.
         fireEvent.click(screen.getByTitle('Cursor'));
         fireEvent.click(within(screen.getByRole('menu', { name: 'Cursor' })).getByText('Magnet'));
-        expect(onMagnet).toHaveBeenCalledWith(true);
+        expect(onMagnet).toHaveBeenCalledTimes(1);
     });
 
     it('disables the destructive rows when there is nothing to act on', () => {

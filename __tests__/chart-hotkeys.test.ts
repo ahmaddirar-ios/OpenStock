@@ -58,3 +58,20 @@ describe('note text styling', () => {
         expect(drawing.textSize).toBeUndefined();
     });
 });
+
+import { MAGNET_PIXELS_BY_STRENGTH, magnetPixels, nextMagnetStrength } from '@/lib/chart-magnet';
+
+describe('magnet strength', () => {
+    it('cycles off → weak → strong → off', () => {
+        expect(nextMagnetStrength('off')).toBe('weak');
+        expect(nextMagnetStrength('weak')).toBe('strong');
+        expect(nextMagnetStrength('strong')).toBe('off');
+    });
+
+    it('pulls harder when it is set to strong', () => {
+        expect(magnetPixels('off')).toBe(0);
+        expect(magnetPixels('weak')).toBe(8);
+        expect(magnetPixels('strong')).toBe(20);
+        expect(magnetPixels('strong')).toBeGreaterThan(MAGNET_PIXELS_BY_STRENGTH.weak);
+    });
+});

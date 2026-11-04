@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { MagnetStrength } from '@/lib/chart-magnet';
 import {
     Brush,
     Circle,
@@ -59,8 +60,8 @@ function ToolGlyph({ tool }: { tool: ShapeTool }) {
 type Props = {
     tool: ActiveTool | null;
     onPick: (tool: ActiveTool) => void;
-    magnet: boolean;
-    onMagnet: (next: boolean) => void;
+    magnetStrength: MagnetStrength;
+    onMagnet: () => void;
     locked: boolean;
     canLock: boolean;
     onToggleLock: () => void;
@@ -92,7 +93,7 @@ type Props = {
 export default function DrawingRail({
     tool,
     onPick,
-    magnet,
+    magnetStrength,
     onMagnet,
     locked,
     canLock,
@@ -215,7 +216,7 @@ export default function DrawingRail({
         </button>
     );
 
-    const cursorActive = tool === 'select' || tool === 'measure' || magnet || locked || hidden;
+    const cursorActive = tool === 'select' || tool === 'measure' || magnetStrength !== 'off' || locked || hidden;
 
     return (
         <div ref={rootRef} className="draw-rail-root">
@@ -265,7 +266,13 @@ export default function DrawingRail({
                                     onPick('measure');
                                     setOpen(null);
                                 }, { active: tool === 'measure' })}
-                                {row('magnet', label('chart.tool.magnet'), Magnet, () => onMagnet(!magnet), { active: magnet, checkable: true })}
+                                {row(
+                                    'magnet',
+                                    label(magnetStrength === 'off' ? 'chart.tool.magnet' : magnetStrength === 'weak' ? 'chart.tool.magnetWeak' : 'chart.tool.magnetStrong'),
+                                    Magnet,
+                                    onMagnet,
+                                    { active: magnetStrength !== 'off', checkable: true },
+                                )}
                                 {row(locked ? 'unlock' : 'lock', label(locked ? 'chart.tool.unlock' : 'chart.tool.lock'), locked ? Lock : Unlock, onToggleLock, {
                                     active: locked,
                                     disabled: !canLock,

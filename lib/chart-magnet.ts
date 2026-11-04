@@ -15,6 +15,24 @@ export type MagnetBar = {
 /** How close, in pixels, a level has to be before a point is pulled onto it. */
 export const MAGNET_PIXELS = 14;
 
+/**
+ * How hard the magnet pulls. Weak only catches a level the trader is nearly on; strong grabs one
+ * from further away. Off is the default, because a magnet that is always on fights a free hand.
+ */
+export type MagnetStrength = 'off' | 'weak' | 'strong';
+
+export const MAGNET_STRENGTHS: readonly MagnetStrength[] = ['off', 'weak', 'strong'] as const;
+
+export const MAGNET_PIXELS_BY_STRENGTH: Record<Exclude<MagnetStrength, 'off'>, number> = { weak: 8, strong: 20 };
+
+/** The next click's state: off → weak → strong → off. */
+export const nextMagnetStrength = (current: MagnetStrength): MagnetStrength =>
+    (MAGNET_STRENGTHS[(MAGNET_STRENGTHS.indexOf(current) + 1) % MAGNET_STRENGTHS.length] ?? 'off');
+
+/** The pixel tolerance for a strength; 0 when it is off, which the caller reads as "do not snap". */
+export const magnetPixels = (strength: MagnetStrength): number =>
+    strength === 'off' ? 0 : MAGNET_PIXELS_BY_STRENGTH[strength];
+
 /** The bar nearest in time. A drawing is anchored to a bar, so the nearest one is the honest target. */
 export function nearestBar(bars: readonly MagnetBar[], time: number): MagnetBar | null {
     let best: MagnetBar | null = null;
