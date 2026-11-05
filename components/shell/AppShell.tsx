@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/shell/Sidebar";
 import TabBar from "@/components/shell/TabBar";
 import MenuBar from "@/components/shell/MenuBar";
+import ShortcutSheet, { openShortcuts } from "@/components/shell/ShortcutSheet";
 import { MarketStrip, NoticeBar, StatusBar } from "@/components/shell/TerminalBars";
 import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
-import { tx, type Lang } from "@/lib/i18n";
+import { langCookie, otherLang, tx, type Lang } from "@/lib/i18n";
 import { LAST_SYMBOL_KEY } from "@/lib/shell/command";
+import { shortcutFor } from "@/lib/shell/shortcuts";
 import { MotionProvider } from "@/components/motion";
 
 type AppShellProps = {
@@ -24,6 +26,7 @@ const COLLAPSED_KEY = 'openstock:sidebar-collapsed';
 
 const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellProps) => {
     const pathname = usePathname();
+    const router = useRouter();
     const [navOpen, setNavOpen] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
     const [focus, setFocus] = useState(false);
@@ -51,6 +54,26 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
             return !value;
         });
     };
+
+    // ⌘K belongs to the command palette, which mounts its own listener; the rest are the shell's.
+    // The sheet is the one place that names them all, so the keys and the list can never drift.
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            const shortcut = shortcutFor(event);
+            if (!shortcut || shortcut === 'command') return;
+            event.preventDefault();
+            if (shortcut === 'sidebar') toggleCollapsed();
+            else if (shortcut === 'language') {
+                document.cookie = langCookie(otherLang(lang));
+                // Refresh, not reload: the server renders in the new language and the page stays put.
+                router.refresh();
+            } else if (shortcut === 'sheet') {
+                openShortcuts();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [lang, router]);
 
     return (
         <MotionProvider>
@@ -97,6 +120,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
             <StatusBar lang={lang} />
 
             <SearchCommand initialStocks={initialStocks} lang={lang} defaultSymbol={watchlist[0]?.symbol} />
+            <ShortcutSheet lang={lang} />
         </div>
         </MotionProvider>
     );

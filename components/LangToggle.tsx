@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Languages } from 'lucide-react';
-import { LANG_COOKIE, isLang, type Lang } from '@/lib/i18n';
+import { LANG_COOKIE, isLang, langCookie, type Lang } from '@/lib/i18n';
 
 // The server layouts already read the cookie, so they hand the language down here and the
 // first paint is in the right language. Client pages read it with useLang() instead of
@@ -27,7 +27,7 @@ export default function LangToggle({ initial, variant = 'pill' }: { initial: Lan
     }, []);
 
     const switchTo = (next: Lang) => {
-        document.cookie = `${LANG_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+        document.cookie = langCookie(next);
         setLang(next);
         // Refresh rather than reload: the server components re-render in the new language and
         // anything typed into a form on screen survives the switch.

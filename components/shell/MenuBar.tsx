@@ -10,6 +10,7 @@ import {
     FlaskConical,
     Globe,
     Info,
+    Keyboard,
     Landmark,
     LayoutDashboard,
     LifeBuoy,
@@ -27,13 +28,14 @@ import {
     X,
 } from 'lucide-react';
 import { openSearch } from '@/components/SearchCommand';
+import { openShortcuts } from '@/components/shell/ShortcutSheet';
 import { signOut } from '@/lib/actions/auth.actions';
-import { LANG_COOKIE, tx, type Lang, type StringKey } from '@/lib/i18n';
+import { langCookie, otherLang, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { applyTheme, readTheme, writeTheme } from '@/lib/theme';
 import RovexLogo from '@/components/brand/RovexLogo';
 import { cn } from '@/lib/utils';
 
-type MenuAction = 'search' | 'theme' | 'lang' | 'signout';
+type MenuAction = 'search' | 'theme' | 'lang' | 'shortcuts' | 'signout';
 
 type MenuItem = {
     labelKey: StringKey;
@@ -110,6 +112,7 @@ export const MENUS: MenuDef[] = [
         labelKey: 'menu.help',
         items: [
             { labelKey: 'nav.help', href: '/help', icon: LifeBuoy },
+            { labelKey: 'shortcut.open', action: 'shortcuts', icon: Keyboard },
             { labelKey: 'nav.about', href: '/about', icon: Info },
             { labelKey: 'nav.terms', href: '/terms', icon: Info },
         ],
@@ -157,8 +160,7 @@ export default function MenuBar({ lang, userName, onMenu, onCollapse, onFocus }:
     };
 
     const flipLang = () => {
-        const next: Lang = lang === 'ar' ? 'en' : 'ar';
-        document.cookie = `${LANG_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+        document.cookie = langCookie(otherLang(lang));
         router.refresh();
     };
 
@@ -167,6 +169,7 @@ export default function MenuBar({ lang, userName, onMenu, onCollapse, onFocus }:
         if (item.action === 'search') return openSearch();
         if (item.action === 'theme') return flipTheme();
         if (item.action === 'lang') return flipLang();
+        if (item.action === 'shortcuts') return openShortcuts();
         if (item.action === 'signout') {
             void signOut().then(() => router.push('/sign-in'));
         }

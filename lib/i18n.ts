@@ -6,6 +6,13 @@ export type Lang = 'en' | 'ar';
 export const LANG_COOKIE = 'openstock-lang';
 export const isLang = (v: unknown): v is Lang => v === 'ar' || v === 'en';
 
+/** The other language, for a two-way switch (the rail's toggle, ⌘⇧L). */
+export const otherLang = (lang: Lang): Lang => (lang === 'ar' ? 'en' : 'ar');
+
+/** The cookie that makes the server render in `lang` for a year. One writer, two callers. */
+export const langCookie = (lang: Lang): string =>
+    `${LANG_COOKIE}=${lang}; path=/; max-age=31536000; samesite=lax`;
+
 const en = {
     // Shell / nav
     'nav.search': 'Search stocks',
@@ -207,6 +214,13 @@ const en = {
     'common.loading': 'Loading',
     'common.retry': 'Try again',
     'a11y.skip': 'Skip to content',
+    'shortcut.title': 'Keyboard',
+    'shortcut.hint': 'These work anywhere in the terminal. Every other browser key stays with the browser.',
+    'shortcut.command': 'Search pages, tools and stocks',
+    'shortcut.sidebar': 'Collapse or show the rail',
+    'shortcut.language': 'Switch between Arabic and English',
+    'shortcut.sheet': 'This list',
+    'shortcut.open': 'Keyboard shortcuts',
     'currency.sar': 'Saudi riyal',
     'currency.sarShort': 'SAR',
     'notFound.title': 'This page could not be found',
@@ -1387,6 +1401,13 @@ const ar: Record<StringKey, string> = {
     'common.loading': 'جارٍ التحميل',
     'common.retry': 'أعد المحاولة',
     'a11y.skip': 'تخطَّ إلى المحتوى',
+    'shortcut.title': 'لوحة المفاتيح',
+    'shortcut.hint': 'تعمل في كل مكان داخل المنصة. وبقية أزرار المتصفح تبقى للمتصفح.',
+    'shortcut.command': 'ابحث في الصفحات والأدوات والأسهم',
+    'shortcut.sidebar': 'اطوِ الشريط الجانبي أو أظهره',
+    'shortcut.language': 'بدّل بين العربية والإنجليزية',
+    'shortcut.sheet': 'هذه القائمة',
+    'shortcut.open': 'اختصارات لوحة المفاتيح',
     'currency.sar': 'ريال سعودي',
     'currency.sarShort': 'ر.س',
     'notFound.title': 'لم نجد هذه الصفحة',
