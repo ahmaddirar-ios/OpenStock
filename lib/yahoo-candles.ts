@@ -27,6 +27,12 @@ export type CandleEvent = {
 export type CandleSet = {
     candles: Candle[];
     currency: string;
+    /**
+     * The exchange's own close for the session before this range, when the feed states one. Better
+     * than the last bar of yesterday: an intraday range can arrive with yesterday truncated, and a
+     * truncated day's last print is a price, not a close.
+     */
+    previousClose?: number;
     /** Dividends and splits inside the range, oldest first. Absent when the feed reported none. */
     events?: CandleEvent[];
 };
@@ -162,7 +168,7 @@ export function aggregateCandles(candles: Candle[], factor: number): Candle[] {
 type YahooChartJson = {
     chart?: {
         result?: Array<{
-            meta?: { currency?: string };
+            meta?: { currency?: string; previousClose?: number };
             timestamp?: number[];
             events?: {
                 dividends?: Record<string, { amount?: number; date?: number }>;
@@ -252,5 +258,11 @@ export function candlesFromChart(json: unknown): CandleSet | null {
 
     // Yahoo occasionally repeats a timestamp; a chart wants each time exactly once.
     const unique = candles.filter((candle, i) => i === 0 || candle.time > candles[i - 1].time);
-    return { candles: unique, currency: result.meta?.currency || '', ...(events.length > 0 ? { events } : {}) };
+    const previousClose = result.meta?.previousClose;
+    return {
+        candles: unique,
+        currency: result.meta?.currency || '',
+        ...(finite(previousClose) && previousClose > 0 ? { previousClose } : {}),
+        ...(events.length > 0 ? { events } : {}),
+    };
 }

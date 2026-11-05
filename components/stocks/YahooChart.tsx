@@ -556,7 +556,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         const candles = data?.candles ?? [];
         const last = candles.at(-1);
         if (!last) return null;
-        return { price: last.close, change: sessionChange(candles, isTadawul ? 'riyadh' : 'utc') };
+        return { price: last.close, change: sessionChange(candles, isTadawul ? 'riyadh' : 'utc', data?.previousClose) };
     }, [data, isTadawul]);
 
     // The clock is read after mount: the server's minute and the browser's would otherwise disagree

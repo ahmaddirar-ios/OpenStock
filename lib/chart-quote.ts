@@ -31,9 +31,19 @@ export function previousSessionClose(candles: readonly Candle[], clock: MarketCl
 }
 
 /** The change from the previous session's close, in percent. */
-export function sessionChange(candles: readonly Candle[], clock: MarketClock): number | null {
+export function sessionChange(
+    candles: readonly Candle[],
+    clock: MarketClock,
+    /** The feed's stated close for the previous session, when it sent one. */
+    previousClose?: number,
+): number | null {
     const last = candles.at(-1);
-    const previous = previousSessionClose(candles, clock);
+    // A stated close outranks a discovered one: the bars can be short of a session (yesterday's
+    // intraday series often stops before its own close), and the exchange's number is the truth.
+    const previous =
+        Number.isFinite(previousClose) && (previousClose as number) > 0
+            ? (previousClose as number)
+            : previousSessionClose(candles, clock);
     if (!last || previous == null || !Number.isFinite(previous) || previous <= 0) return null;
     return ((last.close - previous) / previous) * 100;
 }

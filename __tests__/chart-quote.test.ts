@@ -42,6 +42,24 @@ describe('the quote header', () => {
         expect(sessionDay(lateSunday, 'utc')).toBe(sessionDay(lateSunday - 86400, 'utc') + 1);
         expect(sessionDay(lateSunday, 'riyadh')).toBe(sessionDay(lateSunday, 'utc') + 1);
     });
+
+    it('measures against the exchange’s stated close, not a session the feed cut short', () => {
+        // Yesterday arrived truncated at 11:00 Riyadh (its last print was 100); the exchange says
+        // the session closed at 120. Today prints 126, so the day is up 5, not up 26.
+        const candles = [
+            bar(MONDAY_OPEN - 20 * 3600, 100),
+            bar(MONDAY_OPEN, 120),
+            bar(MONDAY_OPEN + 3600, 126),
+        ];
+        expect(sessionChange(candles, 'riyadh')).toBeCloseTo(26, 5);
+        expect(sessionChange(candles, 'riyadh', 120)).toBeCloseTo(5, 5);
+    });
+
+    it('ignores a stated close that cannot be a price', () => {
+        const candles = [bar(MONDAY_OPEN - 86_400, 50), bar(MONDAY_OPEN, 55)];
+        expect(sessionChange(candles, 'riyadh', 0)).toBeCloseTo(10, 5);
+        expect(sessionChange(candles, 'riyadh', Number.NaN)).toBeCloseTo(10, 5);
+    });
 });
 
 describe("Tadawul's clock", () => {

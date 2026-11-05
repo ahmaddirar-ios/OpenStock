@@ -44,6 +44,13 @@ describe('candlesFromChart', () => {
         expect(set?.candles[0]).toEqual({ time: 100, open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 });
     });
 
+    it('carries the exchange’s previous close when the feed states one', () => {
+        expect(candlesFromChart(payload({ meta: { currency: 'SAR', previousClose: 12.5 } }))?.previousClose).toBe(12.5);
+        // No number, or a number that cannot be a price, is simply absent — never zero.
+        expect(candlesFromChart(payload())?.previousClose).toBeUndefined();
+        expect(candlesFromChart(payload({ meta: { currency: 'SAR', previousClose: 0 } }))?.previousClose).toBeUndefined();
+    });
+
     it('drops bars Yahoo pads with nulls, which is most of an intraday series', () => {
         const set = candlesFromChart({
             chart: {
