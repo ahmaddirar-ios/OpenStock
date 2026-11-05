@@ -159,6 +159,7 @@ import {
 } from '@/lib/chart-view';
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
+import { toolFromParam } from '@/lib/shell/command';
 
 type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib' | 'tools';
 
@@ -1223,6 +1224,22 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         const formula = defaultStudy('formula');
         updateStudies([...studies, { ...formula, params: { ...formula.params, expression: entry.example ?? formula.params.expression } }]);
     };
+
+    // A command-bar pick arrives as an address: ?tool=drawing:fib. It is applied once, then the URL
+    // forgets it, so a reload does not arm the tool again. The ref keeps the effect out of the
+    // handler's dependency list without freezing an old closure in it.
+    const insertToolRef = useRef(insertTool);
+    insertToolRef.current = insertTool;
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const entry = toolFromParam(params.get('tool'));
+        if (!entry) return;
+        insertToolRef.current(entry);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('tool');
+        window.history.replaceState({}, '', url.toString());
+        // Once per page load: the parameter is gone from the URL by the time this runs again.
+    }, []);
 
     // The Elliott flyout also keeps the degree picker and the one-shot auto count.
     const countExtra = (

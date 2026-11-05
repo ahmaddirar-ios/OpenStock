@@ -3,31 +3,22 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Menu, Plus, Star, X } from "lucide-react";
+import { LayoutDashboard, Menu, Plus, Search, Star, X } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { tx, type Lang, type StringKey } from "@/lib/i18n";
+import { pageByHref } from "@/lib/shell/pages";
 
 const PINNED = ['/dashboard', '/watchlist'];
 const STORAGE_KEY = 'openstock-tabs';
 const MAX_TABS = 12;
 
-const PAGE_LABELS: Record<string, StringKey> = {
-    '/dashboard': 'nav.overview',
-    '/saudi': 'nav.saudi',
-    '/watchlist': 'nav.watchlist',
-    '/portfolio': 'nav.portfolio',
-    '/screener': 'nav.screener',
-    '/charts': 'nav.charts',
-    '/strategies': 'nav.strategies',
-    '/alerts': 'nav.alerts',
-    '/profile': 'nav.profile',
-};
-
 // Pages become browser-style tabs; stock pages are labelled by their symbol.
-// Keys are resolved per language at render time, so switching language relabels open tabs.
+// Keys are resolved per language at render time, so switching language relabels open tabs. The
+// page list is the shell's one list (lib/shell/pages.ts) — a page the sidebar has is a tab too.
 const tabKey = (path: string): StringKey | 'stock' | null => {
-    if (PAGE_LABELS[path]) return PAGE_LABELS[path];
+    const page = pageByHref(path);
+    if (page) return page.labelKey;
     if (/^\/stocks\/[^/]+$/.test(path)) return 'stock';
     return null;
 };
@@ -129,6 +120,12 @@ const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
                     );
                 })}
             </div>
+
+            <button type="button" onClick={openSearch} className="cmdbar ms-auto" aria-label={tx(lang, 'cmd.open')} title={`${tx(lang, 'cmd.open')} (⌘K)`}>
+                <Search />
+                <span className="cmdbar-placeholder">{tx(lang, 'cmd.placeholder')}</span>
+                <kbd className="kbd">⌘K</kbd>
+            </button>
 
             <button type="button" onClick={openSearch} className="chrome-btn -ms-2" aria-label={tx(lang, 'tab.open')} title={`${tx(lang, 'tab.open')} (⌘K)`}>
                 <Plus />

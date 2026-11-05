@@ -7,6 +7,7 @@ import TabBar from "@/components/shell/TabBar";
 import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { tx, type Lang } from "@/lib/i18n";
+import { LAST_SYMBOL_KEY } from "@/lib/shell/command";
 import { MotionProvider } from "@/components/motion";
 
 type AppShellProps = {
@@ -26,6 +27,11 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
     useEffect(() => {
         setNavOpen(false);
         workspaceRef.current?.scrollTo({ top: 0 });
+        // The command bar opens a tool on "your" chart, so remember where the trader was.
+        const stock = /^\/stocks\/([^/]+)/.exec(pathname);
+        if (stock) {
+            try { localStorage.setItem(LAST_SYMBOL_KEY, decodeURIComponent(stock[1])); } catch { /* storage unavailable */ }
+        }
     }, [pathname]);
 
     return (
@@ -57,7 +63,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
                 </div>
             </div>
 
-            <SearchCommand initialStocks={initialStocks} lang={lang} />
+            <SearchCommand initialStocks={initialStocks} lang={lang} defaultSymbol={watchlist[0]?.symbol} />
         </div>
         </MotionProvider>
     );

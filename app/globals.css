@@ -431,6 +431,39 @@
     .chrome-btn:active { transform: scale(0.94); }
     .chrome-btn svg { width: 17px; height: 17px; }
 
+    /* The command bar: the same field the sidebar offers, in the chrome, so it is reachable from
+       every page without a trip to the navigation. Icon-only where there is no room for words. */
+    .cmdbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 1 320px;
+        min-width: 0;
+        height: 30px;
+        margin-bottom: 3px;
+        padding: 0 8px 0 10px;
+        border-radius: 8px;
+        background: color-mix(in oklab, var(--text) 6%, transparent);
+        color: color-mix(in oklab, var(--text) 55%, transparent);
+        font-size: 12.5px;
+        font-weight: 500;
+        transition: background-color 150ms var(--ui-ease), color 150ms var(--ui-ease);
+    }
+    .cmdbar:hover { background: color-mix(in oklab, var(--text) 11%, transparent); color: var(--text); }
+    .cmdbar svg { flex: none; width: 15px; height: 15px; }
+    .cmdbar-placeholder {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: start;
+    }
+    .cmdbar .kbd { flex: none; }
+    @media (max-width: 720px) {
+        .cmdbar { flex: none; width: 30px; padding: 0; justify-content: center; }
+        .cmdbar-placeholder, .cmdbar .kbd { display: none; }
+    }
+
     /* ============ Hatch shells ============ */
 
     .hatch {

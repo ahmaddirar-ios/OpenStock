@@ -5,6 +5,7 @@ import { Search, X } from 'lucide-react';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { groupedTools, searchTools, toolTotal, type ToolEntry } from '@/lib/tools/catalog';
+import { toolIcon } from '@/lib/tools/icons';
 
 /**
  * One field over every tool the chart has: the 74 drawings, the 27 studies, the 11 chart types and
@@ -40,13 +41,16 @@ export default function ToolPalette({
 
     // The badge is only worth its space where families are mixed: under a section header the
     // heading already says what everything in it is.
-    const renderRow = (entry: ToolEntry, showFamily: boolean) => (
+    const renderRow = (entry: ToolEntry, showFamily: boolean) => {
+        const Icon = toolIcon(entry);
+        return (
         <button
             key={entry.id}
             type="button"
             onClick={() => onInsert(entry)}
             className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-start transition-colors hover:bg-hover"
         >
+            <Icon className="size-3.5 shrink-0 text-faint" aria-hidden />
             <span className="min-w-0 flex-1">
                 <span className="block truncate text-[12.5px] font-semibold text-foreground">{tx(lang, entry.nameKey)}</span>
                 <span className="block truncate text-[10.5px] text-faint">{describe(entry, lang)}</span>
@@ -55,7 +59,8 @@ export default function ToolPalette({
                 <span className="pill shrink-0 text-[10px]">{tx(lang, `tools.family.${entry.family}` as StringKey)}</span>
             )}
         </button>
-    );
+        );
+    };
 
     return (
         <div

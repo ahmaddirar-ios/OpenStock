@@ -290,7 +290,8 @@ const foldArabic = (value: string): string => value
     .replace(/ؤ/g, 'و')
     .replace(/ة/g, 'ه');
 
-const normalise = (value: string): string =>
+/** Folded, punctuation-free text — shared with the command bar so both answer the same spellings. */
+export const normaliseSearch = (value: string): string =>
     foldArabic(value.toLowerCase())
         .replace(/[^\p{L}\p{N}\s]/gu, ' ')
         .replace(/\s+/g, ' ')
@@ -303,7 +304,7 @@ const haystack = (entry: ToolEntry): string[] => [
     entry.key,
     entry.example ?? '',
     ...entry.keywords,
-].map(normalise).filter(Boolean);
+].map(normaliseSearch).filter(Boolean);
 
 type Scored = { entry: ToolEntry; text: string[]; order: number };
 
@@ -320,7 +321,7 @@ const scoreOf = (hit: Scored, query: string): number => {
         }
     }
     // The family's own name is the last thing to answer, so a typed name always wins over an id.
-    if (best === 0 && normalise(hit.entry.key).includes(query)) best = 30;
+    if (best === 0 && normaliseSearch(hit.entry.key).includes(query)) best = 30;
     return best;
 };
 
@@ -329,7 +330,7 @@ const scoreOf = (hit: Scored, query: string): number => {
  * catalog in its own order, which is what the palette shows before anything is typed.
  */
 export function searchTools(query: string): ToolEntry[] {
-    const needle = normalise(query);
+    const needle = normaliseSearch(query);
     const entries = pickableTools().map((entry, order) => ({ entry, text: haystack(entry), order }));
     if (!needle) return entries.map((hit) => hit.entry);
     return entries

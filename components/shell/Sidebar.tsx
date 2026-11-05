@@ -1,8 +1,9 @@
 'use client';
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BellRing, BookOpen, CandlestickChart, Code2, FlaskConical, Globe, Info, Landmark, LayoutDashboard, LifeBuoy, LogOut, Search, SlidersHorizontal, Star, Wallet } from "lucide-react";
+import { BookOpen, Code2, Info, LifeBuoy, LogOut, Search } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import LangToggle from "@/components/LangToggle";
 import ThemeToggle from "@/components/shell/ThemeToggle";
@@ -12,6 +13,7 @@ import { tx, type Lang, type StringKey } from "@/lib/i18n";
 import RovexLogo from "@/components/brand/RovexLogo";
 import FooterCredit from "@/components/brand/FooterCredit";
 import { saudiSymbolName, saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { PAGE_SECTIONS, pagesInSection } from "@/lib/shell/pages";
 
 type SidebarProps = {
     user: User;
@@ -49,42 +51,21 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
             </button>
 
             {/* The sidebar is grouped, not a flat list: what the market says, what is yours, and
-                the tools that read both. It is the shape a trader arrives with — the sections come
-                before the pages. */}
+                the tools that read both. The pages come from lib/shell/pages.ts, so the command bar
+                and the tab labels cannot promise a destination the sidebar does not have. */}
             <nav className="flex flex-col gap-0.5">
-                <p className="side-label mt-1">{tx(lang, 'nav.section.markets')}</p>
-                <Link href="/dashboard" className={cn('side-item', pathname === '/dashboard' && 'is-active')}>
-                    <LayoutDashboard /> {tx(lang, 'nav.overview')}
-                </Link>
-                <Link href="/saudi" className={cn('side-item', pathname === '/saudi' && 'is-active')}>
-                    <Landmark /> {tx(lang, 'nav.saudi')}
-                </Link>
-                <Link href="/world" className={cn('side-item', pathname === '/world' && 'is-active')}>
-                    <Globe /> {tx(lang, 'nav.world')}
-                </Link>
-
-                <p className="side-label mt-2">{tx(lang, 'nav.section.mine')}</p>
-                <Link href="/watchlist" className={cn('side-item', pathname === '/watchlist' && 'is-active')}>
-                    <Star /> <span className="flex-1">{tx(lang, 'nav.watchlist')}</span>
-                    <span className="num text-xs text-faint">{watchlist.length}</span>
-                </Link>
-                <Link href="/portfolio" className={cn('side-item', pathname === '/portfolio' && 'is-active')}>
-                    <Wallet /> {tx(lang, 'nav.portfolio')}
-                </Link>
-                <Link href="/alerts" className={cn('side-item', pathname.startsWith('/alerts') && 'is-active')}>
-                    <BellRing /> {tx(lang, 'nav.alerts')}
-                </Link>
-
-                <p className="side-label mt-2">{tx(lang, 'nav.section.analysis')}</p>
-                <Link href="/screener" className={cn('side-item', pathname === '/screener' && 'is-active')}>
-                    <SlidersHorizontal /> {tx(lang, 'nav.screener')}
-                </Link>
-                <Link href="/charts" className={cn('side-item', pathname === '/charts' && 'is-active')}>
-                    <CandlestickChart /> {tx(lang, 'nav.charts')}
-                </Link>
-                <Link href="/strategies" className={cn('side-item', pathname.startsWith('/strategies') && 'is-active')}>
-                    <FlaskConical /> {tx(lang, 'nav.strategies')}
-                </Link>
+                {PAGE_SECTIONS.filter((section) => section.id !== 'account').map((section, index) => (
+                    <Fragment key={section.id}>
+                        <p className={cn('side-label', index === 0 ? 'mt-1' : 'mt-2')}>{tx(lang, section.labelKey)}</p>
+                        {pagesInSection(section.id).map(({ href, labelKey, icon: Icon }) => (
+                            <Link key={href} href={href} className={cn('side-item', (pathname === href || pathname.startsWith(`${href}/`)) && 'is-active')}>
+                                <Icon />
+                                <span className="flex-1">{tx(lang, labelKey)}</span>
+                                {href === '/watchlist' && <span className="num text-xs text-faint">{watchlist.length}</span>}
+                            </Link>
+                        ))}
+                    </Fragment>
+                ))}
 
                 <p className="side-label mt-2">{tx(lang, 'nav.section.display')}</p>
                 <ThemeToggle lang={lang} />
