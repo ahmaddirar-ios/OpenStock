@@ -23,6 +23,10 @@ describe('the world board sections', () => {
                     const name = tx(lang, entry.nameKey);
                     expect(name, `${section.id}/${entry.ticker} has no ${lang} name`).not.toBe(entry.nameKey);
                     expect(name.trim().length).toBeGreaterThan(0);
+                    // The table's first column is the market, and it must be a word, not a key.
+                    const market = tx(lang, entry.marketKey);
+                    expect(market, `${section.id}/${entry.ticker} has no ${lang} market`).not.toBe(entry.marketKey);
+                    expect(market.trim().length).toBeGreaterThan(0);
                 }
             }
         }
@@ -56,6 +60,7 @@ describe('reading a scanner row', () => {
     it('turns a known row into a quote', () => {
         expect(worldQuoteFromRow(row([4065.1, 2.74, 107.6, 'Gold'], 'COMEX:GC1!'))).toEqual({
             ticker: 'COMEX:GC1!', short: 'GC', nameKey: 'world.name.gold',
+            marketKey: 'world.market.commodities',
             price: 4065.1, changePercent: 2.74, changeAbs: 107.6,
         });
     });
@@ -78,7 +83,8 @@ describe('reading a scanner row', () => {
 describe('laying quotes onto a section', () => {
     const section = MARKET_SECTIONS.find((entry) => entry.id === 'commodities')!;
     const quote = (ticker: string): WorldQuote => ({
-        ticker, short: ticker, nameKey: 'world.name.gold', price: 1, changePercent: 0, changeAbs: 0,
+        ticker, short: ticker, nameKey: 'world.name.gold', marketKey: 'world.market.commodities',
+        price: 1, changePercent: 0, changeAbs: 0,
     });
 
     it('keeps the declared order and drops what the feed missed', () => {

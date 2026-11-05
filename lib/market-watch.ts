@@ -13,6 +13,20 @@ export function watchDecimals(section: SectionId, short: string): number {
     return 2;
 }
 
+/** Which way a row leans. The table tints the row and fills the last-price cell from this. */
+export type Direction = 'up' | 'down' | 'flat';
+
+export function directionOf(changePercent: number): Direction {
+    if (!Number.isFinite(changePercent) || changePercent === 0) return 'flat';
+    return changePercent > 0 ? 'up' : 'down';
+}
+
+/** The change as the table prints it: a sign, two decimals, no percent sign (the header says it). */
+export function watchChange(changePercent: number, lang: Lang): string {
+    const value = Number.isFinite(changePercent) ? changePercent : 0;
+    return arDigits(`${value > 0 ? '+' : ''}${value.toFixed(2)}`, lang);
+}
+
 /** The price as the pane prints it: grouped, fixed decimals, Arabic-Indic digits in Arabic. */
 export function watchPrice(price: number, section: SectionId, short: string, lang: Lang): string {
     const digits = watchDecimals(section, short);

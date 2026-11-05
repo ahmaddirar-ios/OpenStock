@@ -19,6 +19,8 @@ export type SectionRow = {
     /** The short label printed beside the name: SPX, EUR/USD, BTC. */
     short: string;
     nameKey: StringKey;
+    /** The market the row belongs to, printed in the table's first column: US, Saudi, Dubai… */
+    marketKey: StringKey;
 };
 
 export type MarketSection = {
@@ -32,60 +34,60 @@ export const MARKET_SECTIONS: readonly MarketSection[] = [
         id: 'gulf',
         nameKey: 'world.section.gulf',
         rows: [
-            { ticker: 'TADAWUL:TASI', short: 'TASI', nameKey: 'world.name.tasi' },
-            { ticker: 'DFM:DFMGI', short: 'DFMGI', nameKey: 'world.name.dubai' },
-            { ticker: 'ADX:FADGI', short: 'FADGI', nameKey: 'world.name.abudhabi' },
-            { ticker: 'KSE:BKP', short: 'BKP', nameKey: 'world.name.kuwait' },
-            { ticker: 'EGX:EGX30', short: 'EGX30', nameKey: 'world.name.egypt' },
+            { ticker: 'TADAWUL:TASI', short: 'TASI', nameKey: 'world.name.tasi', marketKey: 'world.market.saudi' },
+            { ticker: 'DFM:DFMGI', short: 'DFMGI', nameKey: 'world.name.dubai', marketKey: 'world.market.dubai' },
+            { ticker: 'ADX:FADGI', short: 'FADGI', nameKey: 'world.name.abudhabi', marketKey: 'world.market.abudhabi' },
+            { ticker: 'KSE:BKP', short: 'BKP', nameKey: 'world.name.kuwait', marketKey: 'world.market.kuwait' },
+            { ticker: 'EGX:EGX30', short: 'EGX30', nameKey: 'world.name.egypt', marketKey: 'world.market.egypt' },
         ],
     },
     {
         id: 'world',
         nameKey: 'world.section.world',
         rows: [
-            { ticker: 'SP:SPX', short: 'SPX', nameKey: 'world.name.spx' },
-            { ticker: 'NASDAQ:NDX', short: 'NDX', nameKey: 'world.name.ndx' },
-            { ticker: 'DJ:DJI', short: 'DJI', nameKey: 'world.name.dji' },
-            { ticker: 'XETR:DAX', short: 'DAX', nameKey: 'world.name.dax' },
-            { ticker: 'KRX:KOSPI', short: 'KOSPI', nameKey: 'world.name.kospi' },
-            { ticker: 'HSI:HSI', short: 'HSI', nameKey: 'world.name.hsi' },
-            { ticker: 'SSE:000001', short: 'SSEC', nameKey: 'world.name.shanghai' },
-            { ticker: 'TVC:VIX', short: 'VIX', nameKey: 'world.name.vix' },
-            { ticker: 'TVC:US10Y', short: 'US10Y', nameKey: 'world.name.us10y' },
-            { ticker: 'TVC:DXY', short: 'DXY', nameKey: 'world.name.dxy' },
+            { ticker: 'SP:SPX', short: 'SPX', nameKey: 'world.name.spx', marketKey: 'world.market.us' },
+            { ticker: 'NASDAQ:NDX', short: 'NDX', nameKey: 'world.name.ndx', marketKey: 'world.market.us' },
+            { ticker: 'DJ:DJI', short: 'DJI', nameKey: 'world.name.dji', marketKey: 'world.market.us' },
+            { ticker: 'XETR:DAX', short: 'DAX', nameKey: 'world.name.dax', marketKey: 'world.market.germany' },
+            { ticker: 'KRX:KOSPI', short: 'KOSPI', nameKey: 'world.name.kospi', marketKey: 'world.market.korea' },
+            { ticker: 'HSI:HSI', short: 'HSI', nameKey: 'world.name.hsi', marketKey: 'world.market.hongkong' },
+            { ticker: 'SSE:000001', short: 'SSEC', nameKey: 'world.name.shanghai', marketKey: 'world.market.china' },
+            { ticker: 'TVC:VIX', short: 'VIX', nameKey: 'world.name.vix', marketKey: 'world.market.us' },
+            { ticker: 'TVC:US10Y', short: 'US10Y', nameKey: 'world.name.us10y', marketKey: 'world.market.us' },
+            { ticker: 'TVC:DXY', short: 'DXY', nameKey: 'world.name.dxy', marketKey: 'world.market.us' },
         ],
     },
     {
         id: 'commodities',
         nameKey: 'world.section.commodities',
         rows: [
-            { ticker: 'COMEX:GC1!', short: 'GC', nameKey: 'world.name.gold' },
-            { ticker: 'COMEX:SI1!', short: 'SI', nameKey: 'world.name.silver' },
-            { ticker: 'COMEX:HG1!', short: 'HG', nameKey: 'world.name.copper' },
-            { ticker: 'ICEEUR:BRN1!', short: 'BRN', nameKey: 'world.name.brent' },
-            { ticker: 'NYMEX:CL1!', short: 'CL', nameKey: 'world.name.wti' },
-            { ticker: 'NYMEX:NG1!', short: 'NG', nameKey: 'world.name.gas' },
-            { ticker: 'CBOT:ZC1!', short: 'ZC', nameKey: 'world.name.corn' },
+            { ticker: 'COMEX:GC1!', short: 'GC', nameKey: 'world.name.gold', marketKey: 'world.market.commodities' },
+            { ticker: 'COMEX:SI1!', short: 'SI', nameKey: 'world.name.silver', marketKey: 'world.market.commodities' },
+            { ticker: 'COMEX:HG1!', short: 'HG', nameKey: 'world.name.copper', marketKey: 'world.market.commodities' },
+            { ticker: 'ICEEUR:BRN1!', short: 'BRN', nameKey: 'world.name.brent', marketKey: 'world.market.commodities' },
+            { ticker: 'NYMEX:CL1!', short: 'CL', nameKey: 'world.name.wti', marketKey: 'world.market.commodities' },
+            { ticker: 'NYMEX:NG1!', short: 'NG', nameKey: 'world.name.gas', marketKey: 'world.market.commodities' },
+            { ticker: 'CBOT:ZC1!', short: 'ZC', nameKey: 'world.name.corn', marketKey: 'world.market.commodities' },
         ],
     },
     {
         id: 'currencies',
         nameKey: 'world.section.currencies',
         rows: [
-            { ticker: 'FX_IDC:EURUSD', short: 'EUR/USD', nameKey: 'world.name.eurusd' },
-            { ticker: 'FX_IDC:GBPUSD', short: 'GBP/USD', nameKey: 'world.name.gbpusd' },
-            { ticker: 'FX_IDC:USDJPY', short: 'USD/JPY', nameKey: 'world.name.usdjpy' },
-            { ticker: 'FX_IDC:USDSAR', short: 'USD/SAR', nameKey: 'world.name.usdsar' },
-            { ticker: 'FX_IDC:USDJOD', short: 'USD/JOD', nameKey: 'world.name.usdjod' },
-            { ticker: 'FX_IDC:USDTRY', short: 'USD/TRY', nameKey: 'world.name.usdtry' },
+            { ticker: 'FX_IDC:EURUSD', short: 'EUR/USD', nameKey: 'world.name.eurusd', marketKey: 'world.market.currencies' },
+            { ticker: 'FX_IDC:GBPUSD', short: 'GBP/USD', nameKey: 'world.name.gbpusd', marketKey: 'world.market.currencies' },
+            { ticker: 'FX_IDC:USDJPY', short: 'USD/JPY', nameKey: 'world.name.usdjpy', marketKey: 'world.market.currencies' },
+            { ticker: 'FX_IDC:USDSAR', short: 'USD/SAR', nameKey: 'world.name.usdsar', marketKey: 'world.market.currencies' },
+            { ticker: 'FX_IDC:USDJOD', short: 'USD/JOD', nameKey: 'world.name.usdjod', marketKey: 'world.market.currencies' },
+            { ticker: 'FX_IDC:USDTRY', short: 'USD/TRY', nameKey: 'world.name.usdtry', marketKey: 'world.market.currencies' },
         ],
     },
     {
         id: 'crypto',
         nameKey: 'world.section.crypto',
         rows: [
-            { ticker: 'BITSTAMP:BTCUSD', short: 'BTC', nameKey: 'world.name.btc' },
-            { ticker: 'BITSTAMP:ETHUSD', short: 'ETH', nameKey: 'world.name.eth' },
+            { ticker: 'BITSTAMP:BTCUSD', short: 'BTC', nameKey: 'world.name.btc', marketKey: 'world.market.crypto' },
+            { ticker: 'BITSTAMP:ETHUSD', short: 'ETH', nameKey: 'world.name.eth', marketKey: 'world.market.crypto' },
         ],
     },
 ];
@@ -99,6 +101,7 @@ export type WorldQuote = {
     ticker: string;
     short: string;
     nameKey: StringKey;
+    marketKey: StringKey;
     price: number;
     changePercent: number;
     changeAbs: number;
@@ -118,6 +121,7 @@ export function worldQuoteFromRow(row: ScannerRow): WorldQuote | null {
         ticker: row.s,
         short: known.short,
         nameKey: known.nameKey,
+        marketKey: known.marketKey,
         price,
         changePercent: typeof change === 'number' ? change : 0,
         changeAbs: typeof changeAbs === 'number' ? changeAbs : 0,

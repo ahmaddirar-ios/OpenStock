@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterSections, watchDecimals, watchPrice } from '@/lib/market-watch';
+import { directionOf, filterSections, watchChange, watchDecimals, watchPrice } from '@/lib/market-watch';
 import type { MarketSection, WorldQuote } from '@/lib/market-sections';
 import type { SectionBoard } from '@/lib/world-board';
 
@@ -7,6 +7,7 @@ const quote = (over: Partial<WorldQuote> = {}): WorldQuote => ({
     ticker: 'COMEX:GC1!',
     short: 'GC',
     nameKey: 'world.name.gold',
+    marketKey: 'world.market.commodities',
     price: 4035.43,
     changePercent: 2.69,
     changeAbs: 105.6,
@@ -38,6 +39,28 @@ describe('market watch decimals', () => {
         const arabic = watchPrice(10038.89, 'gulf', 'TASI', 'ar');
         expect(arabic).toContain('١٠');
         expect(arabic).not.toContain('10038');
+    });
+});
+
+describe('market watch direction and change', () => {
+    it('leans a row by its change, and calls a zero flat', () => {
+        expect(directionOf(2.69)).toBe('up');
+        expect(directionOf(-0.02)).toBe('down');
+        expect(directionOf(0)).toBe('flat');
+        // A row the feed answered without a change must not paint as a loss.
+        expect(directionOf(Number.NaN)).toBe('flat');
+    });
+
+    it('prints the change with a sign and two decimals, no percent sign', () => {
+        expect(watchChange(2.69, 'en')).toBe('+2.69');
+        expect(watchChange(-0.02, 'en')).toBe('-0.02');
+        expect(watchChange(0, 'en')).toBe('0.00');
+        expect(watchChange(1.5, 'ar')).toContain('١');
+        expect(watchChange(1.5, 'ar')).not.toContain('1.50');
+    });
+
+    it('never prints NaN', () => {
+        expect(watchChange(Number.NaN, 'en')).toBe('0.00');
     });
 });
 

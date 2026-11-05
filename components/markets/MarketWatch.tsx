@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Search } from 'lucide-react';
-import ChangePill from '@/components/ChangePill';
+import { Search } from 'lucide-react';
+import MarketWatchTable from '@/components/markets/MarketWatchTable';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
-import { filterSections, watchPrice } from '@/lib/market-watch';
-import { tradingViewSymbolUrl } from '@/lib/utils';
+import { filterSections } from '@/lib/market-watch';
 import type { WorldBoardPayload } from '@/lib/world-board';
 
 /**
@@ -72,46 +71,7 @@ export default function MarketWatch({
                     {sections.length === 0 ? (
                         <p className="px-3 py-6 text-[12.5px] text-faint">{tx(lang, 'marketWatch.empty')}</p>
                     ) : (
-                        sections.map(({ section, quotes }) => (
-                            <div key={section.id}>
-                                {/* Sticky, like a table header: scrolling a long board keeps the group
-                                    the eye is in on screen. */}
-                                <p className="sticky top-0 z-[1] border-b border-line/60 bg-card/95 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.04em] text-faint backdrop-blur">
-                                    {tx(lang, section.nameKey)}
-                                </p>
-                                <ul className="px-1.5 py-0.5">
-                                    {quotes.map((quote) => (
-                                        <li key={quote.ticker}>
-                                            <Link
-                                                href={tradingViewSymbolUrl(quote.ticker)}
-                                                target="_blank"
-                                                rel="noreferrer noopener"
-                                                className="group flex items-center gap-2 rounded-md px-2 py-[5px] transition-colors hover:bg-hover/60"
-                                            >
-                                                <span className="mono w-[3.9rem] shrink-0 truncate text-[10.5px] font-semibold text-faint" dir="ltr">
-                                                    {quote.short}
-                                                </span>
-                                                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
-                                                    {tx(lang, quote.nameKey)}
-                                                </span>
-                                                {/* Wide enough for "51,184.29" and "1.1245": a clipped
-                                                    last digit is worse than a shorter name. */}
-                                                <bdi className="num w-[4.7rem] shrink-0 text-end text-[11.5px] font-semibold text-foreground" dir="ltr">
-                                                    {watchPrice(quote.price, section.id, quote.short, lang)}
-                                                </bdi>
-                                                {/* No fixed width: the pill is wider than its text
-                                                    (an arrow and padding), and a narrower box made it
-                                                    overflow back over the price's last digit. */}
-                                                <span className="flex shrink-0 justify-end">
-                                                    <ChangePill value={quote.changePercent} lang={lang} />
-                                                </span>
-                                                <ArrowUpRight className="size-3 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        ))
+                        <MarketWatchTable sections={sections} lang={lang} density="pane" />
                     )}
                 </div>
                 {/* The list is taller than the pane; the fade says "there is more" without a
