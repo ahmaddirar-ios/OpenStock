@@ -210,6 +210,8 @@ const en = {
     'pw.changedSub': 'Other devices were signed out.',
     'pw.failed': 'Password not changed',
     'news.empty': 'No recent news',
+    'news.pause': 'Pause the news strip',
+    'news.play': 'Play the news strip',
     // Shared (a11y, boundary pages, currency text)
     'common.loading': 'Loading',
     'common.retry': 'Try again',
@@ -1400,6 +1402,8 @@ const ar: Record<StringKey, string> = {
     'pw.changedSub': 'تم تسجيل خروج الأجهزة الأخرى.',
     'pw.failed': 'لم تتغير كلمة المرور',
     'news.empty': 'لا أخبار حديثة',
+    'news.pause': 'إيقاف شريط الأخبار',
+    'news.play': 'تشغيل شريط الأخبار',
     'common.loading': 'جارٍ التحميل',
     'common.retry': 'أعد المحاولة',
     'a11y.skip': 'تخطَّ إلى المحتوى',

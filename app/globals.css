@@ -1244,18 +1244,43 @@
         text-transform: uppercase;
         color: var(--faint);
     }
-    .news-strip-list {
+    /* The viewport is the row; the track holds the stories twice and travels one copy wide, so the
+       loop has no seam. A strip that fits stays scrollable by hand instead. */
+    .news-strip-viewport {
         display: flex;
         flex: 1;
         min-width: 0;
-        margin: 0;
-        padding: 0;
-        list-style: none;
         overflow-x: auto;
         overscroll-behavior-x: contain;
         scrollbar-width: none;
     }
-    .news-strip-list::-webkit-scrollbar { display: none; }
+    .news-strip-viewport::-webkit-scrollbar { display: none; }
+    .news-strip-viewport.is-rolling { overflow: hidden; }
+    .news-strip-track { display: flex; flex: none; width: max-content; }
+    .news-strip-track.is-rolling { animation: news-strip-roll linear infinite; }
+    /* The belt runs leftwards in both languages — the way every ticker the trader has watched
+       moves — so the stories sit on a physical left-to-right belt while each story keeps its own
+       right-to-left shape. Arabic still starts reading at the right edge of every headline. */
+    [dir='rtl'] .news-strip-viewport.is-rolling,
+    [dir='rtl'] .news-strip-viewport.is-rolling .news-strip-list { direction: ltr; }
+    [dir='rtl'] .news-strip-row { direction: rtl; }
+    /* Reading is why it stops: a headline the reader is pointing at must not slide away. */
+    .news-strip:hover .news-strip-track.is-rolling,
+    .news-strip:focus-within .news-strip-track.is-rolling,
+    .news-strip.is-paused .news-strip-track.is-rolling { animation-play-state: paused; }
+
+    @keyframes news-strip-roll {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+    }
+
+    .news-strip-list {
+        display: flex;
+        flex: none;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
     .news-strip-row { display: flex; flex: none; }
     .news-strip-item {
         display: flex;
@@ -1290,6 +1315,19 @@
         color: var(--faint);
         white-space: nowrap;
     }
+    /* WCAG 2.2.2: anything that moves on its own for more than five seconds can be stopped. */
+    .news-strip-toggle {
+        display: grid;
+        flex: none;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        margin-inline-end: 4px;
+        border-radius: 6px;
+        color: var(--faint);
+        transition: background-color 120ms, color 120ms;
+    }
+    .news-strip-toggle:hover { background: var(--hover); color: var(--text); }
 
     /* A phone cannot hold two panes side by side: the chart keeps a trading height, the watch a
        thumb-sized slice of the screen, and the page scrolls again. */
