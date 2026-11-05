@@ -36,19 +36,31 @@ const build = (quotes: readonly WorldQuote[]): SectionBoard[] =>
 const empty = (sections: readonly SectionBoard[]): boolean =>
     sections.every((entry) => entry.quotes.length === 0);
 
-async function readSnapshot(): Promise<WorldBoardPayload | null> {
+/**
+ * The stored board. With `maxAgeMs` the snapshot only counts while it is that young, and it is
+ * returned as current; without it the snapshot is the fallback and says it is stale.
+ */
+async function readSnapshot(maxAgeMs?: number): Promise<WorldBoardPayload | null> {
     try {
         await connectToDatabase();
         const row = await SaudiBoardSnapshotModel.findOne({ key: SNAPSHOT_KEY }).lean();
         if (!row?.payload) return null;
         const payload = row.payload as WorldBoardPayload;
         if (empty(payload.sections ?? [])) return null;
-        return { ...payload, asOf: new Date(row.updatedAt).getTime(), stale: true };
+        const asOf = new Date(row.updatedAt).getTime();
+        if (maxAgeMs !== undefined) {
+            if (Date.now() - asOf > maxAgeMs) return null;
+            return { ...payload, asOf };
+        }
+        return { ...payload, asOf, stale: true };
     } catch (error) {
         console.error('World board snapshot read failed', error);
         return null;
     }
 }
+
+/** How old a stored board may be before a reader waits on the feed again. */
+const FRESH_SNAPSHOT_MS = 45_000;
 
 async function writeSnapshot(payload: WorldBoardPayload): Promise<void> {
     try {
@@ -74,6 +86,11 @@ async function writeSnapshot(payload: WorldBoardPayload): Promise<void> {
  * page that says how old it is beats a blank one.
  */
 export async function loadWorldBoard(): Promise<WorldBoardPayload> {
+    // A board written seconds ago is the board the feed answered: reading it back beats making every
+    // page that shows the pane wait on the scanner again (and keeps the pane alive when it hangs).
+    const fresh = await readSnapshot(FRESH_SNAPSHOT_MS);
+    if (fresh) return fresh;
+
     const rows = await scanRows([...WORLD_TICKERS], COLUMNS, 60);
     const quotes = rows.map(worldQuoteFromRow).filter((quote): quote is WorldQuote => quote !== null);
     const sections = build(quotes);

@@ -69,6 +69,10 @@ export async function scanRows(tickers: string[], columns: string[], revalidate 
             // The feed itself is 15 minutes behind; one minute of caching costs nothing and keeps
             // a page that polls from turning into traffic.
             next: { revalidate },
+            // The scanner sometimes accepts the connection and never answers. Without a deadline
+            // that hangs the server render behind it (measured 2026-11-05); the callers already
+            // know how to fall back to the last stored board.
+            signal: AbortSignal.timeout(8_000),
         });
         if (!res.ok) {
             console.error('TradingView scanner failed', res.status);
