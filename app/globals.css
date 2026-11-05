@@ -198,14 +198,28 @@
 @layer components {
     /* ============ Shell ============ */
 
-    .shell {
+    /* The desk: a menu bar, a tape, the workspace, and a status line — the frame a terminal opens
+       with. Everything below the chrome is the same app it always was. */
+    .desk {
         display: grid;
-        grid-template-columns: 248px minmax(0, 1fr);
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto;
         height: 100dvh;
         overflow: hidden;
         background: var(--page);
     }
-    .shell > * { min-width: 0; min-height: 0; }
+    .desk > * { min-width: 0; min-height: 0; }
+
+    .desk-body {
+        display: grid;
+        grid-template-columns: 248px minmax(0, 1fr);
+        min-height: 0;
+    }
+    .desk.is-collapsed .desk-body { grid-template-columns: 0 minmax(0, 1fr); }
+    .desk.is-collapsed .desk-nav { display: none; }
+    /* Focus mode is for a chart: the chrome steps aside, the workspace keeps the whole window. */
+    .desk.is-focus .noticebar,
+    .desk.is-focus .quote-strip,
+    .desk.is-focus .statusbar { display: none; }
 
     .shell-container {
         height: 100%;
@@ -246,10 +260,234 @@
     }
 
     @media (max-width: 1023px) {
-        .shell { grid-template-columns: minmax(0, 1fr); }
+        .desk-body { grid-template-columns: minmax(0, 1fr); }
         .shell-container { padding: 0; }
         .app { border-radius: 0; }
         .workspace-inner { padding: 12px; }
+    }
+
+    /* ============ Terminal chrome ============ */
+
+    .noticebar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        height: 26px;
+        padding: 0 12px;
+        background: color-mix(in oklab, var(--down) 22%, var(--page));
+        border-bottom: 1px solid color-mix(in oklab, var(--down) 30%, transparent);
+        color: color-mix(in oklab, var(--text) 82%, var(--down));
+        font-size: 11.5px;
+        font-weight: 600;
+    }
+    .noticebar-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-inline-start: auto;
+        flex: none;
+        padding: 0 8px;
+        height: 18px;
+        border-radius: 5px;
+        background: color-mix(in oklab, var(--down) 34%, transparent);
+        color: var(--text);
+        font-size: 10.5px;
+        font-weight: 700;
+    }
+    .noticebar-link:hover { background: color-mix(in oklab, var(--down) 46%, transparent); }
+
+    .menubar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 40px;
+        padding: 0 8px;
+        background: var(--side);
+        border-bottom: 1px solid var(--line);
+        user-select: none;
+    }
+
+    .menubar-brand {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px 0 4px;
+        color: var(--text);
+        flex: none;
+    }
+
+    .menubar-menus { display: flex; align-items: center; gap: 1px; min-width: 0; }
+
+    .menubar-menu { position: relative; }
+
+    .menubar-item {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        height: 28px;
+        padding: 0 9px;
+        border-radius: 6px;
+        color: color-mix(in oklab, var(--text) 72%, transparent);
+        font-size: 12.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: background-color 120ms var(--ui-ease), color 120ms var(--ui-ease);
+    }
+    .menubar-item:hover,
+    .menubar-item.is-open { background: color-mix(in oklab, var(--text) 9%, transparent); color: var(--text); }
+
+    .menubar-drop {
+        position: absolute;
+        inset-inline-start: 0;
+        top: 32px;
+        z-index: 60;
+        min-width: 208px;
+        padding: 4px;
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: 0 0 0 1px var(--line), 0 16px 40px oklch(0 0 0 / 0.45);
+    }
+    .menubar-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        height: 30px;
+        padding: 0 8px;
+        border-radius: 7px;
+        color: var(--muted);
+        font-size: 12.5px;
+        font-weight: 600;
+        text-align: start;
+    }
+    .menubar-row:hover { background: var(--hover); color: var(--text); }
+
+    .menubar-end {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-inline-start: auto;
+        min-width: 0;
+    }
+
+    .menubar-search {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        max-width: 280px;
+        min-width: 0;
+        padding: 0 8px;
+        border-radius: 6px;
+        background: color-mix(in oklab, var(--text) 6%, transparent);
+        color: color-mix(in oklab, var(--text) 55%, transparent);
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .menubar-search:hover { background: color-mix(in oklab, var(--text) 11%, transparent); color: var(--text); }
+    .menubar-search svg { width: 14px; height: 14px; flex: none; }
+    .menubar-search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .menubar-search .kbd { flex: none; }
+
+    .menubar-user {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 6px;
+        height: 28px;
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .menubar-user:hover { background: color-mix(in oklab, var(--text) 8%, transparent); color: var(--text); }
+    .menubar-user-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .win-controls { display: flex; align-items: center; gap: 2px; flex: none; margin-inline-start: 4px; }
+    .win-btn {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        color: color-mix(in oklab, var(--text) 55%, transparent);
+        transition: background-color 120ms var(--ui-ease), color 120ms var(--ui-ease);
+    }
+    .win-btn:hover { background: color-mix(in oklab, var(--text) 10%, transparent); color: var(--text); }
+    .win-btn.is-close:hover { background: #c0392b; color: #fff; }
+    .win-btn svg { width: 14px; height: 14px; }
+
+    .quote-strip {
+        display: flex;
+        align-items: center;
+        height: 28px;
+        overflow: hidden;
+        background: color-mix(in oklab, var(--text) 3%, var(--side));
+        border-bottom: 1px solid var(--line);
+        font-size: 11.5px;
+    }
+    .quote-strip.is-quiet { padding: 0 12px; color: var(--faint); }
+    .quote-track {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        width: max-content;
+        animation: quote-tape 70s linear infinite;
+    }
+    .quote-strip:hover .quote-track { animation-play-state: paused; }
+    .quote-cell {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+        padding: 0 12px;
+        border-inline-end: 1px solid color-mix(in oklab, var(--text) 7%, transparent);
+        white-space: nowrap;
+    }
+    .quote-name { color: var(--faint); font-weight: 700; letter-spacing: 0.02em; }
+    .quote-price { color: var(--text); font-weight: 600; }
+    .quote-change.is-up { color: var(--up); }
+    .quote-change.is-down { color: var(--down); }
+    @keyframes quote-tape {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+    }
+    [dir='rtl'] .quote-track { animation-name: quote-tape-rtl; }
+    @keyframes quote-tape-rtl {
+        from { transform: translateX(0); }
+        to { transform: translateX(50%); }
+    }
+
+    .statusbar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 26px;
+        padding: 0 12px;
+        background: var(--side);
+        border-top: 1px solid var(--line);
+        color: var(--faint);
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .statusbar-cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .statusbar-end { margin-inline-start: auto; }
+    [dir='rtl'] .statusbar-end { margin-inline-start: 0; margin-inline-end: auto; }
+
+    @media (max-width: 1100px) {
+        .menubar-search span, .menubar-search .kbd { display: none; }
+        .menubar-search { width: 28px; justify-content: center; padding: 0; }
+        .menubar-user-name { display: none; }
+    }
+    @media (max-width: 900px) {
+        .menubar-menus { display: none; }
+    }
+    @media (max-width: 720px) {
+        .noticebar { font-size: 10.5px; }
+        .noticebar-link { display: none; }
+        .quote-strip { display: none; }
+        .statusbar-date { display: none; }
+        .win-controls { display: none; }
     }
 
     /* ============ Sidebar ============ */
@@ -259,7 +497,7 @@
         flex-direction: column;
         gap: 14px;
         height: 100%;
-        padding: 18px 12px 12px;
+        padding: 12px 12px 12px;
         overflow-y: auto;
         background: var(--page);
         color: var(--muted);

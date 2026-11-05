@@ -88,3 +88,20 @@ describe('the command bar', () => {
         expect(toolFromParam('')).toBeUndefined();
     });
 });
+
+
+describe('the menu bar is a second door, not a second list', () => {
+    it('points every menu row at a page the shell already knows', async () => {
+        const { MENUS } = await import('@/components/shell/MenuBar');
+        const known = new Set(PAGES.map((page) => page.href));
+        for (const menu of MENUS) {
+            expect(tx('en', menu.labelKey)).not.toBe(menu.labelKey);
+            expect(tx('ar', menu.labelKey)).not.toBe(menu.labelKey);
+            for (const item of menu.items) {
+                if (!item.href) continue;
+                expect(known.has(item.href), `${menu.id} → ${item.href}`).toBe(true);
+                // The action rows (search, theme, language, sign out) carry no href.
+            }
+        }
+    });
+});

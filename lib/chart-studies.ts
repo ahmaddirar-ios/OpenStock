@@ -701,7 +701,11 @@ export function describeStudy(study: StudyConfig, lang: Lang): string {
     const def = STUDIES[study.id];
     if (!def) return '';
     const values = def.params.map((param) => {
-        if (isText(param)) return studiesText(study, param.key);
+        // A formula can be 400 characters; the legend has one line. The settings menu prints it whole.
+        if (isText(param)) {
+            const text = studiesText(study, param.key);
+            return text.length > 42 ? `${text.slice(0, 42).trimEnd()}…` : text;
+        }
         if (isChoice(param)) {
             const chosen = param.choices.find((choice) => choice.value === studiesChoice(study, param.key));
             return chosen ? tx(lang, chosen.label) : '';

@@ -10,7 +10,6 @@ import ThemeToggle from "@/components/shell/ThemeToggle";
 import { signOut } from "@/lib/actions/auth.actions";
 import { cn } from "@/lib/utils";
 import { tx, type Lang, type StringKey } from "@/lib/i18n";
-import RovexLogo from "@/components/brand/RovexLogo";
 import FooterCredit from "@/components/brand/FooterCredit";
 import { saudiSymbolName, saudiSymbolNameAr } from "@/lib/saudi-symbols";
 import { PAGE_SECTIONS, pagesInSection } from "@/lib/shell/pages";
@@ -40,10 +39,6 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
 
     return (
         <aside className="sidebar">
-            <Link href="/dashboard" className="px-2 pt-1 pb-2" aria-label="Rovex dashboard">
-                <RovexLogo size={26} lang={lang} />
-            </Link>
-
             <button type="button" onClick={openSearch} className="side-cta">
                 <Search className="size-4" strokeWidth={2.5} />
                 <span className="flex-1 text-start">{tx(lang, 'nav.search')}</span>
@@ -54,7 +49,7 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 the tools that read both. The pages come from lib/shell/pages.ts, so the command bar
                 and the tab labels cannot promise a destination the sidebar does not have. */}
             <nav className="flex flex-col gap-0.5">
-                {PAGE_SECTIONS.filter((section) => section.id !== 'account').map((section, index) => (
+                {PAGE_SECTIONS.filter((section) => section.id !== 'account' && section.id !== 'resources').map((section, index) => (
                     <Fragment key={section.id}>
                         <p className={cn('side-label', index === 0 ? 'mt-1' : 'mt-2')}>{tx(lang, section.labelKey)}</p>
                         {pagesInSection(section.id).map(({ href, labelKey, icon: Icon }) => (
@@ -71,12 +66,12 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
                 <ThemeToggle lang={lang} />
             </nav>
 
-            <div className="flex min-h-0 flex-col gap-1">
+            <div className="flex shrink-0 flex-col gap-1">
                 <p className="side-label shrink-0">{tx(lang, 'nav.watching')}</p>
                 {watchlist.length === 0 ? (
-                    <p className="px-2.5 text-[12.5px] text-faint">{tx(lang, 'nav.watchingEmpty')}</p>
+                    <p className="shrink-0 px-2.5 text-[12.5px] leading-snug text-faint">{tx(lang, 'nav.watchingEmpty')}</p>
                 ) : (
-                    <ul className="scrollbar-hide-default flex min-h-0 flex-col gap-0.5 overflow-y-auto">
+                    <ul className="scrollbar-hide-default flex max-h-56 min-h-0 flex-col gap-0.5 overflow-y-auto">
                         {watchlist.map(({ symbol, company }) => {
                             // Old rows stored the ticker as the company name; the Saudi table knows better.
                             const name = (lang === 'ar' ? saudiSymbolNameAr(symbol) : null) ?? (company !== symbol ? company : saudiSymbolName(symbol));

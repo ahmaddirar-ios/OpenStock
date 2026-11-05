@@ -1,9 +1,13 @@
 import {
     BellRing,
+    BookOpen,
     CandlestickChart,
+    Code2,
     FlaskConical,
     Globe,
+    Info,
     Landmark,
+    LifeBuoy,
     LayoutDashboard,
     SlidersHorizontal,
     Star,
@@ -19,7 +23,7 @@ import type { StringKey } from '@/lib/i18n';
  * from it, and the command bar searches it. Before this, adding a page meant editing three files
  * that had no way to disagree loudly — they just drifted.
  */
-export type PageSection = 'markets' | 'mine' | 'analysis' | 'account';
+export type PageSection = 'markets' | 'mine' | 'analysis' | 'account' | 'resources';
 
 export type PageDef = {
     href: string;
@@ -35,6 +39,7 @@ export const PAGE_SECTIONS: readonly { id: PageSection; labelKey: StringKey; lab
     { id: 'mine', labelKey: 'nav.section.mine' },
     { id: 'analysis', labelKey: 'nav.section.analysis' },
     { id: 'account', labelKey: 'nav.section.account' },
+    { id: 'resources', labelKey: 'nav.section.resources' },
 ];
 
 export const PAGES: readonly PageDef[] = [
@@ -51,6 +56,11 @@ export const PAGES: readonly PageDef[] = [
     { href: '/strategies', labelKey: 'nav.strategies', icon: FlaskConical, section: 'analysis', keywords: ['backtest', 'lab', 'استراتيجية', 'اختبار'] },
 
     { href: '/profile', labelKey: 'nav.profile', icon: LayoutDashboard, section: 'account', keywords: ['account', 'settings', 'حساب', 'إعدادات'] },
+
+    { href: '/help', labelKey: 'nav.help', icon: LifeBuoy, section: 'resources', keywords: ['support', 'مساعدة', 'دعم'] },
+    { href: '/api-docs', labelKey: 'nav.apiDocs', icon: Code2, section: 'resources', keywords: ['developers', 'api', 'توثيق'] },
+    { href: '/about', labelKey: 'nav.about', icon: Info, section: 'resources', keywords: ['about', 'عن التطبيق'] },
+    { href: '/terms', labelKey: 'nav.terms', icon: BookOpen, section: 'resources', keywords: ['terms', 'privacy', 'الشروط'] },
 ];
 
 /** The pages a section holds, in list order. */
