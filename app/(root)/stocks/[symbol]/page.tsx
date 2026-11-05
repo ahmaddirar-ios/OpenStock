@@ -6,6 +6,8 @@ import StockSentimentCard from "@/components/stocks/StockSentimentCard";
 import StockChart from "@/components/stocks/StockChart";
 import YahooChart from "@/components/stocks/YahooChart";
 import Panel from "@/components/Panel";
+import MarketWatch from "@/components/markets/MarketWatch";
+import { loadWorldBoard } from "@/lib/world-board";
 import NewsList from "@/components/watchlist/NewsList";
 import NewsSkeleton from "@/components/watchlist/NewsSkeleton";
 import { getCompanyNews } from "@/lib/actions/news.actions";
@@ -29,6 +31,24 @@ const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
 
 async function CompanyNews({ symbol, lang }: { symbol: string; lang: Lang }) {
     return <NewsList news={await getCompanyNews(symbol, 6, lang)} lang={lang} />;
+}
+
+// The pane beside the chart: the same delayed board /world reads, so the two can never disagree.
+async function MarketWatchPanel({ lang }: { lang: Lang }) {
+    const board = await loadWorldBoard();
+    return (
+        <Panel title={tx(lang, 'marketWatch.title')} sub={tx(lang, 'marketWatch.sub')}>
+            <MarketWatch initial={board} lang={lang} />
+        </Panel>
+    );
+}
+
+function MarketWatchSkeleton({ lang }: { lang: Lang }) {
+    return (
+        <Panel title={tx(lang, 'marketWatch.title')} sub={tx(lang, 'marketWatch.sub')}>
+            <div className="m-3 h-[380px] animate-pulse rounded-lg bg-hover/40" />
+        </Panel>
+    );
 }
 
 async function Sentiment({ symbol, lang }: { symbol: string; lang: Lang }) {
@@ -111,6 +131,9 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-3">
+                    <Suspense fallback={<MarketWatchSkeleton lang={lang} />}>
+                        <MarketWatchPanel lang={lang} />
+                    </Suspense>
                     <Panel title={tx(lang, 'stock.technicals')} sub={tx(lang, 'stock.technicalsSub')}>
                         <TradingViewWidget
                             scriptUrl={`${scriptUrl}technical-analysis.js`}

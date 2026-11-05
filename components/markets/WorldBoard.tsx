@@ -6,16 +6,9 @@ import { ExternalLink } from 'lucide-react';
 import ChangePill from '@/components/ChangePill';
 import DataFreshness from '@/components/DataFreshness';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
+import { watchDecimals } from '@/lib/market-watch';
 import { tradingViewSymbolUrl } from '@/lib/utils';
 import type { WorldBoardPayload } from '@/lib/world-board';
-import type { SectionId } from '@/lib/market-sections';
-
-/** An index is points, a currency is a rate: one number of decimals cannot serve both. */
-const decimalsFor = (section: SectionId, short: string): number => {
-    if (section === 'currencies') return short.includes('JPY') || short.includes('TRY') ? 2 : 4;
-    if (section === 'crypto') return 0;
-    return 2;
-};
 
 /**
  * The world board: five sections, each a small table of what a trader reads before the open.
@@ -84,8 +77,8 @@ export default function WorldBoard({ initial, lang }: { initial: WorldBoardPaylo
                                             <span className="text-end">
                                                 <span className="num block text-[13px] font-semibold" dir="ltr">
                                                     {quote.price.toLocaleString('en-US', {
-                                                        minimumFractionDigits: decimalsFor(section.id, quote.short),
-                                                        maximumFractionDigits: decimalsFor(section.id, quote.short),
+                                                        minimumFractionDigits: watchDecimals(section.id, quote.short),
+                                                        maximumFractionDigits: watchDecimals(section.id, quote.short),
                                                     })}
                                                 </span>
                                                 <span className="num block text-[11px]">
