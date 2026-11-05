@@ -6,6 +6,7 @@ import {
     STUDIES,
     describeStudy,
     studyColor,
+    studyLines,
     studyLineStyle,
     type ColorToken,
     type StudyConfig,
@@ -108,20 +109,21 @@ export default function ChartLegend({ lang, readout, studies, className }: Props
                     {studies.map((study, index) => {
                         const def = STUDIES[study.id];
                         if (!def) return null;
-                        const values = def.lines
+                        const lines = studyLines(study);
+                        const values = lines
                             .map((line) => ({ line, value: readout.indicators[`${index}:${line.key}`] }))
                             .filter((entry): entry is { line: StudyLine; value: number } => typeof entry.value === 'number');
                         if (values.length === 0) return null;
                         return (
                             <span key={`${index}:${study.id}`} className="inline-flex items-baseline gap-1">
-                                <span className={LABEL_TONE[studyColor(study, def.lines[0])]}>{describeStudy(study, lang)}</span>
+                                <span className={LABEL_TONE[studyColor(study, lines[0])]}>{describeStudy(study, lang)}</span>
                                 {values.map(({ line, value }) => (
                                     <span
                                         key={line.key}
                                         className="inline-flex items-baseline gap-1"
                                         title={t(line.name)}
                                     >
-                                        {def.lines.length > 1 && (
+                                        {lines.length > 1 && (
                                             <span aria-hidden="true" className={LABEL_TONE[studyLineStyle(study, line).color]}>
                                                 {line.short}
                                             </span>

@@ -33,7 +33,7 @@ import { LineBreakPaneView, type LineBreakDatum } from '@/lib/linebreak-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
-import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
+import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
 import type { Series } from '@/lib/indicators';
 import type { CandleSet } from '@/lib/yahoo-candles';
 
@@ -495,7 +495,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             if (!def) return;
             const computed = def.compute(candles, study.params);
             // A study that cannot fill its window draws nothing and opens no empty pane.
-            const drawn = def.lines.filter((spec) => computed[spec.key]?.some((value) => value != null));
+            const specs = studyLines(study);
+            const drawn = specs.filter((spec) => computed[spec.key]?.some((value) => value != null));
             if (drawn.length === 0) return;
 
             // Oscillators get their own pane under the price, in the order the trader added them.

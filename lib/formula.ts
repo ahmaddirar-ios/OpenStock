@@ -13,7 +13,19 @@
 
 export type FormulaBar = { time: number; open: number; high: number; low: number; close: number; volume: number };
 
-export type FormulaResult = { ok: true; values: number[] } | { ok: false; error: string };
+/**
+ * One drawn line. A formula that never calls `plot` has a single line keyed `value`; every
+ * `plot(...)` adds one, keyed `p1`, `p2`, … so the chart, the legend and the settings agree on
+ * which line is which without parsing the text again.
+ */
+export type FormulaLine = { key: string; values: number[] };
+
+export type FormulaResult =
+    | { ok: true; values: number[]; lines: FormulaLine[] }
+    | { ok: false; error: string };
+
+/** Four lines is enough to read a band and its two edges without turning the chart into a web. */
+export const MAX_FORMULA_PLOTS = 4;
 
 /** Words that stand for a whole series, in the order the help panel lists them. */
 export const FORMULA_SERIES = ['open', 'high', 'low', 'close', 'volume', 'hl2', 'hlc3', 'ohlc4'] as const;
@@ -44,10 +56,13 @@ export const FORMULA_EXAMPLES = [
     'spread = ema(close, 9) - ema(close, 21); spread',
     'close > ema(close, 50) ? 1 : -1',
     'crossover(close, sma(close, 20)) ? close : 0',
+    'mid = (high + low) / 2; plot(mid + stdev(close, 20)); plot(mid); plot(mid - stdev(close, 20))',
 ] as const;
 
 const SERIES_WORDS = new Set<string>(FORMULA_SERIES);
-const FUNCTION_NAMES = new Set(FORMULA_FUNCTIONS.map((fn) => fn.name));
+/** `plot` is a statement, not a function over values, so it is not offered in the help list. */
+const PLOT = 'plot';
+const FUNCTION_NAMES = new Set([...FORMULA_FUNCTIONS.map((fn) => fn.name), PLOT]);
 /** Reserved so a variable cannot shadow a series or a function and make the text ambiguous. */
 const RESERVED = new Set<string>([...SERIES_WORDS, ...FUNCTION_NAMES, 'if', 'and', 'or', 'not']);
 
@@ -209,7 +224,21 @@ function parsePrimary(p: Parser): Node {
     throw new Error(`unexpected:${token.value}`);
 }
 
-/** program := statement (';' statement)* — the last statement is the line that gets drawn. */
+const isPlot = (node: Node): node is Extract<Node, { kind: 'call' }> => node.kind === 'call' && node.name === PLOT;
+
+/** A plot is a whole statement: `plot(x) + 1` has no meaning, and silently ignoring the +1 is worse. */
+function containsPlot(node: Node): boolean {
+    switch (node.kind) {
+        case 'call': return node.name === PLOT || node.args.some(containsPlot);
+        case 'binary': return containsPlot(node.left) || containsPlot(node.right);
+        case 'ternary': return containsPlot(node.test) || containsPlot(node.whenTrue) || containsPlot(node.whenFalse);
+        case 'negate':
+        case 'not': return containsPlot(node.of);
+        default: return false;
+    }
+}
+
+/** program := statement (';' statement)* — plots draw, the last plain statement is the line. */
 function parseProgram(p: Parser): Statement[] {
     const statements: Statement[] = [];
     for (;;) {
@@ -221,11 +250,19 @@ function parseProgram(p: Parser): Statement[] {
             if (RESERVED.has(name)) throw new Error(`reserved_name:${name}`);
             p.at += 2;
             const value = parseExpression(p);
+            if (containsPlot(value)) throw new Error('plot_misplaced');
             if (statements.length >= 40) throw new Error('too_many_statements');
             statements.push({ name, value });
             p.declared.add(name);
         } else {
-            statements.push({ name: null, value: parseExpression(p) });
+            const value = parseExpression(p);
+            if (isPlot(value)) {
+                if (value.args.length !== 1) throw new Error('plot_arguments');
+            } else if (containsPlot(value)) {
+                throw new Error('plot_misplaced');
+            }
+            if (statements.length >= 40) throw new Error('too_many_statements');
+            statements.push({ name: null, value });
         }
         if (eat(p, ';')) continue;
         break;
@@ -410,6 +447,21 @@ const parse = (expression: string): { statements: Statement[]; parser: Parser } 
     return { statements, parser };
 };
 
+/** How many `plot(...)` statements an expression has, capped; 0 when it plots nothing or is broken. */
+export function formulaPlotCount(expression: string): number {
+    try {
+        const { statements } = parse(expression);
+        return Math.min(MAX_FORMULA_PLOTS, statements.filter((statement) => isPlot(statement.value)).length);
+    } catch {
+        return 0;
+    }
+}
+
+/** How many lines an expression draws: its plots, or one for a v2-style formula. */
+export function formulaLineCount(expression: string): number {
+    return Math.max(1, formulaPlotCount(expression));
+}
+
 /** Whether an expression parses and names only things the language knows. */
 export function checkFormula(expression: string): { ok: true } | { ok: false; error: string } {
     try {
@@ -428,17 +480,27 @@ export function checkFormula(expression: string): { ok: true } | { ok: false; er
 export function evaluateFormula(expression: string, bars: readonly FormulaBar[]): FormulaResult {
     const checked = checkFormula(expression);
     if (!checked.ok) return checked;
-    if (bars.length === 0) return { ok: true, values: [] };
+    if (bars.length === 0) return { ok: true, values: [], lines: [] };
     try {
         const { statements } = parse(expression);
         const scope: Scope = new Map();
+        const plotted: FormulaLine[] = [];
         let output: number[] = bars.map(() => NaN);
         for (const statement of statements) {
+            // A plot draws. A named statement stores. A bare expression is the fallback line, used
+            // only when the text never called plot — which is every formula written before v3.
+            if (isPlot(statement.value)) {
+                if (plotted.length < MAX_FORMULA_PLOTS) {
+                    plotted.push({ key: `p${plotted.length + 1}`, values: evaluate(statement.value.args[0], bars, scope) });
+                }
+                continue;
+            }
             const values = evaluate(statement.value, bars, scope);
             if (statement.name) scope.set(statement.name, values);
             else output = values;
         }
-        return { ok: true, values: output };
+        const values = plotted[0]?.values ?? output;
+        return { ok: true, values, lines: plotted.length > 0 ? plotted : [{ key: 'value', values }] };
     } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : 'invalid' };
     }

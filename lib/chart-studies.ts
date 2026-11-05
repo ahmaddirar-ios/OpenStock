@@ -34,7 +34,7 @@ import {
 } from '@/lib/indicators';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
-import { evaluateFormula } from '@/lib/formula';
+import { evaluateFormula, formulaPlotCount } from '@/lib/formula';
 
 /** Whether this study wants a pane of its own: by definition, or because its maker said so. */
 export function studyWantsPane(id: StudyId, params: StudyParams | undefined): boolean {
@@ -172,8 +172,21 @@ export type StudyDef = {
     group: 'overlay' | 'oscillator';
     params: StudyParam[];
     lines: StudyLine[];
+    /**
+     * A definition whose plots depend on its own text — a formula with `plot(...)` calls. When it is
+     * absent, `lines` is the whole truth; when it is present it is the answer, and the static list is
+     * only the shape a single-line formula has.
+     */
+    linesFor?: (params: StudyParams) => StudyLine[];
     compute: (candles: readonly Candle[], params: StudyParams) => Record<string, Series>;
 };
+
+/** The lines a configured study draws now — dynamic where the definition says so. */
+export function studyLines(study: StudyConfig): StudyLine[] {
+    const def = STUDIES[study.id];
+    if (!def) return [];
+    return def.linesFor ? def.linesFor(study.params) : def.lines;
+}
 
 const period = (min: number, max: number, value: number): StudyParam => ({
     key: 'period',
@@ -210,6 +223,23 @@ const valueLine = (color: ColorToken): StudyLine => ({
     color,
     kind: 'line',
 });
+
+/** Plot colours, in plot order: the primary line, then three that stay distinguishable on a chart. */
+const FORMULA_PLOT_COLORS: ColorToken[] = ['brand', 'warn', 'up', 'down'];
+
+/** The lines a formula draws: one `value` line, or one per plot, capped where the language caps. */
+export function formulaStudyLines(expression: string): StudyLine[] {
+    const count = formulaPlotCount(expression);
+    // No plot call: the v2 shape, one line keyed `value`, which every stored study already uses.
+    if (count === 0) return [valueLine('brand')];
+    return Array.from({ length: count }, (_, index) => ({
+        key: `p${index + 1}`,
+        short: `L${index + 1}`,
+        name: `study.line.p${index + 1}` as StringKey,
+        color: FORMULA_PLOT_COLORS[index],
+        kind: 'line' as const,
+    }));
+}
 
 /** The author-facing shape: parameters arrive through a reader, so defaults live in one place. */
 type Def = Omit<StudyDef, 'compute'> & {
@@ -559,16 +589,26 @@ const DEFINITIONS: StudyDef[] = [
             },
         ],
         lines: [valueLine('brand')],
+        // A formula with plot() calls declares one line per plot, coloured in this order. A formula
+        // without them keeps the single 'value' line every stored study already has.
+        linesFor: (params) => {
+            const text = typeof params.expression === 'string' ? params.expression : '';
+            return formulaStudyLines(text);
+        },
         compute: (candles, _param, pick) => {
-            const result = evaluateFormula(pick('expression'), candles);
+            const expression = pick('expression');
+            const specs = formulaStudyLines(expression);
+            const result = evaluateFormula(expression, candles);
             // A formula that does not run draws nothing rather than breaking the chart: the menu
             // already prints the reason while it is being typed. A warm-up bar (an average of 20 has
             // nothing to say in bar 3) is a gap, which the series type spells null.
-            return {
-                value: result.ok
-                    ? result.values.map((value) => (Number.isFinite(value) ? value : null))
-                    : candles.map(() => null),
-            };
+            const gap = (values: number[]) => values.map((value) => (Number.isFinite(value) ? value : null));
+            return Object.fromEntries(
+                specs.map((spec, index) => [
+                    spec.key,
+                    result.ok ? gap((result.lines[index] ?? { values: result.values }).values) : candles.map(() => null),
+                ]),
+            );
         },
     }),
 ];
@@ -613,7 +653,7 @@ const isDash = (value: unknown): value is StudyLineDash =>
 export function studyLineStyle(study: StudyConfig, line: StudyLine): { color: ColorToken; dash: StudyLineDash } {
     const def = STUDIES[study.id];
     const own = study.lines?.[line.key];
-    const legacy = def && def.lines.length === 1 && isColorToken(study.color) ? study.color : undefined;
+    const legacy = def && studyLines(study).length === 1 && isColorToken(study.color) ? study.color : undefined;
     const color = isColorToken(own?.color) ? own.color : legacy ?? line.color;
     return { color, dash: isDash(own?.dash) ? own.dash : 'solid' };
 }
@@ -719,7 +759,7 @@ export function parseStudies(value: unknown): StudyConfig[] {
             ? (candidate.lines as Record<string, unknown>)
             : {};
         const lines: Record<string, StudyLineStyle> = {};
-        for (const spec of def.lines) {
+        for (const spec of studyLines(entryOut)) {
             const raw = storedLines[spec.key];
             if (!raw || typeof raw !== 'object') continue;
             const style = raw as { color?: unknown; dash?: unknown };
@@ -729,7 +769,7 @@ export function parseStudies(value: unknown): StudyConfig[] {
             if (entry.color || entry.dash) lines[spec.key] = entry;
         }
         if (Object.keys(lines).length > 0) entryOut.lines = lines;
-        if (isColorToken(candidate.color) && def.lines.length === 1) entryOut.color = candidate.color;
+        if (isColorToken(candidate.color) && studyLines(entryOut).length === 1) entryOut.color = candidate.color;
         if (isWidth(candidate.width)) entryOut.width = candidate.width;
         out.push(entryOut);
     }

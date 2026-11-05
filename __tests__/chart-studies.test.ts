@@ -9,6 +9,7 @@ import {
     studiesChoice,
     studyColor,
     studyLineStyle,
+    studyLines,
     studyWantsPane,
     studyWidth,
     STUDY_COLOR_TOKENS,
@@ -355,5 +356,36 @@ describe('source', () => {
     it('starts a formula in its own pane, so a first try does not flatten the candles', () => {
         expect(defaultStudy('formula').params.placement).toBe('pane');
         expect(studiesChoice(defaultStudy('formula'), 'placement')).toBe('pane');
+    });
+});
+
+describe('the formula study draws what its text plots', () => {
+    const formula = (expression: string) => ({ id: 'formula' as const, params: { expression, placement: 'pane' } });
+
+    it('declares one line per plot, with distinct colours', () => {
+        const lines = studyLines(formula('plot(close); plot(sma(close, 5)); plot(low)'));
+        expect(lines.map((line) => line.key)).toEqual(['p1', 'p2', 'p3']);
+        expect(new Set(lines.map((line) => line.color)).size).toBe(3);
+    });
+
+    it('keeps the single value line for a formula without plots', () => {
+        const lines = studyLines(formula('close - sma(close, 20)'));
+        expect(lines.map((line) => line.key)).toEqual(['value']);
+    });
+
+    it('computes a series for every declared line, and nothing for a broken one', () => {
+        const plots = STUDIES.formula.compute(candles, formula('plot(close); plot(open)').params);
+        expect(Object.keys(plots).sort()).toEqual(['p1', 'p2']);
+        expect(plots.p1[0]).toBe(candles[0].close);
+        expect(plots.p2[0]).toBe(candles[0].open);
+
+        const broken = STUDIES.formula.compute(candles, formula('plot(').params);
+        expect(Object.values(broken).every((series) => series.every((value) => value == null))).toBe(true);
+    });
+
+    it('washes a warm-up bar to a gap rather than a zero', () => {
+        const plots = STUDIES.formula.compute(candles, formula('plot(sma(close, 20))').params);
+        expect(plots.p1[0]).toBeNull();
+        expect(typeof plots.p1[30]).toBe('number');
     });
 });

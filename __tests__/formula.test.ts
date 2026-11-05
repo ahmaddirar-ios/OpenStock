@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { checkFormula, evaluateFormula, FORMULA_EXAMPLES, FORMULA_FUNCTIONS, FORMULA_SERIES, type FormulaBar } from '@/lib/formula';
+import {
+    checkFormula,
+    evaluateFormula,
+    formulaLineCount,
+    FORMULA_EXAMPLES,
+    FORMULA_FUNCTIONS,
+    FORMULA_SERIES,
+    MAX_FORMULA_PLOTS,
+    type FormulaBar,
+} from '@/lib/formula';
 
 const bars: FormulaBar[] = Array.from({ length: 10 }, (_, i) => ({
     time: 1_700_000_000 + i * 86400,
@@ -65,7 +74,7 @@ describe('formula language', () => {
 
     it('returns the same length as the bars', () => {
         expect(values('sma(close, 5)')).toHaveLength(bars.length);
-        expect(evaluateFormula('close', [])).toEqual({ ok: true, values: [] });
+        expect(evaluateFormula('close', [])).toEqual({ ok: true, values: [], lines: [] });
     });
 
     it('documents every series and function it accepts', () => {
@@ -117,5 +126,64 @@ describe('formula language', () => {
 
     it('ships examples that all parse', () => {
         for (const example of FORMULA_EXAMPLES) expect(checkFormula(example), example).toEqual({ ok: true });
+    });
+});
+
+describe('formula plots', () => {
+    const lines = (expression: string) => {
+        const result = evaluateFormula(expression, bars);
+        if (!result.ok) throw new Error(result.error);
+        return result;
+    };
+
+    it('draws one line per plot, keyed in plot order', () => {
+        const result = lines('mid = (high + low) / 2; plot(mid); plot(mid + stdev(close, 3)); plot(mid - stdev(close, 3))');
+        expect(result.lines.map((line) => line.key)).toEqual(['p1', 'p2', 'p3']);
+        expect(result.lines[0].values[2]).toBeCloseTo(12, 10);
+        expect(result.lines[1].values[2] - result.lines[0].values[2]).toBeCloseTo(0.8165, 3);
+        expect(result.lines[2].values[2]).toBeCloseTo(result.lines[0].values[2] - 0.8165, 3);
+    });
+
+    it('keeps the single value line for a formula written before plots existed', () => {
+        const result = lines('close - sma(close, 3)');
+        expect(result.lines).toHaveLength(1);
+        expect(result.lines[0].key).toBe('value');
+        expect(result.values).toEqual(result.lines[0].values);
+    });
+
+    it('keeps a warm-up gap in a plot instead of inventing a value', () => {
+        const result = lines('plot(sma(close, 3))');
+        expect(result.lines[0].values[0]).toBeNaN();
+        expect(result.lines[0].values[2]).toBeCloseTo(11, 10);
+    });
+
+    it('caps the lines at MAX_FORMULA_PLOTS, keeping the first ones', () => {
+        const six = Array.from({ length: 6 }, (_, i) => `plot(close + ${i})`).join('; ');
+        const result = lines(six);
+        expect(MAX_FORMULA_PLOTS).toBe(4);
+        expect(result.lines).toHaveLength(4);
+        expect(result.lines[3].values[0]).toBe(bars[0].close + 3);
+        expect(formulaLineCount(six)).toBe(4);
+    });
+
+    it('counts one line when the text plots nothing, and one when it is broken', () => {
+        expect(formulaLineCount('close')).toBe(1);
+        expect(formulaLineCount('plot(close); plot(open)')).toBe(2);
+        expect(formulaLineCount('plot(')).toBe(1);
+    });
+
+    it('refuses a plot used as a value, an assignment, or with the wrong arity', () => {
+        const misplaced = checkFormula('plot(close) + 1');
+        expect(misplaced.ok).toBe(false);
+        expect(misplaced.ok === false && misplaced.error).toBe('plot_misplaced');
+        expect(checkFormula('x = plot(close)').ok).toBe(false);
+        expect(checkFormula('close - plot(open)').ok).toBe(false);
+        expect(checkFormula('plot()').ok).toBe(false);
+        expect(checkFormula('plot(close, open)').ok).toBe(false);
+    });
+
+    it('does not offer plot as a function in the help list', () => {
+        expect(FORMULA_FUNCTIONS.some((fn) => fn.name === 'plot')).toBe(false);
+        expect(checkFormula('plot = 3').ok).toBe(false);
     });
 });

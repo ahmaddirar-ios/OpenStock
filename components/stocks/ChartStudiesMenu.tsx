@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Plus, Search, X } from 'lucide-react';
-import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_COLOR_TOKENS, STUDY_IDS, STUDY_LINE_DASHES, STUDY_WIDTHS, defaultStudy, describeStudy, studiesChoice, studiesParam, studiesText, studyLineStyle, studyWidth, type StudyConfig, type StudyId, type StudyLineStyle } from '@/lib/chart-studies';
+import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_COLOR_TOKENS, STUDY_IDS, STUDY_LINE_DASHES, STUDY_WIDTHS, defaultStudy, describeStudy, studiesChoice, studiesParam, studiesText, studyLineStyle, studyLines, studyWidth, type StudyConfig, type StudyId, type StudyLineStyle } from '@/lib/chart-studies';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { checkFormula } from '@/lib/formula';
@@ -239,12 +239,12 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                         </div>
                                     </div>
                                     <div className="mt-1 flex flex-col gap-0.5">
-                                        {def.lines.map((line) => {
+                                        {studyLines(study).map((line) => {
                                             const style = studyLineStyle(study, line);
                                             return (
                                                 <div key={line.key} className="flex items-center gap-1.5 text-[10.5px] text-faint">
                                                     <span aria-hidden="true" className="w-6 shrink-0 text-faint">
-                                                        {def.lines.length > 1 ? line.short : t(line.name)}
+                                                        {studyLines(study).length > 1 ? line.short : t(line.name)}
                                                     </span>
                                                     <div
                                                         role="group"
