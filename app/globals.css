@@ -211,7 +211,7 @@
 
     .desk-body {
         display: grid;
-        grid-template-columns: 248px minmax(0, 1fr);
+        grid-template-columns: 56px minmax(0, 1fr);
         min-height: 0;
     }
     .desk.is-collapsed .desk-body { grid-template-columns: 0 minmax(0, 1fr); }
@@ -493,18 +493,114 @@
         .win-controls { display: none; }
     }
 
-    /* ============ Sidebar ============ */
+    /* ============ The rail ============ */
 
-    .sidebar {
+    /* The menu bar carries every name, so the edge carries only glyphs: one per destination, a tip
+       on hover, a hairline between the market, your own pages and the analysis. */
+    .rail {
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        align-items: center;
+        gap: 2px;
         height: 100%;
-        padding: 12px 12px 12px;
-        overflow-y: auto;
+        padding: 10px 0 8px;
+        /* The tips live outside the column, so nothing here may clip: `overflow-y: auto` alone
+           silently turns `overflow-x` into auto and cuts every tip at 56px. Short windows get the
+           compact rhythm below instead of a scrollbar. */
+        overflow: visible;
         background: var(--page);
+    }
+
+    .rail-group { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; }
+
+    .rail-sep { width: 22px; height: 1px; margin: 6px 0; background: var(--line); flex: none; }
+
+    .rail-btn {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
         color: var(--muted);
-        scrollbar-width: none;
+        flex: none;
+        transition: background-color 140ms var(--ui-ease), color 140ms var(--ui-ease);
+    }
+    .rail-btn:hover { background: color-mix(in oklab, var(--text) 7%, transparent); color: var(--text); }
+    .rail-btn.is-active { background: color-mix(in oklab, var(--brand) 18%, transparent); color: var(--brand-ink); }
+    .rail-btn svg { width: 18px; height: 18px; }
+
+    .rail-avatar { margin-bottom: 2px; }
+
+    .rail-label { display: none; }
+
+    /* Eleven glyphs + the foot fit 900px comfortably; a laptop on a 720px window does not, and a
+       scrollbar in a 56px strip is worse than a tighter rhythm. */
+    @media (max-height: 780px) and (min-width: 1024px) {
+        .rail { padding: 6px 0 6px; }
+        .rail-btn { width: 34px; height: 34px; border-radius: 9px; }
+        .rail-btn svg { width: 16px; height: 16px; }
+        .rail-sep { margin: 4px 0; }
+    }
+
+    /* The tip is the only text in the rail: it lives outside the 56px column, toward the workspace,
+       so it never widens the frame. */
+    .rail-tip {
+        position: absolute;
+        /* Toward the workspace in both directions: the rail sits at inline-start, so the tip
+           starts one rail-width past it. */
+        inset-inline-start: calc(100% + 10px);
+        top: 50%;
+        transform: translateY(-50%) scale(0.98);
+        z-index: 70;
+        padding: 4px 9px;
+        border-radius: 6px;
+        background: var(--card);
+        box-shadow: 0 0 0 1px var(--line), 0 8px 24px oklch(0 0 0 / 0.4);
+        color: var(--text);
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms var(--ui-ease), transform 120ms var(--ui-ease);
+    }
+    .rail-btn:hover .rail-tip,
+    .rail-btn:focus-visible .rail-tip { opacity: 1; transform: translateY(-50%) scale(1); }
+
+    .rail-foot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        margin-top: auto;
+        padding-top: 6px;
+    }
+
+    /* Resources live in the menu bar on a desktop; the drawer repeats them, because the menu bar
+       folds to a hamburger there. */
+    .rail-res { display: none; }
+
+    /* The drawer is the same markup with its labels on: a list, because a phone has no hover. */
+    @media (max-width: 1023px) {
+        .rail { width: 100%; align-items: stretch; padding: 12px 10px; gap: 1px; overflow-y: auto; }
+        .rail-group { align-items: stretch; gap: 1px; }
+        .rail-sep { width: 100%; margin: 8px 0; }
+        .rail-btn {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            width: 100%;
+            height: 38px;
+            padding: 0 10px;
+        }
+        .rail-label { display: inline; flex: 1; font-size: 13px; font-weight: 600; }
+        .rail-tip { display: none; }
+        .rail-avatar { width: 100%; }
+        .rail-foot { align-items: stretch; padding-top: 10px; }
+        /* The drawer is the only place the resources appear: the menu bar folds to a hamburger. */
+        .rail-res { display: flex; }
     }
 
     .side-label {

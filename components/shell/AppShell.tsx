@@ -76,7 +76,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
                         navOpen ? 'max-lg:translate-x-0' : lang === 'ar' ? 'max-lg:translate-x-full' : 'max-lg:-translate-x-full',
                     )}
                 >
-                    <Sidebar user={user} watchlist={watchlist} lang={lang} />
+                    <Sidebar user={user} lang={lang} />
                 </div>
                 {navOpen && (
                     <div className="fixed inset-0 z-40 bg-page/60 backdrop-blur-[2px] lg:hidden" onClick={() => setNavOpen(false)} />

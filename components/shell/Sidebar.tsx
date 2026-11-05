@@ -1,33 +1,27 @@
 'use client';
 
-import { Fragment } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Code2, Info, LifeBuoy, LogOut } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import LangToggle from "@/components/LangToggle";
 import ThemeToggle from "@/components/shell/ThemeToggle";
 import { signOut } from "@/lib/actions/auth.actions";
 import { cn } from "@/lib/utils";
-import { tx, type Lang, type StringKey } from "@/lib/i18n";
-import FooterCredit from "@/components/brand/FooterCredit";
-import { saudiSymbolName, saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { tx, type Lang } from "@/lib/i18n";
 import { PAGE_SECTIONS, pagesInSection } from "@/lib/shell/pages";
 
 type SidebarProps = {
     user: User;
-    watchlist: { symbol: string; company: string }[];
     lang: Lang;
 };
 
-// Labels are keys, not text, so the same list renders in both languages.
-const RESOURCES: { href: string; labelKey: StringKey; icon: typeof LifeBuoy }[] = [
-    { href: '/help', labelKey: 'nav.help', icon: LifeBuoy },
-    { href: '/api-docs', labelKey: 'nav.apiDocs', icon: Code2 },
-    { href: '/about', labelKey: 'nav.about', icon: Info },
-    { href: '/terms', labelKey: 'nav.terms', icon: BookOpen },
-];
-
-const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
+/**
+ * The rail, not a sidebar. The menu bar already carries every name, so this is the far edge of a
+ * terminal: one glyph per destination, a tip on hover, and the sections separated by a hairline.
+ * On a narrow screen the same markup becomes the drawer and shows its labels.
+ */
+const Sidebar = ({ user, lang }: SidebarProps) => {
     const pathname = usePathname();
     const router = useRouter();
 
@@ -36,80 +30,67 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
         router.push('/sign-in');
     };
 
+    const sections = PAGE_SECTIONS.filter((section) => section.id !== 'account' && section.id !== 'resources');
+
     return (
-        <aside className="sidebar">
-            {/* The sidebar is grouped, not a flat list: what the market says, what is yours, and
-                the tools that read both. The pages come from lib/shell/pages.ts, so the command bar
-                and the tab labels cannot promise a destination the sidebar does not have. */}
-            <nav className="flex flex-col gap-0.5">
-                {PAGE_SECTIONS.filter((section) => section.id !== 'account' && section.id !== 'resources').map((section, index) => (
-                    <Fragment key={section.id}>
-                        <p className={cn('side-label', index === 0 ? 'mt-1' : 'mt-2')}>{tx(lang, section.labelKey)}</p>
-                        {pagesInSection(section.id).map(({ href, labelKey, icon: Icon }) => (
-                            <Link key={href} href={href} className={cn('side-item', (pathname === href || pathname.startsWith(`${href}/`)) && 'is-active')}>
+        <aside className="rail">
+            <Link href="/profile" className="rail-btn rail-avatar" aria-label={user.name} aria-current={pathname === '/profile' ? 'page' : undefined}>
+                <span className="grid size-7 place-items-center rounded-full bg-brand-soft text-[11px] font-bold text-brand-ink">
+                    {user.name?.[0]?.toUpperCase() ?? '?'}
+                </span>
+                <span className="rail-label">{user.name}</span>
+                <span className="rail-tip" aria-hidden="true">{user.name}</span>
+            </Link>
+
+            {sections.map((section) => (
+                <div key={section.id} className="rail-group">
+                    <span className="rail-sep" aria-hidden="true" />
+                    {pagesInSection(section.id).map(({ href, labelKey, icon: Icon }) => {
+                        const name = tx(lang, labelKey);
+                        const active = pathname === href || pathname.startsWith(`${href}/`);
+                        return (
+                            <Link
+                                key={href}
+                                href={href}
+                                className={cn('rail-btn', active && 'is-active')}
+                                aria-label={name}
+                                aria-current={active ? 'page' : undefined}
+                            >
                                 <Icon />
-                                <span className="flex-1">{tx(lang, labelKey)}</span>
-                                {href === '/watchlist' && <span className="num text-xs text-faint">{watchlist.length}</span>}
+                                <span className="rail-label">{name}</span>
+                                <span className="rail-tip" aria-hidden="true">{name}</span>
                             </Link>
-                        ))}
-                    </Fragment>
-                ))}
+                        );
+                    })}
+                </div>
+            ))}
 
-                <p className="side-label mt-2">{tx(lang, 'nav.section.display')}</p>
-                <ThemeToggle lang={lang} />
-            </nav>
-
-            <div className="flex shrink-0 flex-col gap-1">
-                <p className="side-label shrink-0">{tx(lang, 'nav.watching')}</p>
-                {watchlist.length === 0 ? (
-                    <p className="shrink-0 px-2.5 text-[12.5px] leading-snug text-faint">{tx(lang, 'nav.watchingEmpty')}</p>
-                ) : (
-                    <ul className="scrollbar-hide-default flex max-h-56 min-h-0 flex-col gap-0.5 overflow-y-auto">
-                        {watchlist.map(({ symbol, company }) => {
-                            // Old rows stored the ticker as the company name; the Saudi table knows better.
-                            const name = (lang === 'ar' ? saudiSymbolNameAr(symbol) : null) ?? (company !== symbol ? company : saudiSymbolName(symbol));
-                            return (
-                            <li key={symbol}>
-                                <Link
-                                    href={`/stocks/${symbol}`}
-                                    title={name || symbol}
-                                    className={cn('side-item h-8 font-medium', pathname === `/stocks/${symbol}` && 'is-active')}
-                                >
-                                    <span dir="ltr" className="mono w-14 shrink-0 text-[12.5px] font-semibold text-foreground">{symbol}</span>
-                                    {name && <span dir="auto" className="truncate text-[12.5px] text-faint">{name}</span>}
-                                </Link>
-                            </li>
-                            );
-                        })}
-                    </ul>
-                )}
+            {/* The menu bar already lists these on a desktop; the drawer has no menu bar, so it
+                carries them too instead of hiding help, docs and the legal pages on a phone. */}
+            <div className="rail-group rail-res">
+                <span className="rail-sep" aria-hidden="true" />
+                {pagesInSection('resources').map(({ href, labelKey, icon: Icon }) => {
+                    const name = tx(lang, labelKey);
+                    const active = pathname === href || pathname.startsWith(`${href}/`);
+                    return (
+                        <Link key={href} href={href} className={cn('rail-btn', active && 'is-active')} aria-label={name} aria-current={active ? 'page' : undefined}>
+                            <Icon />
+                            <span className="rail-label">{name}</span>
+                            <span className="rail-tip" aria-hidden="true">{name}</span>
+                        </Link>
+                    );
+                })}
             </div>
 
-            <div className="mt-auto flex flex-col gap-0.5">
-                {RESOURCES.map(({ href, labelKey, icon: Icon }) => (
-                    <Link key={href} href={href} className={cn('side-item h-8', pathname === href && 'is-active')}>
-                        <Icon /> {tx(lang, labelKey)}
-                    </Link>
-                ))}
-                <div className="px-2 py-1"><LangToggle initial={lang} /></div>
-            </div>
-
-            <div className="flex items-center gap-2.5 border-t border-line pt-3 px-1">
-                <Link href="/profile" className={cn('-m-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-[10px] p-1 transition-colors hover:bg-hover', pathname === '/profile' && 'bg-hover')}>
-                    <span className="grid size-8 flex-none place-items-center rounded-full bg-brand-soft text-[13px] font-bold text-brand-ink">
-                        {user.name?.[0]?.toUpperCase() ?? '?'}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-semibold text-foreground">{user.name}</span>
-                        <span className="block truncate text-[12px] text-faint">{user.email}</span>
-                    </span>
-                </Link>
-                <button type="button" onClick={handleSignOut} className="icon-btn" title={tx(lang, 'nav.signOut')} aria-label={tx(lang, 'nav.signOut')}>
+            <div className="rail-foot">
+                <ThemeToggle lang={lang} iconOnly />
+                <LangToggle initial={lang} variant="rail" />
+                <button type="button" onClick={handleSignOut} className="rail-btn" aria-label={tx(lang, 'nav.signOut')}>
                     <LogOut />
+                    <span className="rail-label">{tx(lang, 'nav.signOut')}</span>
+                    <span className="rail-tip" aria-hidden="true">{tx(lang, 'nav.signOut')}</span>
                 </button>
             </div>
-
-            <FooterCredit lang={lang} className="px-1 pb-1" />
         </aside>
     );
 };
