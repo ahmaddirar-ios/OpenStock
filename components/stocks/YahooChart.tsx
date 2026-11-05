@@ -51,7 +51,6 @@ import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawing
 import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
 import { EDIT_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
 import {
-    TIME_ZONES,
     readTimeZone,
     writeTimeZone,
     type TimeZoneId,
@@ -134,11 +133,12 @@ import ChartLegend from '@/components/stocks/ChartLegend';
 import type { BarReadout } from '@/lib/chart-readout';
 import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
+import ChartPeriods from '@/components/stocks/ChartPeriods';
+import ChartSettingsMenu from '@/components/stocks/ChartSettingsMenu';
 import CreateAlertModal from '@/components/watchlist/CreateAlertModal';
 import {
     CHART_TYPES,
     CHART_TYPE_KEYS,
-    SCALE_MODES,
     parseKagiReversal,
     parseLineBreakCount,
     parseRenkoBox,
@@ -150,7 +150,6 @@ import {
     writeKagiReversal,
     writeLineBreakCount,
     writeRenkoBox,
-    SCALE_MODE_KEYS,
     readChartType,
     readScaleMode,
     writeChartType,
@@ -1812,18 +1811,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         <div className={cn('flex flex-col gap-2', fill && 'h-full min-h-0')}>
             {/* The chart itself stays LTR: mirrored axes and prices are the one thing RTL must not touch. */}
             <div className={cn('chart-toolbar chart-toolbar-main', toolbarMore && 'is-open')} dir="ltr">
-                {timeframes.map((timeframe) => (
-                    <button
-                        key={timeframe.id}
-                        type="button"
-                        onClick={() => setIntervalId(timeframe.id)}
-                        className={cn('pill chart-tf-pill h-7 px-2.5 text-[12px]', intervalId === timeframe.id && 'is-up')}
-                        aria-pressed={intervalId === timeframe.id}
-                    >
-                        {timeframe.label}
-                    </button>
-                ))}
-                <span className="chart-tf-rule mx-1 h-4 w-px bg-line" />
+                {/* One track, one choice: the intervals are a segmented control, not seven pills. */}
+                <ChartPeriods periods={timeframes} active={intervalId} lang={lang} onPick={setIntervalId} />
+                <span className="tool-divider" aria-hidden />
                 {/* A phone cannot spend five rows on intervals: one button names the one in use. */}
                 {dropdown(
                     'tf',
@@ -1964,67 +1954,29 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     undefined,
                     'keep-mobile',
                 )}
-                {dropdown(
-                    'tz',
-                    t('chart.tz'),
-                    TIME_ZONES.map((zone) => ({
-                        key: zone.id,
-                        label: t(zone.label),
-                        onClick: () => {
-                            setTimeZone(zone.id);
-                            setMenu(null);
-                        },
-                        active: timeZone === zone.id,
-                    })),
-                )}
-                <button
-                    type="button"
-                    onClick={() => setInvertScale((value) => !value)}
-                    aria-pressed={invertScale}
-                    className={cn('pill h-7 px-2.5 text-[12px]', invertScale && 'is-up')}
-                    title={t('chart.scale.invert')}
-                >
-                    {t('chart.scale.invert')}
-                </button>
+                <span className="tool-divider" aria-hidden />
+                {/* Volume is a layer you flip while reading, so it stays on the bar. */}
                 <button
                     type="button"
                     onClick={() => setVolumeVisible((value) => !value)}
                     aria-pressed={volumeVisible}
+                    aria-label={t('chart.volume')}
                     className={cn('pill h-7 px-2.5 text-[12px]', volumeVisible && 'is-up')}
                     title={t('chart.volume')}
                 >
                     <BarChart3 className="size-3.5" />
                 </button>
-                <button
-                    type="button"
-                    onClick={() => setSessionBreaks((value) => !value)}
-                    aria-pressed={sessionBreaks}
-                    className={cn('pill h-7 px-2.5 text-[12px]', sessionBreaks && 'is-up')}
-                    title={t('chart.sessionBreaks')}
-                >
-                    {t('chart.sessionBreaks')}
-                </button>
-                {dropdown(
-                    'scale',
-                    t('chart.scale'),
-                    SCALE_MODES.map((mode) => ({
-                        key: mode,
-                        label: t(SCALE_MODE_KEYS[mode]),
-                        onClick: () => {
-                            setScaleMode(mode);
-                            setMenu(null);
-                        },
-                        active: scaleMode === mode,
-                    })),
-                )}
+                {/* Replay and compare are modes you flip, not labels you read: the glyph carries them
+                    and the tooltip names them, so the bar keeps its width for the things it explains. */}
                 <button
                     type="button"
                     onClick={() => (replay ? exitReplay() : startReplay())}
                     aria-pressed={replay}
-                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', replay && 'is-up')}
+                    aria-label={t('replay.open')}
+                    className={cn('pill h-7 px-2 text-[12px]', replay && 'is-up')}
                     title={t('replay.title')}
                 >
-                    <History className="size-3.5" /> {t('replay.open')}
+                    <History className="size-3.5" />
                 </button>
                 {!replay && (
                 <div className="relative">
@@ -2032,10 +1984,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         type="button"
                         onClick={() => setCompareOpen((value) => !value)}
                         aria-expanded={compareOpen}
-                        className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', compareList.length > 0 && 'is-up')}
+                        aria-label={t('chart.compare')}
+                        className={cn('pill h-7 px-2 text-[12px] gap-1', compareList.length > 0 && 'is-up')}
                         title={t('chart.compare')}
                     >
-                        <GitCompare className="size-3.5" /> {t('chart.compare')}
+                        <GitCompare className="size-3.5" />
                         {compareList.length > 0 && <span className="num text-faint">{compareList.length}</span>}
                     </button>
                     {compareOpen && (
@@ -2079,10 +2032,26 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 </div>
                 )}
                 {!replay && <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />}
+                {/* The far edge: settings, then the actions that take something out of the chart. The
+                    spacer is a spacer, not an auto margin: the bar is forced LTR inside an RTL page,
+                    and a logical auto margin lands on the wrong side of the gear. */}
+                <span className="chart-toolbar-spacer" aria-hidden />
+                <ChartSettingsMenu
+                    lang={lang}
+                    timeZone={timeZone}
+                    scaleMode={scaleMode}
+                    invert={invertScale}
+                    sessionBreaks={sessionBreaks}
+                    onTimeZone={setTimeZone}
+                    onScaleMode={setScaleMode}
+                    onInvert={setInvertScale}
+                    onSessionBreaks={setSessionBreaks}
+                />
+                <span className="tool-divider" aria-hidden />
                 <button
                     type="button"
                     onClick={() => void shareChart()}
-                    className="icon-btn ms-auto"
+                    className="icon-btn"
                     aria-label={t('chart.share')}
                     title={t('chart.share')}
                 >

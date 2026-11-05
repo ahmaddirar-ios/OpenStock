@@ -1560,7 +1560,59 @@ html[lang="ar"] [lang="en"] {
 .chart-toolbar > .pill svg,
 .chart-toolbar > .relative > .pill svg { width: 13px; height: 13px; }
 .chart-toolbar > .icon-btn { width: 26px; height: 26px; border-radius: 8px; }
-.chart-toolbar .tool-divider { width: 1px; height: 14px; margin: 0 4px; background: var(--line); }
+.chart-toolbar .tool-divider { width: 1px; height: 14px; margin: 0 3px; background: var(--line); }
+.chart-toolbar .chart-toolbar-spacer { flex: 1 1 0; min-width: 4px; }
+
+/* The intervals are one choice, so they sit in one recessed track with the chosen segment raised —
+   a segmented control, not seven pills of equal weight. */
+.chart-periods {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 1px;
+    border-radius: 9px;
+    background: color-mix(in oklab, var(--text) 5%, transparent);
+    box-shadow: inset 0 0 0 1px var(--line);
+}
+.chart-periods .chart-tf-pill {
+    height: 24px;
+    min-width: 24px;
+    padding: 0 5px;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    transition: background-color 140ms var(--ui-ease), color 140ms var(--ui-ease);
+}
+.chart-periods .chart-tf-pill:hover { background: color-mix(in oklab, var(--text) 8%, transparent); color: var(--text); }
+.chart-periods .chart-tf-pill.is-up { background: var(--brand-soft); color: var(--brand-ink); }
+
+/* A switch, drawn from the same tokens as everything else: the track is the line, the knob the card. */
+.chart-switch {
+    appearance: none;
+    flex: none;
+    width: 32px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--line-strong);
+    cursor: pointer;
+    transition: background-color 140ms var(--ui-ease);
+}
+.chart-switch::after {
+    content: '';
+    display: block;
+    width: 14px;
+    height: 14px;
+    margin: 2px;
+    border-radius: 50%;
+    background: var(--card);
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.35);
+    transition: transform 140ms var(--ui-ease);
+}
+.chart-switch:checked { background: var(--brand); }
+.chart-switch:checked::after { transform: translateX(14px); }
 
 /* The phone fold. A narrow screen cannot spend five rows on chart controls before the chart, so the
    main bar keeps the interval, the tool palette, the type and a More button; everything else waits
@@ -1572,8 +1624,9 @@ html[lang="ar"] [lang="en"] {
 
 @media (max-width: 767.98px) {
     .chart-toolbar-main:not(.is-open) > :not(.keep-mobile) { display: none; }
-    .chart-toolbar-main .chart-tf-pill,
-    .chart-toolbar-main .chart-tf-rule { display: none; }
+    /* The track is desktop furniture; a phone names its interval in the picker instead. Only the
+       bar's own track is hidden — the settings panel draws a segmented control of its own. */
+    .chart-toolbar-main > .chart-periods { display: none; }
     .chart-tf-pick { display: block; }
     .chart-more { display: inline-flex; }
     .chart-toolbar.chart-toolbar-edit:not(.is-open) { display: none; }
