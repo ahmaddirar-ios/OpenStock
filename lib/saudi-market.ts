@@ -23,6 +23,10 @@ export type SaudiBoard = {
     losers: SaudiQuote[];
     active: { quote: SaudiQuote; value: number }[];
     sectors: SectorRow[];
+    /** Rials traded across the priced names: the number the ribbon prints as قيمة التداول. */
+    turnover: number;
+    /** Shares that changed hands today. */
+    volume: number;
 };
 
 const byChange = (a: SaudiQuote, b: SaudiQuote) => b.changePercent - a.changePercent;
@@ -53,6 +57,8 @@ export function buildSaudiBoard(quotes: SaudiQuote[], limit = 6): SaudiBoard {
     return {
         total: priced.length,
         breadth: { advancers, decliners, unchanged: priced.length - advancers - decliners },
+        turnover: priced.reduce((sum, quote) => sum + valueTraded(quote), 0),
+        volume: priced.reduce((sum, quote) => sum + quote.volume, 0),
         gainers: sorted.slice(0, limit),
         // Losers read from the weakest first, which is the order a trader expects.
         losers: [...sorted].reverse().slice(0, limit),

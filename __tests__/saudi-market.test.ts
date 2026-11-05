@@ -32,6 +32,15 @@ describe('Saudi market board', () => {
         expect(board.total).toBe(4);
     });
 
+    it('totals the day: rials traded and shares that changed hands', () => {
+        const board = buildSaudiBoard([
+            q('1111.SR', 0, 5, 10_000_000),   // 50M riyals, 10M shares
+            q('2222.SR', 0, 100, 100_000),    // 10M riyals, 100k shares
+        ]);
+        expect(board.turnover).toBe(60_000_000);
+        expect(board.volume).toBe(10_100_000);
+    });
+
     it('ranks the most active by rial value, not share count', () => {
         const cheapAndBusy = q('1111.SR', 0, 5, 10_000_000);   // 50M riyals
         const pricey = q('2222.SR', 0, 100, 100_000);          // 10M riyals

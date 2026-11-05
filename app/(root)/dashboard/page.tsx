@@ -6,6 +6,7 @@ import Panel from "@/components/Panel";
 import YahooChart from "@/components/stocks/YahooChart";
 import StockChart from "@/components/stocks/StockChart";
 import MarketWatch from "@/components/markets/MarketWatch";
+import MarketRibbon from "@/components/markets/MarketRibbon";
 import NewsStrip from "@/components/news/NewsStrip";
 import { getSaudiMarketNews } from "@/lib/actions/news.actions";
 import { loadWorldBoard } from "@/lib/world-board";
@@ -23,8 +24,9 @@ export const metadata = {
 
 const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
 
-// One panel is one fill: the pane owns the height, the chart stretches inside it.
-const PANE = { className: "min-h-0", bodyClassName: "flex min-h-0 flex-1 flex-col" } as const;
+// One panel is one fill: the pane owns the height, the chart stretches inside it. The terminal
+// shell is dense — a 30px header, no hatch weave, no subtitle standing between the eye and the data.
+const PANE = { className: "min-h-0", bodyClassName: "flex min-h-0 flex-1 flex-col", dense: true } as const;
 // The badge is also the way out of the pane: it opens the full stock page with the same chart.
 const SYMBOL_BADGE = (symbol: string) => (
     <Link
@@ -79,24 +81,29 @@ export default async function Overview() {
 
     return (
         <div className="overview">
+            {/* The day, in one line, before the work: indices and totals. It streams, so the chart
+                never waits on a scanner call — and it keeps its height while it does. */}
+            <Suspense fallback={<div className="terminal-ribbon is-empty" aria-hidden />}>
+                <MarketRibbon lang={lang} />
+            </Suspense>
             <div className="overview-grid">
                 {isChartEmbeddable(tvSymbol) ? (
                     <StockChart tvSymbol={tvSymbol} scriptUrl={`${scriptUrl}advanced-chart.js`} lang={lang} fill />
                 ) : yahooCandleSymbol(symbol) ? (
-                    <Panel
-                        title={tx(lang, "stock.chart")}
-                        sub={tx(lang, "stock.chartYahoo")}
-                        action={SYMBOL_BADGE(symbol)}
-                        {...PANE}
-                    >
-                        <YahooChart
-                            symbol={symbol}
-                            tvSymbol={tvSymbol}
-                            lang={lang}
-                            preferredInterval={isIndex ? "60m" : undefined}
-                            fill
-                        />
-                    </Panel>
+                    // No panel title on the chart: the quote header inside the chart is the title —
+                    // the instrument, its last print and its session, one line, the way a terminal
+                    // names the pane it is drawing in.
+                    <section className="hatch is-dense min-h-0">
+                        <div className="card flex min-h-0 flex-1 flex-col">
+                            <YahooChart
+                                symbol={symbol}
+                                tvSymbol={tvSymbol}
+                                lang={lang}
+                                preferredInterval={isIndex ? "60m" : undefined}
+                                fill
+                            />
+                        </div>
+                    </section>
                 ) : (
                     // TradingView refuses this exchange's chart in embeds; say so instead of an error box
                     <Panel

@@ -62,3 +62,43 @@ export function filterSections(
         }))
         .filter((entry) => entry.quotes.length > 0);
 }
+
+/** The two columns a terminal lets you re-rank: the last price and the day's change. */
+export type WatchSortKey = 'last' | 'change';
+export type WatchSort = { key: WatchSortKey; dir: 'asc' | 'desc' } | null;
+
+/**
+ * A header click cycles through three states, because a trader wants "biggest first" far more often
+ * than "smallest first": the useful direction, its reverse, then the board's own order back.
+ */
+export function nextWatchSort(current: WatchSort, key: WatchSortKey): WatchSort {
+    if (!current || current.key !== key) return { key, dir: 'desc' };
+    if (current.dir === 'desc') return { key, dir: 'asc' };
+    return null;
+}
+
+/**
+ * Re-rank each section's own rows; the sections themselves keep the board's order, because a
+ * currency is not competing with an index. Quotes the feed did not price sink to the bottom in
+ * both directions — they are missing, not small.
+ */
+export function sortSections(sections: readonly SectionBoard[], sort: WatchSort): SectionBoard[] {
+    if (!sort) return [...sections];
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    const valueOf = (quote: SectionBoard['quotes'][number]) =>
+        sort.key === 'last' ? quote.price : quote.changePercent;
+
+    return sections.map(({ section, quotes }) => ({
+        section,
+        quotes: [...quotes].sort((a, b) => {
+            const first = valueOf(a);
+            const second = valueOf(b);
+            const firstOk = Number.isFinite(first);
+            const secondOk = Number.isFinite(second);
+            if (!firstOk && !secondOk) return 0;
+            if (!firstOk) return 1;
+            if (!secondOk) return -1;
+            return (first - second) * factor;
+        }),
+    }));
+}

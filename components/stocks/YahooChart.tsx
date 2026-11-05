@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import {
     LineSeries,
     createSeriesMarkers,
@@ -134,6 +135,8 @@ import type { BarReadout } from '@/lib/chart-readout';
 import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
 import ChartPeriods from '@/components/stocks/ChartPeriods';
+import { formatPrice, signedPercent } from '@/lib/market-ribbon';
+import { riyadhNow, sessionChange, tadawulPhase, type TadawulPhase } from '@/lib/chart-quote';
 import ChartSettingsMenu from '@/components/stocks/ChartSettingsMenu';
 import CreateAlertModal from '@/components/watchlist/CreateAlertModal';
 import {
@@ -543,6 +546,32 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         if (!replaySet) return null;
         return { candles: visibleCandles(replayCandles, cursor), currency: replaySet.currency };
     }, [replay, data, replaySet, replayCandles, cursor]);
+
+    // The quote header the overview draws above the chart: the instrument, its last print, the day's
+    // move and whether its market is open. Every number comes from the candles already on screen —
+    // the header never asks the feed a second question.
+    // TASI is Tadawul's own index and arrives without the .SR suffix its listings carry.
+    const isTadawul = symbol.toUpperCase().endsWith('.SR') || symbol.toUpperCase() === 'TASI';
+    const quote = useMemo(() => {
+        const candles = data?.candles ?? [];
+        const last = candles.at(-1);
+        if (!last) return null;
+        return { price: last.close, change: sessionChange(candles, isTadawul ? 'riyadh' : 'utc') };
+    }, [data, isTadawul]);
+
+    // The clock is read after mount: the server's minute and the browser's would otherwise disagree
+    // in the markup, and a phase is only useful when it is the reader's own now.
+    const [phase, setPhase] = useState<TadawulPhase | null>(null);
+    useEffect(() => {
+        if (!isTadawul) return;
+        const tick = () => {
+            const now = riyadhNow(new Date());
+            setPhase(tadawulPhase(now.weekday, now.minutes));
+        };
+        tick();
+        const timer = window.setInterval(tick, 60_000);
+        return () => window.clearInterval(timer);
+    }, [isTadawul]);
 
     // Latest-value refs for the callbacks that must not re-run when a replay bar advances.
     displayRef.current = displayData;
@@ -1809,6 +1838,45 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
     return (
         <div className={cn('flex flex-col gap-2', fill && 'h-full min-h-0')}>
+            {/* The quote header, overview only: what the pane is showing, in the order a trader asks
+                it — instrument, last, change, is the market open, is this data late. */}
+            {fill && (
+                <div className="chart-quote">
+                    <Link
+                        href={`/stocks/${encodeURIComponent(symbol)}`}
+                        className="chart-quote-sym mono"
+                        dir="ltr"
+                    >
+                        {symbol}
+                    </Link>
+                    {quote ? (
+                        <>
+                            <bdi className="chart-quote-last num" dir="ltr">{formatPrice(quote.price, lang)}</bdi>
+                            {quote.change != null && (
+                                <bdi
+                                    className={cn(
+                                        'chart-quote-change num',
+                                        quote.change > 0 ? 'is-up' : quote.change < 0 ? 'is-down' : 'is-flat',
+                                    )}
+                                    dir="ltr"
+                                >
+                                    {signedPercent(quote.change, lang)}
+                                </bdi>
+                            )}
+                        </>
+                    ) : (
+                        <span className="chart-quote-loading" aria-hidden="true" />
+                    )}
+                    <span className="chart-quote-spacer" aria-hidden="true" />
+                    {phase && (
+                        <span className={cn('chart-quote-phase', phase === 'open' && 'is-open')}>
+                            <span className="chart-quote-dot" aria-hidden="true" />
+                            {t(`market.${phase}`)}
+                        </span>
+                    )}
+                    <span className="chart-quote-chip">{t('status.delayed')}</span>
+                </div>
+            )}
             {/* The chart itself stays LTR: mirrored axes and prices are the one thing RTL must not touch. */}
             <div className={cn('chart-toolbar chart-toolbar-main', toolbarMore && 'is-open')} dir="ltr">
                 {/* One track, one choice: the intervals are a segmented control, not seven pills. */}
@@ -2095,7 +2163,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 <button
                     type="button"
                     onClick={() => setShortcutsOpen(true)}
-                    className="icon-btn"
+                    className="icon-btn chart-toolbar-optional"
                     aria-label={t('chart.shortcuts.title')}
                     title={t('chart.shortcuts.title')}
                 >

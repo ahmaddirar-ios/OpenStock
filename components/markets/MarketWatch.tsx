@@ -6,7 +6,7 @@ import { Search } from 'lucide-react';
 import MarketWatchTable from '@/components/markets/MarketWatchTable';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { filterSections } from '@/lib/market-watch';
+import { filterSections, nextWatchSort, sortSections, type WatchSort, type WatchSortKey } from '@/lib/market-watch';
 import type { WorldBoardPayload } from '@/lib/world-board';
 
 /**
@@ -28,6 +28,9 @@ export default function MarketWatch({
 }) {
     const [board, setBoard] = useState(initial);
     const [query, setQuery] = useState('');
+    // The board's own order is the default; a click on Last or Change re-ranks each section.
+    const [sort, setSort] = useState<WatchSort>(null);
+    const onSort = (key: WatchSortKey) => setSort((current) => nextWatchSort(current, key));
 
     // The board is a minute old at best; follow that pace, and only while the tab is visible. A
     // stored board is already marked stale and is not polled.
@@ -50,7 +53,10 @@ export default function MarketWatch({
         };
     }, [initial.stale]);
 
-    const sections = useMemo(() => filterSections(board.sections, query, lang), [board, query, lang]);
+    const sections = useMemo(
+        () => sortSections(filterSections(board.sections, query, lang), sort),
+        [board, query, lang, sort],
+    );
     const total = board.sections.reduce((sum, entry) => sum + entry.quotes.length, 0);
 
     return (
@@ -80,7 +86,7 @@ export default function MarketWatch({
                     {sections.length === 0 ? (
                         <p className="px-3 py-6 text-[12.5px] text-faint">{tx(lang, 'marketWatch.empty')}</p>
                     ) : (
-                        <MarketWatchTable sections={sections} lang={lang} density="pane" />
+                        <MarketWatchTable sections={sections} lang={lang} density="pane" sort={sort} onSort={onSort} />
                     )}
                 </div>
                 {/* The list is taller than the pane; the fade says "there is more" without a

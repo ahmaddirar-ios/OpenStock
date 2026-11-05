@@ -3,14 +3,18 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
-import { directionOf, watchChange, watchPrice } from '@/lib/market-watch';
+import { directionOf, watchChange, watchPrice, type WatchSort, type WatchSortKey } from '@/lib/market-watch';
 import { tradingViewSymbolUrl } from '@/lib/utils';
 import type { SectionBoard } from '@/lib/world-board';
 
 /**
  * The market-watch table, the way a terminal draws one: market · symbol · name · last · change,
- * the row tinted by its direction and the last price filled in the same colour. Two densities —
- * `pane` drops the market column so it fits the column beside a chart, `page` keeps all five.
+ * the last price leaning with its direction and the change printed in a filled block — one thing
+ * the eye can find without reading the row. Two densities — `pane` drops the market column so it
+ * fits the column beside a chart, `page` keeps all five.
+ *
+ * Last and change sort on click, cycling the useful direction, its reverse, then the board's own
+ * order. `aria-sort` says which column is ranked and which way.
  *
  * Rows leave for TradingView because most of these tickers have no page in this app.
  */
@@ -18,12 +22,42 @@ export default function MarketWatchTable({
     sections,
     lang,
     density = 'pane',
+    sort = null,
+    onSort,
 }: {
     sections: readonly SectionBoard[];
     lang: Lang;
     density?: 'pane' | 'page';
+    sort?: WatchSort;
+    onSort?: (key: WatchSortKey) => void;
 }) {
     const pane = density === 'pane';
+
+    const head = (key: WatchSortKey, className: string, label: string) => {
+        const active = sort?.key === key;
+        return (
+            <th
+                className={className}
+                scope="col"
+                aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+            >
+                {onSort ? (
+                    <button
+                        type="button"
+                        onClick={() => onSort(key)}
+                        className={`watch-sort${active ? ' is-active' : ''}`}
+                    >
+                        {label}
+                        <span className="watch-sort-mark" aria-hidden="true">
+                            {active ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                        </span>
+                    </button>
+                ) : (
+                    label
+                )}
+            </th>
+        );
+    };
 
     return (
         <table className={`watch-table ${pane ? 'is-pane' : 'is-page'}`}>
@@ -32,8 +66,8 @@ export default function MarketWatchTable({
                     <th className="watch-market" scope="col">{tx(lang, 'world.col.market')}</th>
                     <th className="watch-symbol" scope="col">{tx(lang, 'world.col.symbol')}</th>
                     <th className="watch-name" scope="col">{tx(lang, 'world.col.name')}</th>
-                    <th className="watch-last is-num" scope="col">{tx(lang, 'world.col.last')}</th>
-                    <th className="watch-change is-num" scope="col">{tx(lang, 'world.col.change')}</th>
+                    {head('last', 'watch-last is-num', tx(lang, 'world.col.last'))}
+                    {head('change', 'watch-change is-num', tx(lang, 'world.col.change'))}
                 </tr>
             </thead>
             <tbody>
@@ -77,7 +111,7 @@ export default function MarketWatchTable({
                                         <bdi dir="ltr">{watchPrice(quote.price, section.id, quote.short, lang)}</bdi>
                                     </td>
                                     <td className={`watch-change is-num is-${direction}`}>
-                                        <bdi dir="ltr">{watchChange(quote.changePercent, lang)}</bdi>
+                                        <bdi className="watch-block" dir="ltr">{watchChange(quote.changePercent, lang)}</bdi>
                                     </td>
                                 </tr>
                             );

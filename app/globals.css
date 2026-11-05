@@ -1001,7 +1001,7 @@
     }
     .watch-table th,
     .watch-table td {
-        height: 26px;
+        height: 24px;
         padding: 0 8px;
         text-align: start;
         white-space: nowrap;
@@ -1012,22 +1012,39 @@
         position: sticky;
         top: 0;
         z-index: 2;
-        height: 27px;
+        height: 24px;
+        padding: 0 8px;
         background: var(--card);
         border-bottom: 1px solid var(--line);
-        font-size: 9.5px;
+        font-size: 10px;
         font-weight: 700;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
         color: var(--faint);
     }
+    [dir='ltr'] .watch-table thead th { letter-spacing: 0.05em; text-transform: uppercase; }
+
+    /* A rankable header says so: the label and a faint pair of arrows, the arrows that light when
+       the column is the one doing the ranking. */
+    .watch-sort {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        transition: color 120ms var(--ui-ease);
+    }
+    .watch-sort:hover { color: var(--text); }
+    .watch-sort.is-active { color: var(--text); }
+    .watch-sort-mark { font-size: 9px; line-height: 1; opacity: 0.55; }
+    .watch-sort.is-active .watch-sort-mark { opacity: 1; color: var(--brand-ink); }
 
     .watch-table tbody td {
         border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
         font-size: 12px;
     }
-    .watch-table tbody tr.is-up td { background: color-mix(in oklab, var(--up) 8%, transparent); }
-    .watch-table tbody tr.is-down td { background: color-mix(in oklab, var(--down) 8%, transparent); }
+    /* Rows stay neutral: the colour belongs to the two numbers that carry meaning — the last price
+       and the change block — not to a whole stripe that makes a table read as a heat map. */
     .watch-table tbody tr:hover td { background: color-mix(in oklab, var(--text) 5%, transparent); }
 
     .watch-table .watch-market {
@@ -1059,20 +1076,28 @@
         font-weight: 700;
         color: var(--text);
     }
-    .watch-table tbody td.watch-last.is-up { background: var(--up-soft); color: var(--up); }
-    .watch-table tbody td.watch-last.is-down { background: var(--down-soft); color: var(--down); }
+    .watch-table tbody td.watch-last.is-up { color: var(--up); }
+    .watch-table tbody td.watch-last.is-down { color: var(--down); }
+    .watch-table tbody td.watch-last.is-flat { color: var(--text); }
 
     .watch-table .watch-change {
-        /* The gap between the filled price block and the change: the fill owns its cell edge,
-           so the space has to come from this cell's own padding. */
-        padding-inline-start: 12px;
-        width: 4.3rem;
-        font-size: 11.5px;
+        width: 5rem;
+        padding: 0 4px;
+        font-size: 11px;
         font-weight: 600;
     }
-    .watch-table .watch-change.is-up { color: var(--up); }
-    .watch-table .watch-change.is-down { color: var(--down); }
-    .watch-table .watch-change.is-flat { color: var(--faint); }
+    /* The change is the one filled block in the row — the mark a trader's eye lands on first. */
+    .watch-table .watch-block {
+        display: inline-block;
+        min-width: 3.4rem;
+        padding: 1px 4px;
+        border-radius: 3px;
+        text-align: end;
+        font-variant-numeric: tabular-nums;
+    }
+    .watch-table .watch-change.is-up .watch-block { background: var(--up-soft); color: var(--up); }
+    .watch-table .watch-change.is-down .watch-block { background: var(--down-soft); color: var(--down); }
+    .watch-table .watch-change.is-flat .watch-block { background: var(--hover); color: var(--faint); }
 
     /* The delayed mark before the symbol, the way the terminal flags every row. */
     .watch-sym {
@@ -1220,6 +1245,136 @@
     }
     .overview-grid > * { min-width: 0; min-height: 0; }
     [dir='rtl'] .overview-grid > * { direction: rtl; }
+
+    /* The market ribbon: one line of the day above the grid — what the index did, what the day is
+       worth. It is read in a glance and then ignored, so it carries no card of its own: a hairline,
+       a quiet label, and figures that line up. The grid below is where the work happens. */
+    .terminal-ribbon {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 12px;
+        height: 30px;
+        min-width: 0;
+        padding: 0 10px;
+        overflow: hidden;
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.04), 0 0 0 1px oklch(0 0 0 / 0.25);
+        font-size: 11px;
+    }
+    /* Nothing to say still holds the row: the grid must not jump when a feed comes back. */
+    .terminal-ribbon.is-empty { background: transparent; box-shadow: none; }
+
+    /* Dense panels: the terminal's shell. A 30px header, an 11px title, no hatch weave, no
+       subtitle — the texture that makes a page feel like a dashboard is exactly what makes a
+       screen read all day feel heavy. One hairline and a rule is enough. */
+    .hatch.is-dense {
+        --shell-pad: 1px;
+        --inner-r: 10px;
+        border-radius: calc(var(--inner-r) + var(--shell-pad));
+        background: var(--frame);
+        box-shadow: 0 0 0 1px oklch(1 0 0 / 0.03), 0 4px 12px oklch(0 0 0 / 0.18);
+    }
+    .hatch.is-dense .section-head {
+        align-items: center;
+        height: 30px;
+        padding: 0 9px;
+        gap: 8px;
+    }
+    .hatch.is-dense .section-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        white-space: nowrap;
+    }
+    [dir='ltr'] .hatch.is-dense .section-title { letter-spacing: 0.05em; text-transform: uppercase; }
+    .hatch.is-dense .section-sub { display: none; }
+    .hatch.is-dense .card { border-radius: 10px; }
+
+    .terminal-ribbon-quotes {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        list-style: none;
+    }
+    .terminal-ribbon-quotes > li {
+        display: flex;
+        flex: none;
+        align-items: baseline;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    .terminal-ribbon-sym {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--faint);
+    }
+    .terminal-ribbon-last {
+        font-weight: 600;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+    /* The change is the only place colour appears, and it sits in a soft block the way a terminal
+       prints it — a number you can find without reading the row. */
+    .terminal-ribbon-change {
+        padding: 1px 4px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+    }
+    .terminal-ribbon-quotes > li.is-up .terminal-ribbon-change { background: var(--up-soft); color: var(--up); }
+    .terminal-ribbon-quotes > li.is-down .terminal-ribbon-change { background: var(--down-soft); color: var(--down); }
+
+    /* The day's totals, on the far edge behind a rule: reference numbers, not headlines. */
+    .terminal-ribbon-stats {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 0 auto;
+        padding: 0 0 0 12px;
+        border-inline-start: 1px solid var(--line);
+    }
+    .terminal-ribbon-stats > div { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+    .terminal-ribbon-stats dt {
+        font-size: 10px;
+        letter-spacing: 0.02em;
+        color: var(--faint);
+    }
+    .terminal-ribbon-stats dd {
+        display: flex;
+        gap: 6px;
+        margin: 0;
+        font-weight: 600;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+    .terminal-ribbon-stats .is-up { color: var(--up); }
+    .terminal-ribbon-stats .is-down { color: var(--down); }
+
+    /* A narrow pane keeps the home index and the breadth — the two numbers a trader checks first —
+       and lets the neighbours and the totals go. Nothing wraps, nothing scrolls sideways. */
+    @media (max-width: 1100px) {
+        .terminal-ribbon-quotes { gap: 10px; }
+        .terminal-ribbon-stats > div:nth-child(2) { display: none; }
+    }
+    @media (max-width: 860px) {
+        .terminal-ribbon { gap: 8px; padding: 0 8px; }
+        .terminal-ribbon-quotes > li:nth-child(n + 3) { display: none; }
+        .terminal-ribbon-stats > div:nth-child(n + 2) { display: none; }
+    }
+    @media (max-width: 560px) {
+        .terminal-ribbon-quotes > li:nth-child(n + 2) { display: none; }
+        .terminal-ribbon-stats { padding-inline-start: 8px; }
+    }
 
     /* The day's headlines, on one row above the status bar: a ticker of stories, not a page of them.
        An empty feed draws nothing at all (NewsStrip returns null). */
@@ -1528,6 +1683,78 @@ html[lang="ar"] [lang="en"] {
 /* ============================ Rovex polish ============================ */
 
 /*
+ * The quote header above the overview's chart: instrument, last print, the day's move, whether the
+ * market is open, whether the data is late. One line, tabular figures, no card — it answers "what am
+ * I looking at" in the place a trader looks first.
+ */
+.chart-quote {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+}
+.chart-quote-sym {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    transition: color 120ms var(--ui-ease);
+}
+.chart-quote-sym:hover { color: var(--brand-ink); }
+.chart-quote-last {
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+.chart-quote-change {
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.chart-quote-change.is-up { background: var(--up-soft); color: var(--up); }
+.chart-quote-change.is-down { background: var(--down-soft); color: var(--down); }
+.chart-quote-change.is-flat { background: var(--hover); color: var(--faint); }
+.chart-quote-loading { width: 64px; height: 12px; border-radius: 3px; background: var(--hover); }
+.chart-quote-spacer { flex: 1 1 0; min-width: 4px; }
+.chart-quote-phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--faint);
+    white-space: nowrap;
+}
+.chart-quote-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.chart-quote-phase.is-open { color: var(--up); }
+.chart-quote-phase.is-open .chart-quote-dot {
+    background: var(--up);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--up) 18%, transparent);
+}
+.chart-quote-chip {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--warn) 14%, transparent);
+    color: var(--warn);
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+@media (max-width: 639px) {
+    .chart-quote-chip { display: none; }
+    .chart-quote-last { font-size: 15px; }
+}
+
+/*
  * The chart toolbars hold twenty-odd controls. As separate pills that reads as a wall;
  * as quiet chips on one recessed bar it reads as a toolbar. The active state is the one
  * place the accent colour appears, so it always means "this is on".
@@ -1562,6 +1789,16 @@ html[lang="ar"] [lang="en"] {
 .chart-toolbar > .icon-btn { width: 26px; height: 26px; border-radius: 8px; }
 .chart-toolbar .tool-divider { width: 1px; height: 14px; margin: 0 3px; background: var(--line); }
 .chart-toolbar .chart-toolbar-spacer { flex: 1 1 0; min-width: 4px; }
+/* A narrower chart pane keeps the controls, not their names: the glyph is the control, the tooltip
+   is the label. Nothing moves to a second row, because a bar that wraps stops reading as a bar. */
+@media (max-width: 1400px) {
+    .chart-toolbar-main .chart-toolbar-label { display: none; }
+    /* The keyboard sheet is a convenience, not a control: the palette and the help menu still
+       reach it, so the bar spends the pixel on the chart instead. */
+    .chart-toolbar-main .chart-toolbar-optional { display: none; }
+    /* The watch column gives the chart its 40px back before the toolbar has to wrap. */
+    .overview-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
+}
 
 /* The intervals are one choice, so they sit in one recessed track with the chosen segment raised —
    a segmented control, not seven pills of equal weight. */

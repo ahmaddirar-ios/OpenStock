@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { directionOf, filterSections, watchChange, watchDecimals, watchPrice } from '@/lib/market-watch';
+import { directionOf, filterSections, nextWatchSort, sortSections, watchChange, watchDecimals, watchPrice } from '@/lib/market-watch';
 import type { MarketSection, WorldQuote } from '@/lib/market-sections';
 import type { SectionBoard } from '@/lib/world-board';
 
@@ -107,5 +107,46 @@ describe('market watch filter', () => {
 
     it('returns nothing when nothing matches', () => {
         expect(filterSections(sections, 'zzzz', 'en')).toEqual([]);
+    });
+});
+
+describe('ranking the watch table', () => {
+    const ranked = () => [
+        board('gulf', 'world.section.gulf', [
+            quote({ ticker: 'A', short: 'A', price: 10, changePercent: 0.2 }),
+            quote({ ticker: 'B', short: 'B', price: 30, changePercent: -1.5 }),
+            quote({ ticker: 'C', short: 'C', price: 20, changePercent: 2.4 }),
+        ]),
+    ];
+
+    it('cycles a header through biggest first, smallest first, then the board order', () => {
+        const first = nextWatchSort(null, 'change');
+        expect(first).toEqual({ key: 'change', dir: 'desc' });
+        const second = nextWatchSort(first, 'change');
+        expect(second).toEqual({ key: 'change', dir: 'asc' });
+        expect(nextWatchSort(second, 'change')).toBeNull();
+        // A different column starts its own cycle at the useful end.
+        expect(nextWatchSort(second, 'last')).toEqual({ key: 'last', dir: 'desc' });
+    });
+
+    it('ranks each section without reordering the sections', () => {
+        const sorted = sortSections(ranked(), { key: 'change', dir: 'desc' });
+        expect(sorted[0].quotes.map((entry) => entry.short)).toEqual(['C', 'A', 'B']);
+        const ascending = sortSections(ranked(), { key: 'change', dir: 'asc' });
+        expect(ascending[0].quotes.map((entry) => entry.short)).toEqual(['B', 'A', 'C']);
+        expect(sortSections(ranked(), null)[0].quotes.map((entry) => entry.short)).toEqual(['A', 'B', 'C']);
+    });
+
+    it('keeps an unpriced row at the bottom whichever way the column runs', () => {
+        const boardWithHole = [
+            board('world', 'world.section.world', [
+                quote({ ticker: 'A', short: 'A', price: 10, changePercent: 1 }),
+                quote({ ticker: 'N', short: 'N', price: Number.NaN, changePercent: Number.NaN }),
+            ]),
+        ];
+        for (const dir of ['asc', 'desc'] as const) {
+            const order = sortSections(boardWithHole, { key: 'last', dir })[0].quotes.map((q) => q.short);
+            expect(order).toEqual(['A', 'N']);
+        }
     });
 });

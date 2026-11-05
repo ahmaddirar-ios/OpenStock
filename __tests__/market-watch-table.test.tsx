@@ -3,8 +3,8 @@
 // (all five). Both draw the same rows, so the contract lives here: a row leans by its change, its
 // last price is filled in that colour, and the symbol stays readable right-to-left — the D badge
 // must sit on the left of the ticker in Arabic too, the way the terminal flags every row.
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import MarketWatchTable from '@/components/markets/MarketWatchTable';
 import { MARKET_SECTIONS, type WorldQuote } from '@/lib/market-sections';
 import type { SectionBoard } from '@/lib/world-board';
@@ -70,5 +70,31 @@ describe('the market-watch table', () => {
     it('counts the visible rows against the whole section', () => {
         const { container } = render(<MarketWatchTable sections={board()} lang="en" density="page" />);
         expect(container.querySelector('.watch-section-count')!.textContent).toBe('1/5');
+    });
+});
+
+describe('a rankable watch table', () => {
+    it('names the ranked column and its direction for the reader', () => {
+        const { container, rerender } = render(
+            <MarketWatchTable sections={board()} lang="en" sort={{ key: 'change', dir: 'desc' }} onSort={() => {}} />,
+        );
+        const sorted = container.querySelector('th[aria-sort="descending"]');
+        expect(sorted).not.toBeNull();
+        expect(sorted!.textContent).toContain('Change');
+        // The other rankable column claims nothing.
+        expect(container.querySelector('th.watch-last')!.getAttribute('aria-sort')).toBeNull();
+
+        rerender(<MarketWatchTable sections={board()} lang="en" sort={{ key: 'change', dir: 'asc' }} onSort={() => {}} />);
+        expect(container.querySelector('th[aria-sort="ascending"]')).not.toBeNull();
+    });
+
+    it('reports the column a header click names', () => {
+        const onSort = vi.fn();
+        const { container } = render(<MarketWatchTable sections={board()} lang="en" onSort={onSort} />);
+
+        fireEvent.click(container.querySelector('.watch-last .watch-sort')!);
+        expect(onSort).toHaveBeenLastCalledWith('last');
+        fireEvent.click(container.querySelector('.watch-change .watch-sort')!);
+        expect(onSort).toHaveBeenLastCalledWith('change');
     });
 });
