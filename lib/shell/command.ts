@@ -14,6 +14,31 @@ export const DEFAULT_SYMBOL = '2222.SR';
 /** The last stock the trader opened, so a tool from the command bar lands on their chart. */
 export const LAST_SYMBOL_KEY = 'openstock-last-symbol';
 
+/** The index the overview opens on when the trader has not read a stock yet. */
+export const OVERVIEW_SYMBOL = 'TASI';
+
+/**
+ * Whether a string looks like a stock symbol: the stock pages' alphabet (letters, digits, a dot, a
+ * dash, a caret and TADAWUL:'s colon), and nothing longer than a symbol can be.
+ *
+ * The overview reads its symbol from a cookie and the shell writes one there, so both sides ask the
+ * same question — a stale or forged value must never reach the candle feed or a cookie header.
+ */
+export function isSymbolLike(value: string | null | undefined): boolean {
+    return /^[A-Z0-9.^:=-]{1,24}$/i.test((value ?? '').trim());
+}
+
+/**
+ * The overview's chart symbol: the last stock the trader read, else the index.
+ *
+ * Anything that is not a symbol is a stale key or a forged one, and asking the candle feed for it
+ * would be a bug.
+ */
+export function overviewSymbol(stored: string | null | undefined): string {
+    const value = (stored ?? '').trim();
+    return isSymbolLike(value) ? value.toUpperCase() : OVERVIEW_SYMBOL;
+}
+
 export type CommandGroupId = 'pages' | 'tools' | 'stocks';
 
 export type CommandGroup<T> = { id: CommandGroupId; items: T[] };

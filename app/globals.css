@@ -1188,6 +1188,126 @@
         color: var(--faint);
     }
     .tradingview-widget-copyright a { color: var(--muted); }
+
+    /* ============ Overview: one screen of chart + market watch ============ */
+
+    /* The dashboard is a workspace, not a document: the chart and the watch fill the window and
+       scroll inside themselves, so the page itself never scrolls. */
+    .workspace-inner.is-overview {
+        height: 100%;
+        gap: 8px;
+        padding: 10px;
+        max-width: none;
+    }
+
+    .overview {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 0;
+    }
+
+    /* Charts stay on the physical left in both languages, the way a broker lays a screen out, and
+       the panels inside keep their own reading direction (the watch is Arabic in Arabic). */
+    .overview-grid {
+        direction: ltr;
+        display: grid;
+        flex: 1;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+        gap: 8px;
+        min-height: 0;
+    }
+    .overview-grid > * { min-width: 0; min-height: 0; }
+    [dir='rtl'] .overview-grid > * { direction: rtl; }
+
+    /* The day's headlines, on one row above the status bar: a ticker of stories, not a page of them.
+       An empty feed draws nothing at all (NewsStrip returns null). */
+    .news-strip {
+        display: flex;
+        flex: none;
+        align-items: center;
+        min-width: 0;
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 0 0 1px oklch(0 0 0 / 0.25);
+    }
+    .news-strip-label {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 6px;
+        padding-inline-start: 10px;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+    }
+    .news-strip-list {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+    }
+    .news-strip-list::-webkit-scrollbar { display: none; }
+    .news-strip-row { display: flex; flex: none; }
+    .news-strip-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-inline-start: 1px solid var(--line);
+        font-size: 12.5px;
+        color: var(--text);
+        transition: background-color 120ms;
+    }
+    .news-strip-item:hover { background: var(--hover); }
+    .news-strip-ticker {
+        flex: none;
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: var(--hover);
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+    }
+    .news-strip-headline {
+        max-width: 40ch;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 500;
+    }
+    .news-strip-meta {
+        flex: none;
+        font-size: 11px;
+        color: var(--faint);
+        white-space: nowrap;
+    }
+
+    /* A phone cannot hold two panes side by side: the chart keeps a trading height, the watch a
+       thumb-sized slice of the screen, and the page scrolls again. */
+    @media (max-width: 1023px) {
+        .workspace-inner.is-overview { height: auto; min-height: 100%; }
+        .overview { flex: none; }
+        .overview-grid {
+            direction: inherit;
+            flex: none;
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .overview-grid > :last-child { height: 55vh; min-height: 340px; }
+    }
+    @media (max-width: 639px) {
+        .news-strip-label { display: none; }
+        .news-strip-item { padding-inline: 10px; }
+        .news-strip-headline { max-width: 30ch; }
+    }
 }
 
 /* ============ Auth + forms (class names kept for existing forms) ============ */
@@ -1653,3 +1773,14 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 .draw-rail-item.is-on { background: var(--brand-soft); color: var(--brand-ink); }
 .draw-rail-glyph { width: 16px; height: 12px; display: grid; place-items: center; color: var(--muted); flex: none; }
 .draw-rail-glyph > span { width: 14px; height: 0; display: block; }
+
+/* ---------------------------------------------------------------------------
+   The overview's chart on a phone
+   A phone stacks the two panes, and the chart gets a trading height rather than
+   the auto height its content asks for. This sits outside every @layer on
+   purpose: the panes carry Tailwind's `min-h-0`, and in Tailwind v4 the
+   utilities layer beats @layer components. Unlayered CSS always wins.
+--------------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+    .overview-grid > .hatch:first-child { min-height: max(480px, 62vh); }
+}

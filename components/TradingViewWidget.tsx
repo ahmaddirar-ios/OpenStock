@@ -11,10 +11,12 @@ interface TradingViewWidgetProps {
     height?: number;
     className?: string;
     allowExpand?: boolean;
+    /** Take the height of the pane instead of a fixed one. */
+    fill?: boolean;
 }
 
 // Fullscreen resizes the same element in place: moving or re-creating the embed would reset the chart.
-const TradingViewWidget = ({ scriptUrl, config, height = 600, className, allowExpand = false }: TradingViewWidgetProps) => {
+const TradingViewWidget = ({ scriptUrl, config, height = 600, className, allowExpand = false, fill = false }: TradingViewWidgetProps) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     useEffect(() => {
@@ -35,8 +37,8 @@ const TradingViewWidget = ({ scriptUrl, config, height = 600, className, allowEx
             {isExpanded && <div className="fixed inset-0 z-50 bg-page/70 backdrop-blur-[3px]" onClick={() => setIsExpanded(false)} />}
             {/* Height lives on the frame: TradingView's autosize overwrites the container's own height with 100% */}
             <div
-                className={cn("tv-frame group", isExpanded && "fixed inset-3 z-50 shadow-[0_0_0_4px_var(--frame),0_24px_60px_oklch(0_0_0/0.6)]")}
-                style={isExpanded ? undefined : { height }}
+                className={cn("tv-frame group", fill && !isExpanded && "min-h-[300px] flex-1", isExpanded && "fixed inset-3 z-50 shadow-[0_0_0_4px_var(--frame),0_24px_60px_oklch(0_0_0/0.6)]")}
+                style={isExpanded || fill ? undefined : { height }}
             >
                 {allowExpand && (
                     <button

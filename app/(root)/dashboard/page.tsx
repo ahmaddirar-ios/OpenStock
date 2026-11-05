@@ -1,125 +1,131 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { cookies } from "next/headers";
-import TradingViewWidget from "@/components/TradingViewWidget";
+import { CandlestickChart } from "lucide-react";
 import Panel from "@/components/Panel";
-import NewsList from "@/components/watchlist/NewsList";
+import YahooChart from "@/components/stocks/YahooChart";
+import StockChart from "@/components/stocks/StockChart";
+import MarketWatch from "@/components/markets/MarketWatch";
+import NewsStrip from "@/components/news/NewsStrip";
 import { getSaudiMarketNews } from "@/lib/actions/news.actions";
-import IndexPulse, { PulseSkeleton } from "@/components/IndexPulse";
-import DataFreshness from "@/components/DataFreshness";
-import MarketSwitcher from "@/components/MarketSwitcher";
-import SaudiQuotesTable, { SaudiMovers } from "@/components/SaudiQuotes";
-import {
-    CRYPTO_HEATMAP_CONFIG,
-    STOCK_HEATMAP_CONFIG,
-    marketOverviewConfig,
-    marketQuotesConfig,
-    timelineConfig,
-} from "@/lib/constants";
-import { MARKETS, MARKET_COOKIE, getMarket, isMarketOpen, marketForCountry } from "@/lib/markets";
-import { getSession } from "@/lib/better-auth/auth";
+import { loadWorldBoard } from "@/lib/world-board";
 import { getLang } from "@/lib/i18n-server";
-import { feedLabel, feedWord, marketName, tx, type Lang } from "@/lib/i18n";
-import NewsSkeleton from "@/components/watchlist/NewsSkeleton";
+import { tx, type Lang } from "@/lib/i18n";
+import { LAST_SYMBOL_KEY, overviewSymbol } from "@/lib/shell/command";
+import { formatSymbolForTradingView, isChartEmbeddable, tradingViewSymbolUrl } from "@/lib/utils";
+import { yahooCandleSymbol } from "@/lib/yahoo-candles";
+import { isIndexSymbol } from "@/lib/yahoo";
+
+export const metadata = {
+    title: "Overview",
+    description: "One screen: the chart you were reading, the market watch beside it, and the news underneath.",
+};
 
 const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
 
-// The Arabic feed is a network call; the rest of the dashboard should not wait behind it.
+// One panel is one fill: the pane owns the height, the chart stretches inside it.
+const PANE = { className: "min-h-0", bodyClassName: "flex min-h-0 flex-1 flex-col" } as const;
+// The badge is also the way out of the pane: it opens the full stock page with the same chart.
+const SYMBOL_BADGE = (symbol: string) => (
+    <Link
+        href={`/stocks/${encodeURIComponent(symbol)}`}
+        className="pill mono h-7 px-2.5 text-[12px] transition-colors hover:bg-hover"
+        dir="ltr"
+    >
+        {symbol}
+    </Link>
+);
+
+// The overview's news, on a strip: below the chart, above the status bar.
 async function MarketNews({ lang }: { lang: Lang }) {
-    return <NewsList news={await getSaudiMarketNews(6, lang)} lang={lang} />;
+    const news = await getSaudiMarketNews(8, lang).catch(() => [] as MarketNewsArticle[]);
+    return <NewsStrip news={news} lang={lang} />;
 }
 
-// Widgets come from TradingView (live, no Finnhub quota) and render immediately; the tiles stream in.
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ market?: string }> }) {
-    const { market: requested } = await searchParams;
-    // Explicit choice, then the remembered one, then the market of the user's country
-    const saved = (await cookies()).get(MARKET_COOKIE)?.value;
-    const market = getMarket(requested ?? saved ?? marketForCountry((await getSession())?.user.country));
-    const lang = await getLang();
-    // The Arabic feed is only useful to a reader who reads Arabic; other languages keep TradingView.
-    const saudiNews = market.yahoo && lang === 'ar';
-    const open = isMarketOpen(market);
-    const native = market.pulse.some((p) => p.finnhub);
-    const pulseSub = native
-        ? tx(lang, 'dash.pulseFinnhub')
-        : market.yahoo
-            ? tx(lang, 'dash.pulseYahoo')
-            : tx(lang, 'dash.pulseTV').replace('{f}', feedWord(lang, market.feed));
-    const heatmap = market.heatmap === 'stocks'
-        ? { script: 'stock-heatmap.js', config: STOCK_HEATMAP_CONFIG, title: tx(lang, 'dash.heatmapStocks') }
-        : market.heatmap === 'crypto'
-            ? { script: 'crypto-coins-heatmap.js', config: CRYPTO_HEATMAP_CONFIG, title: tx(lang, 'dash.heatmapCrypto') }
-            : null;
+// The pane beside the chart: the same delayed board /world reads, so the two can never disagree.
+async function MarketWatchPane({ lang }: { lang: Lang }) {
+    const board = await loadWorldBoard();
+    return (
+        <Panel title={tx(lang, "marketWatch.title")} sub={tx(lang, "marketWatch.sub")} {...PANE}>
+            <MarketWatch initial={board} lang={lang} fill />
+        </Panel>
+    );
+}
+
+function MarketWatchSkeleton({ lang }: { lang: Lang }) {
+    return (
+        <Panel title={tx(lang, "marketWatch.title")} sub={tx(lang, "marketWatch.sub")} {...PANE}>
+            <div className="m-2.5 min-h-[200px] flex-1 animate-pulse rounded-lg bg-hover/40" />
+        </Panel>
+    );
+}
+
+/**
+ * The terminal's workspace, the way a broker lays one out: the chart on one side, the market watch
+ * docked beside it, both of them filling the window, and the day's headlines on a strip underneath.
+ *
+ * The chart opens on the last stock the trader read (the shell keeps it in a cookie and in
+ * localStorage), falling back to the index on a first visit. Tadawul and the index have no
+ * TradingView embed, so they are drawn from Yahoo's candles by our own chart; the exchanges
+ * TradingView does license get its widget with the indicator picker.
+ */
+export default async function Overview() {
+    const [lang, jar] = await Promise.all([getLang(), cookies()]);
+    const symbol = overviewSymbol(jar.get(LAST_SYMBOL_KEY)?.value);
+    const tvSymbol = formatSymbolForTradingView(symbol);
+    // The Tadawul All Shares Index is the one symbol here that is not a company, and its usual
+    // daily bar has no history in Yahoo's 730-day window — an hourly bar does.
+    const isIndex = isIndexSymbol(symbol);
 
     return (
-        <>
-            <header className="page-head">
-                <div>
-                    <h1 className="page-title">{tx(lang, 'dash.title')}</h1>
-                    <p className="page-sub">{marketName(lang, market.id)} · {open ? tx(lang, 'dash.openNow') : tx(lang, 'dash.closedNow')} · {feedLabel(lang, market.feed)}</p>
-                </div>
-            </header>
-
-            <MarketSwitcher lang={lang} active={market.id} openIds={MARKETS.filter((m) => isMarketOpen(m)).map((m) => m.id)} />
-
-            <section className="hatch">
-                <div className="section-head">
-                    <div>
-                        <h2 className="section-title">{tx(lang, 'dash.pulse')}</h2>
-                        <p className="section-sub">{pulseSub}</p>
-                    </div>
-                    {native && <DataFreshness lang={lang} />}
-                </div>
-                {/* Keyed so switching markets swaps the tiles instead of reusing old widgets */}
-                <Suspense key={market.id} fallback={<PulseSkeleton />}>
-                    <IndexPulse market={market} lang={lang} />
-                </Suspense>
-            </section>
-
-            <div key={market.id} className="flex flex-col gap-3">
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                    {market.yahoo ? (
-                        <Panel title={tx(lang, 'dash.movers')} sub={tx(lang, 'dash.moversSub')}>
-                            <SaudiMovers market={market} lang={lang} />
-                        </Panel>
-                    ) : (
-                        <Panel title={tx(lang, 'dash.leaders')} sub={tx(lang, 'dash.leadersSub')}>
-                            <TradingViewWidget scriptUrl={`${scriptUrl}market-overview.js`} config={marketOverviewConfig(market.groups)} height={560} />
-                        </Panel>
-                    )}
-                    {heatmap ? (
-                        <Panel title={heatmap.title} sub={tx(lang, 'dash.heatmapSub')}>
-                            <TradingViewWidget scriptUrl={`${scriptUrl}${heatmap.script}`} config={heatmap.config} height={560} allowExpand />
-                        </Panel>
-                    ) : (
-                        <Panel title={tx(lang, 'dash.quotes')} sub={`${marketName(lang, market.id)} · ${tx(lang, 'dash.byGroup')}`}>
-                            {market.yahoo
-                                ? <SaudiQuotesTable market={market} lang={lang} />
-                                : <TradingViewWidget scriptUrl={`${scriptUrl}market-quotes.js`} config={marketQuotesConfig(market.groups)} height={560} />}
-                        </Panel>
-                    )}
-                </div>
-
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                    {heatmap && (
-                        <Panel title={tx(lang, 'dash.quotes')} sub={`${marketName(lang, market.id)} · ${tx(lang, 'dash.byGroup')}`}>
-                            <TradingViewWidget scriptUrl={`${scriptUrl}market-quotes.js`} config={marketQuotesConfig(market.groups)} height={560} />
-                        </Panel>
-                    )}
+        <div className="overview">
+            <div className="overview-grid">
+                {isChartEmbeddable(tvSymbol) ? (
+                    <StockChart tvSymbol={tvSymbol} scriptUrl={`${scriptUrl}advanced-chart.js`} lang={lang} fill />
+                ) : yahooCandleSymbol(symbol) ? (
                     <Panel
-                        title={tx(lang, saudiNews ? 'dash.news' : 'dash.stories')}
-                        sub={tx(lang, saudiNews ? 'dash.newsSub' : 'dash.storiesSub')}
-                        className={heatmap ? '' : 'xl:col-span-2'}
+                        title={tx(lang, "stock.chart")}
+                        sub={tx(lang, "stock.chartYahoo")}
+                        action={SYMBOL_BADGE(symbol)}
+                        {...PANE}
                     >
-                        {saudiNews
-                            ? (
-                                <Suspense fallback={<NewsSkeleton />}>
-                                    <MarketNews lang={lang} />
-                                </Suspense>
-                            )
-                            : <TradingViewWidget scriptUrl={`${scriptUrl}timeline.js`} config={timelineConfig(market.news)} height={560} />}
+                        <YahooChart
+                            symbol={symbol}
+                            tvSymbol={tvSymbol}
+                            lang={lang}
+                            preferredInterval={isIndex ? "60m" : undefined}
+                            fill
+                        />
                     </Panel>
-                </div>
+                ) : (
+                    // TradingView refuses this exchange's chart in embeds; say so instead of an error box
+                    <Panel
+                        title={tx(lang, "stock.chart")}
+                        sub={tx(lang, "stock.chartTVOnly")}
+                        action={SYMBOL_BADGE(symbol)}
+                        {...PANE}
+                    >
+                        <div className="empty-state flex-1 py-10">
+                            <span className="empty-icon"><CandlestickChart className="size-5" /></span>
+                            <h3>{tx(lang, "stock.chartUnavailable")}</h3>
+                            <p className="max-w-80 text-[13px]">
+                                {tx(lang, "stock.chartBlocked").replace("{x}", tvSymbol.split(":")[0])}
+                            </p>
+                            <a href={tradingViewSymbolUrl(tvSymbol)} target="_blank" rel="noopener noreferrer" className="btn btn-ghost mt-2">
+                                {tx(lang, "stock.openTV")}
+                            </a>
+                        </div>
+                    </Panel>
+                )}
+
+                <Suspense fallback={<MarketWatchSkeleton lang={lang} />}>
+                    <MarketWatchPane lang={lang} />
+                </Suspense>
             </div>
-        </>
+
+            <Suspense fallback={null}>
+                <MarketNews lang={lang} />
+            </Suspense>
+        </div>
     );
 }

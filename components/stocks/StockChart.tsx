@@ -32,7 +32,7 @@ const readSaved = (): string[] => {
     }
 };
 
-export default function StockChart({ tvSymbol, scriptUrl, lang = 'en' }: { tvSymbol: string; scriptUrl: string; lang?: Lang }) {
+export default function StockChart({ tvSymbol, scriptUrl, lang = 'en', fill = false }: { tvSymbol: string; scriptUrl: string; lang?: Lang; fill?: boolean }) {
     // null until the browser's saved list is read, so the chart mounts once with the right indicators
     const [studies, setStudies] = useState<string[] | null>(null);
     useEffect(() => setStudies(readSaved()), []);
@@ -61,11 +61,18 @@ export default function StockChart({ tvSymbol, scriptUrl, lang = 'en' }: { tvSym
     );
 
     return (
-        <Panel title={tx(lang, 'stock.chart')} sub={tx(lang, 'stock.chartLive')} action={menu}>
+        // A pane in the overview owns the height; the chart fills it instead of standing 560px tall.
+        <Panel
+            title={tx(lang, 'stock.chart')}
+            sub={tx(lang, 'stock.chartLive')}
+            action={menu}
+            className={fill ? 'min-h-0' : undefined}
+            bodyClassName={fill ? 'flex min-h-0 flex-1 flex-col' : undefined}
+        >
             {studies ? (
-                <TradingViewWidget scriptUrl={scriptUrl} config={{ ...CANDLE_CHART_WIDGET_CONFIG(tvSymbol), studies }} height={CHART_HEIGHT} allowExpand />
+                <TradingViewWidget scriptUrl={scriptUrl} config={{ ...CANDLE_CHART_WIDGET_CONFIG(tvSymbol), studies }} height={CHART_HEIGHT} allowExpand fill={fill} />
             ) : (
-                <div className="tv-frame" style={{ height: CHART_HEIGHT }} />
+                <div className={fill ? 'tv-frame min-h-[300px] flex-1' : 'tv-frame'} style={fill ? undefined : { height: CHART_HEIGHT }} />
             )}
         </Panel>
     );

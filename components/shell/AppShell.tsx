@@ -10,7 +10,7 @@ import { MarketStrip, NoticeBar, StatusBar } from "@/components/shell/TerminalBa
 import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { langCookie, otherLang, tx, type Lang } from "@/lib/i18n";
-import { LAST_SYMBOL_KEY } from "@/lib/shell/command";
+import { LAST_SYMBOL_KEY, isSymbolLike } from "@/lib/shell/command";
 import { shortcutFor } from "@/lib/shell/shortcuts";
 import { MotionProvider } from "@/components/motion";
 
@@ -36,10 +36,17 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
     useEffect(() => {
         setNavOpen(false);
         workspaceRef.current?.scrollTo({ top: 0 });
-        // The command bar opens a tool on "your" chart, so remember where the trader was.
+        // The command bar opens a tool on "your" chart, so remember where the trader was. The cookie
+        // is the same fact for the server: the overview renders that symbol on its first paint.
         const stock = /^\/stocks\/([^/]+)/.exec(pathname);
         if (stock) {
-            try { localStorage.setItem(LAST_SYMBOL_KEY, decodeURIComponent(stock[1])); } catch { /* storage unavailable */ }
+            try {
+                const symbol = decodeURIComponent(stock[1]);
+                localStorage.setItem(LAST_SYMBOL_KEY, symbol);
+                if (isSymbolLike(symbol)) {
+                    document.cookie = `${LAST_SYMBOL_KEY}=${symbol}; path=/; max-age=31536000; samesite=lax`;
+                }
+            } catch { /* storage unavailable */ }
         }
     }, [pathname]);
 
@@ -109,7 +116,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
                     <div className="app">
                         <TabBar onMenu={() => setNavOpen(true)} lang={lang} />
                         <main id="main" tabIndex={-1} ref={workspaceRef} className={cn('workspace', pathname === '/dashboard' && 'is-first-tab')}>
-                            <div className="workspace-inner">
+                            <div className={cn('workspace-inner', pathname === '/dashboard' && 'is-overview')}>
                                 {children}
                             </div>
                         </main>

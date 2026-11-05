@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import MarketWatchTable from '@/components/markets/MarketWatchTable';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import { filterSections } from '@/lib/market-watch';
 import type { WorldBoardPayload } from '@/lib/world-board';
 
@@ -17,10 +18,13 @@ export default function MarketWatch({
     initial,
     lang,
     className,
+    fill = false,
 }: {
     initial: WorldBoardPayload;
     lang: Lang;
     className?: string;
+    /** Fill the pane it is docked in: the list takes the leftover height instead of 420px. */
+    fill?: boolean;
 }) {
     const [board, setBoard] = useState(initial);
     const [query, setQuery] = useState('');
@@ -50,8 +54,8 @@ export default function MarketWatch({
     const total = board.sections.reduce((sum, entry) => sum + entry.quotes.length, 0);
 
     return (
-        <div className={className}>
-            <div className="flex items-center gap-2 border-b border-line px-2.5 py-1.5">
+        <div className={cn(className, fill && 'flex h-full min-h-0 flex-col')}>
+            <div className="flex shrink-0 items-center gap-2 border-b border-line px-2.5 py-1.5">
                 <Search className="size-3.5 shrink-0 text-faint" aria-hidden="true" />
                 <input
                     value={query}
@@ -66,8 +70,13 @@ export default function MarketWatch({
                 </span>
             </div>
 
-            <div className="relative">
-                <div className="scrollbar-hide-default max-h-[420px] min-h-[120px] overflow-y-auto overscroll-contain">
+            <div className={cn('relative', fill && 'min-h-0 flex-1')}>
+                <div
+                    className={cn(
+                        'scrollbar-hide-default min-h-[120px] overflow-y-auto overscroll-contain',
+                        fill ? 'h-full' : 'max-h-[420px]',
+                    )}
+                >
                     {sections.length === 0 ? (
                         <p className="px-3 py-6 text-[12.5px] text-faint">{tx(lang, 'marketWatch.empty')}</p>
                     ) : (
@@ -83,7 +92,7 @@ export default function MarketWatch({
                 />
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-t border-line px-3 py-1.5 text-[10.5px] text-faint">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line px-3 py-1.5 text-[10.5px] text-faint">
                 <span>{board.stale ? tx(lang, 'world.stale') : tx(lang, 'status.delayed')}</span>
                 <Link href="/world" className="font-semibold transition-colors hover:text-foreground">
                     {tx(lang, 'nav.world')}

@@ -195,6 +195,8 @@ type Props = {
     lang: Lang;
     /** Interval the page opens on, for a symbol whose usual default has no data (the Saudi index). */
     preferredInterval?: string;
+    /** Fill the container instead of standing 420px tall — the overview's pane owns the height. */
+    fill?: boolean;
 };
 
 /**
@@ -202,7 +204,7 @@ type Props = {
  * Saudi quotes use), the indicators are computed here, and the drawings are kept in this browser.
  * Nothing about it depends on a paid provider or an API key.
  */
-export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }: Props) {
+export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, fill = false }: Props) {
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
 
     const hostRef = useRef<HTMLDivElement>(null);
@@ -1659,7 +1661,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const body = (
         // dir=ltr on the plotting area too: the labels drawn on the canvas overlay are SVG text
         // (Fibonacci ratios, notes), and in an RTL page "0.786" would otherwise reorder to "786.0".
-        <div className={cn('relative', expanded ? 'size-full' : 'h-[420px]')} dir="ltr">
+        <div
+            className={cn('relative', expanded ? 'size-full' : fill ? 'min-h-[300px] flex-1' : 'h-[420px]')}
+            dir="ltr"
+        >
             {/* The host element is the one lightweight-charts listens on; the data attribute keeps
                 a browser check pointed at the chart rather than at the widget's inner canvases. */}
             <div ref={hostRef} data-chart="price" className="size-full" />
@@ -1804,7 +1809,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     );
 
     return (
-        <div className="flex flex-col gap-2">
+        <div className={cn('flex flex-col gap-2', fill && 'h-full min-h-0')}>
             {/* The chart itself stays LTR: mirrored axes and prices are the one thing RTL must not touch. */}
             <div className={cn('chart-toolbar chart-toolbar-main', toolbarMore && 'is-open')} dir="ltr">
                 {timeframes.map((timeframe) => (
@@ -2789,12 +2794,13 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             )}
 
             {expanded && <div className="fixed inset-0 z-40 bg-page/70 backdrop-blur-[3px]" onClick={() => setExpanded(false)} />}
-            <div className={cn(expanded && 'fixed inset-3 z-50 rounded-[14px] bg-card p-3 shadow-[0_0_0_4px_var(--frame),0_24px_60px_oklch(0_0_0/0.6)]')}>
+            <div className={cn(expanded && 'fixed inset-3 z-50 rounded-[14px] bg-card p-3 shadow-[0_0_0_4px_var(--frame),0_24px_60px_oklch(0_0_0/0.6)]', fill && !expanded && 'flex min-h-0 flex-1 flex-col')}>
                 {body}
             </div>
 
-            <p className="text-[12px] text-faint">{t(replay ? 'replay.noFuture' : 'chart.drawingHint')}</p>
-            <p className="text-[12px] text-faint">
+            {/* A pane that owns the whole screen spends its pixels on the chart, not on footnotes. */}
+            <p className={cn('text-[12px] text-faint', fill && 'hidden')}>{t(replay ? 'replay.noFuture' : 'chart.drawingHint')}</p>
+            <p className={cn('text-[12px] text-faint', fill && 'hidden')}>
                 <ExternalLink className="me-1 inline size-3.5" />
                 <a href={tradingViewSymbolUrl(tvSymbol)} target="_blank" rel="noopener noreferrer" className="underline">
                     {t('stock.openTV')}
