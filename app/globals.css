@@ -1404,6 +1404,23 @@ html[lang="ar"] [lang="en"] {
 .chart-toolbar > .icon-btn { width: 26px; height: 26px; border-radius: 8px; }
 .chart-toolbar .tool-divider { width: 1px; height: 14px; margin: 0 4px; background: var(--line); }
 
+/* The phone fold. A narrow screen cannot spend five rows on chart controls before the chart, so the
+   main bar keeps the interval, the tool palette, the type and a More button; everything else waits
+   inside the fold. Nothing is restored here — when the fold opens the items simply keep their own
+   display, so a pill stays a flex row. The editing bar follows the same switch, and shows by itself
+   while a drawing is selected or a tool is armed (that is when its controls are the ones you want). */
+.chart-more,
+.chart-tf-pick { display: none; }
+
+@media (max-width: 767.98px) {
+    .chart-toolbar-main:not(.is-open) > :not(.keep-mobile) { display: none; }
+    .chart-toolbar-main .chart-tf-pill,
+    .chart-toolbar-main .chart-tf-rule { display: none; }
+    .chart-tf-pick { display: block; }
+    .chart-more { display: inline-flex; }
+    .chart-toolbar.chart-toolbar-edit:not(.is-open) { display: none; }
+}
+
 /* Focus is a product surface, not an afterthought. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
     outline: 2px solid var(--brand);

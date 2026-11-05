@@ -115,6 +115,7 @@ import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
 import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
 import ToolPalette from '@/components/stocks/ToolPalette';
+import ChartToolbarMore from '@/components/stocks/ChartToolbarMore';
 import type { ToolEntry } from '@/lib/tools/catalog';
 import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
 import {
@@ -161,7 +162,7 @@ import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { toolFromParam } from '@/lib/shell/command';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib' | 'tools';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib' | 'tools' | 'tf';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -489,6 +490,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [menu, setMenu] = useState<MenuId | null>(null);
+    // The phone fold: one row of controls until the trader asks for the rest of the toolbar.
+    const [toolbarMore, setToolbarMore] = useState(false);
     // The count the automatic numbering targets: whatever degree/kind was last picked by hand.
     const [countChoice, setCountChoice] = useState<{ degree: CountDegree; kind: CountKind }>({
         degree: 'minor',
@@ -1773,8 +1776,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         }),
     ];
 
-    const dropdown = (id: MenuId, label: string, items: MenuItem[], footer?: ReactNode) => (
-        <div key={id} className="relative">
+    const dropdown = (id: MenuId, label: string, items: MenuItem[], footer?: ReactNode, className?: string) => (
+        <div key={id} className={cn('relative', className)}>
             <button
                 type="button"
                 onClick={() => {
@@ -1803,21 +1806,37 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     return (
         <div className="flex flex-col gap-2">
             {/* The chart itself stays LTR: mirrored axes and prices are the one thing RTL must not touch. */}
-            <div className="chart-toolbar" dir="ltr">
+            <div className={cn('chart-toolbar chart-toolbar-main', toolbarMore && 'is-open')} dir="ltr">
                 {timeframes.map((timeframe) => (
                     <button
                         key={timeframe.id}
                         type="button"
                         onClick={() => setIntervalId(timeframe.id)}
-                        className={cn('pill h-7 px-2.5 text-[12px]', intervalId === timeframe.id && 'is-up')}
+                        className={cn('pill chart-tf-pill h-7 px-2.5 text-[12px]', intervalId === timeframe.id && 'is-up')}
                         aria-pressed={intervalId === timeframe.id}
                     >
                         {timeframe.label}
                     </button>
                 ))}
-                <span className="mx-1 h-4 w-px bg-line" />
+                <span className="chart-tf-rule mx-1 h-4 w-px bg-line" />
+                {/* A phone cannot spend five rows on intervals: one button names the one in use. */}
+                {dropdown(
+                    'tf',
+                    timeframes.find((timeframe) => timeframe.id === intervalId)?.label ?? timeframes[0].label,
+                    timeframes.map((timeframe) => ({
+                        key: timeframe.id,
+                        label: timeframe.label,
+                        onClick: () => {
+                            setIntervalId(timeframe.id);
+                            setMenu(null);
+                        },
+                        active: intervalId === timeframe.id,
+                    })),
+                    undefined,
+                    'chart-tf-pick keep-mobile',
+                )}
                 {/* One field over every drawing, indicator, chart type and formula function. */}
-                <div className="relative">
+                <div className="relative keep-mobile">
                     <button
                         type="button"
                         onClick={() => setMenu((current) => (current === 'tools' ? null : 'tools'))}
@@ -1836,7 +1855,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 </div>
                 <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
                 {chartType === 'linebreak' && (
-                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                    <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                         {t('chart.lineBreakCount')}
                         <input
                             type="number"
@@ -1854,7 +1873,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 )}
                 {chartType === 'pnf' && (
                     <>
-                        <label className="flex items-center gap-1 text-[11px] text-faint">
+                        <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                             {t('chart.pnfBox')}
                             <input
                                 type="number"
@@ -1870,7 +1889,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                                 className="num h-7 w-20 rounded-[7px] bg-page px-2 text-foreground shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                         </label>
-                        <label className="flex items-center gap-1 text-[11px] text-faint">
+                        <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                             {t('chart.pnfReversal')}
                             <input
                                 type="number"
@@ -1890,7 +1909,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     </>
                 )}
                 {chartType === 'kagi' && (
-                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                    <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                         {t('chart.kagiReversal')}
                         <input
                             type="number"
@@ -1910,7 +1929,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     </label>
                 )}
                 {chartType === 'renko' && (
-                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                    <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                         {t('chart.renkoBox')}
                         <input
                             type="number"
@@ -1937,6 +1956,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         },
                         active: chartType === type,
                     })),
+                    undefined,
+                    'keep-mobile',
                 )}
                 {dropdown(
                     'tz',
@@ -2124,11 +2145,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 >
                     {expanded ? <Minimize2 /> : <Maximize2 />}
                 </button>
+                {/* Only a phone sees this: one row until the trader asks for the rest. */}
+                <ChartToolbarMore lang={lang} open={toolbarMore} onToggle={() => setToolbarMore((value) => !value)} />
             </div>
 
             {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away. */}
             {!replay && (
-            <div className="chart-toolbar">
+            <div className={cn(
+                'chart-toolbar chart-toolbar-edit',
+                (toolbarMore || selectedId !== null || (tool !== null && tool !== 'select')) && 'is-open',
+            )}>
                 {alertSource(symbol) && (
                     <CreateAlertModal
                         symbol={symbol}
