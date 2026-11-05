@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Menu, Plus, Search, Star, X } from "lucide-react";
+import { LayoutDashboard, Menu, Plus, Star, X } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { tx, type Lang, type StringKey } from "@/lib/i18n";
@@ -121,13 +121,7 @@ const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
                 })}
             </div>
 
-            <button type="button" onClick={openSearch} className="cmdbar ms-auto" aria-label={tx(lang, 'cmd.open')} title={`${tx(lang, 'cmd.open')} (⌘K)`}>
-                <Search />
-                <span className="cmdbar-placeholder">{tx(lang, 'cmd.placeholder')}</span>
-                <kbd className="kbd">⌘K</kbd>
-            </button>
-
-            <button type="button" onClick={openSearch} className="chrome-btn -ms-2" aria-label={tx(lang, 'tab.open')} title={`${tx(lang, 'tab.open')} (⌘K)`}>
+            <button type="button" onClick={openSearch} className="chrome-btn ms-auto me-2" aria-label={tx(lang, 'tab.open')} title={`${tx(lang, 'tab.open')} (⌘K)`}>
                 <Plus />
             </button>
         </div>

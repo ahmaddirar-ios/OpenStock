@@ -3,8 +3,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Code2, Info, LifeBuoy, LogOut, Search } from "lucide-react";
-import { openSearch } from "@/components/SearchCommand";
+import { BookOpen, Code2, Info, LifeBuoy, LogOut } from "lucide-react";
 import LangToggle from "@/components/LangToggle";
 import ThemeToggle from "@/components/shell/ThemeToggle";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -39,12 +38,6 @@ const Sidebar = ({ user, watchlist, lang }: SidebarProps) => {
 
     return (
         <aside className="sidebar">
-            <button type="button" onClick={openSearch} className="side-cta">
-                <Search className="size-4" strokeWidth={2.5} />
-                <span className="flex-1 text-start">{tx(lang, 'nav.search')}</span>
-                <kbd className="kbd bg-on-brand/10">⌘K</kbd>
-            </button>
-
             {/* The sidebar is grouped, not a flat list: what the market says, what is yours, and
                 the tools that read both. The pages come from lib/shell/pages.ts, so the command bar
                 and the tab labels cannot promise a destination the sidebar does not have. */}

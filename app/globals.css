@@ -423,6 +423,9 @@
         align-items: center;
         height: 28px;
         overflow: hidden;
+        /* The tape runs edge to edge; the fade makes a half-scrolled cell read as a tape rather
+           than as a broken first column. */
+        mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
         background: color-mix(in oklab, var(--text) 3%, var(--side));
         border-bottom: 1px solid var(--line);
         font-size: 11.5px;
@@ -528,22 +531,6 @@
     .side-item:active { transform: scale(0.97); }
     .side-item.is-active { background: color-mix(in oklab, var(--text) 8%, transparent); color: var(--text); }
     .side-item svg { flex: none; width: 17px; height: 17px; }
-
-    .side-cta {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 40px;
-        padding: 0 12px;
-        border-radius: 11px;
-        font-weight: 700;
-        color: var(--on-brand);
-        background: var(--brand);
-        box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.35), 0 6px 18px oklch(0.8 0.13 176 / 0.18);
-        transition: background-color 150ms var(--ui-ease), transform 150ms var(--ui-ease);
-    }
-    .side-cta:hover { background: var(--brand-ink); }
-    .side-cta:active { transform: scale(0.96); }
 
     .kbd {
         display: inline-flex;
@@ -668,39 +655,6 @@
     .chrome-btn:hover { background: color-mix(in oklab, var(--text) 10%, transparent); color: var(--text); }
     .chrome-btn:active { transform: scale(0.94); }
     .chrome-btn svg { width: 17px; height: 17px; }
-
-    /* The command bar: the same field the sidebar offers, in the chrome, so it is reachable from
-       every page without a trip to the navigation. Icon-only where there is no room for words. */
-    .cmdbar {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex: 0 1 320px;
-        min-width: 0;
-        height: 30px;
-        margin-bottom: 3px;
-        padding: 0 8px 0 10px;
-        border-radius: 8px;
-        background: color-mix(in oklab, var(--text) 6%, transparent);
-        color: color-mix(in oklab, var(--text) 55%, transparent);
-        font-size: 12.5px;
-        font-weight: 500;
-        transition: background-color 150ms var(--ui-ease), color 150ms var(--ui-ease);
-    }
-    .cmdbar:hover { background: color-mix(in oklab, var(--text) 11%, transparent); color: var(--text); }
-    .cmdbar svg { flex: none; width: 15px; height: 15px; }
-    .cmdbar-placeholder {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        text-align: start;
-    }
-    .cmdbar .kbd { flex: none; }
-    @media (max-width: 720px) {
-        .cmdbar { flex: none; width: 30px; padding: 0; justify-content: center; }
-        .cmdbar-placeholder, .cmdbar .kbd { display: none; }
-    }
 
     /* ============ Hatch shells ============ */
 
