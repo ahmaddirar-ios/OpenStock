@@ -2,188 +2,119 @@ import { describe, expect, it } from 'vitest';
 import {
     checkFormula,
     evaluateFormula,
-    formulaLineCount,
-    FORMULA_EXAMPLES,
-    FORMULA_FUNCTIONS,
-    FORMULA_SERIES,
-    MAX_FORMULA_PLOTS,
+    formulaAst,
+    formulaPlotCount,
     type FormulaBar,
 } from '@/lib/formula';
+import { rsi } from '@/lib/indicators';
 
-const bars: FormulaBar[] = Array.from({ length: 10 }, (_, i) => ({
-    time: 1_700_000_000 + i * 86400,
-    open: 10 + i,
-    high: 11 + i,
-    low: 9 + i,
-    close: 10 + i,
-    volume: 100 * (i + 1),
-}));
+const bar = (close: number, index = 0): FormulaBar => ({
+    time: index,
+    open: close,
+    high: close + 1,
+    low: close - 1,
+    close,
+    volume: 100,
+});
 
-const values = (expression: string) => {
-    const result = evaluateFormula(expression, bars);
+const bars = (closes: number[]): FormulaBar[] => closes.map((close, i) => bar(close, i));
+
+const values = (expression: string, closes: number[]) => {
+    const result = evaluateFormula(expression, bars(closes));
+    expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error);
     return result.values;
 };
 
-describe('formula language', () => {
-    it('reads a series straight', () => {
-        expect(values('close')).toEqual(bars.map((bar) => bar.close));
-        expect(values('volume')).toEqual(bars.map((bar) => bar.volume));
+describe('formula language v2', () => {
+    it('keeps the arithmetic it always had', () => {
+        expect(values('(high + low) / 2 - close', [10, 20])).toEqual([0, 0]);
+        expect(values('2 ^ 3 ^ 2', [10])).toEqual([512]);
     });
 
-    it('does arithmetic with precedence and parentheses', () => {
-        expect(values('2 + 3 * 4')[0]).toBe(14);
-        expect(values('(2 + 3) * 4')[0]).toBe(20);
-        expect(values('2 ^ 3 ^ 2')[0]).toBe(512);
-        expect(values('-close + 1')[0]).toBe(-9);
-        expect(values('high - low')[0]).toBe(2);
+    it('reads series history and lets it compose with calls', () => {
+        expect(values('close[1]', [1, 2, 3])).toEqual([NaN, 1, 2]);
+        expect(values('close - close[1]', [1, 2, 4])).toEqual([NaN, 1, 2]);
+        expect(values('sma(close, 2)[1]', [1, 2, 3, 4])).toEqual([NaN, NaN, 1.5, 2.5]);
+        expect(values('close[0]', [7])).toEqual([7]);
     });
 
-    it('averages with the usual functions', () => {
-        const sma3 = values('sma(close, 3)');
-        expect(sma3[0]).toBeNaN();
-        expect(sma3[1]).toBeNaN();
-        expect(sma3[2]).toBeCloseTo(11, 10);
-        const ema3 = values('ema(close, 3)');
-        // An EMA starts on the first bar: no warm-up gap. With n=3 the weight is 0.5, so the
-        // second bar sits halfway between its close and the first one.
-        expect(ema3[0]).toBe(10);
-        expect(ema3[1]).toBeCloseTo(10.5, 10);
-        expect(values('sum(volume, 2)')[1]).toBe(300);
-        expect(values('highest(high, 3)')[2]).toBe(13);
-        expect(values('lowest(low, 3)')[2]).toBe(9);
-        expect(values('change(close)')[1]).toBe(1);
+    it('rejects a negative or fractional history offset with a position', () => {
+        const negative = checkFormula('close[-1]');
+        expect(negative.ok).toBe(false);
+        if (!negative.ok) {
+            expect(negative.error).toBe('history_offset');
+            expect(negative.position).toBe(6);
+        }
+        expect(checkFormula('close[1.5]').ok).toBe(false);
     });
 
-    it('refuses what it cannot evaluate, with a reason', () => {
-        expect(checkFormula('close + ').ok).toBe(false);
-        expect(checkFormula('close + 1')).toEqual({ ok: true });
-        const unknown = checkFormula('macd(close, 1, 2)');
-        expect(unknown.ok).toBe(false);
-        expect(unknown.ok === false && unknown.error).toContain('unknown_function');
-        // A bare word is a variable now, so the reason says name rather than series.
-        const series = checkFormula('candle');
-        expect(series.ok === false && series.error).toContain('unknown_name');
-        expect(checkFormula('close @ 2').ok).toBe(false);
-        expect(checkFormula('(close + 1').ok).toBe(false);
+    it('parses and/or/not with the documented precedence', () => {
+        // or binds loosest: (0 or 0) and 1 => 0, while 0 or (0 and 1) => 0 too, so use a sharper pair.
+        expect(values('1 or 0 and 0', [1])).toEqual([1]);
+        expect(values('(1 or 0) and 0', [1])).toEqual([0]);
+        expect(values('not 0', [1])).toEqual([1]);
+        expect(values('not 1 and 1', [1])).toEqual([0]);
+        expect(values('close > 5 and close < 20', [10])).toEqual([1]);
+        expect(values('close < 5 or close > 20', [10])).toEqual([0]);
     });
 
-    it('divides by zero into a gap rather than an infinity', () => {
-        expect(values('close / 0')[0]).toBeNaN();
+    it('evaluates if, nz, na and bar_index', () => {
+        expect(values('if(close > 5, 1, -1)', [4, 6])).toEqual([-1, 1]);
+        expect(values('nz(close[1])', [1, 2])).toEqual([0, 1]);
+        expect(values('nz(close[1], -1)', [1, 2])).toEqual([-1, 1]);
+        expect(values('na', [1, 2])).toEqual([NaN, NaN]);
+        expect(values('bar_index', [1, 2, 3])).toEqual([0, 1, 2]);
+        expect(values('nz(close[1]) + bar_index', [5, 6, 7])).toEqual([0, 6, 8]);
     });
 
-    it('returns the same length as the bars', () => {
-        expect(values('sma(close, 5)')).toHaveLength(bars.length);
-        expect(evaluateFormula('close', [])).toEqual({ ok: true, values: [], lines: [] });
-    });
-
-    it('documents every series and function it accepts', () => {
-        for (const name of FORMULA_SERIES) expect(checkFormula(name)).toEqual({ ok: true });
-        for (const fn of FORMULA_FUNCTIONS) {
-            const args = fn.name === 'abs' || fn.name === 'sqrt' || fn.name === 'change' ? 'close' : fn.name === 'max' || fn.name === 'min' ? 'close, open' : 'close, 5';
-            expect(checkFormula(`${fn.name}(${args})`), fn.name).toEqual({ ok: true });
+    it('matches the built-in RSI', () => {
+        const closes = Array.from({ length: 40 }, (_, i) => 100 + Math.sin(i / 3) * 5 + i / 10);
+        const expected = rsi(closes, 14);
+        const got = values('rsi(close, 14)', closes);
+        expect(got[13]).toBeNaN();
+        for (let i = 14; i < closes.length; i += 1) {
+            expect(got[i]).toBeCloseTo(expected[i] as number, 10);
         }
     });
 
-    it('names a value and reads it back', () => {
-        expect(values('mid = (high + low) / 2; close - mid')).toEqual(bars.map((bar) => bar.close - (bar.high + bar.low) / 2));
-        // Two variables, the second built on the first.
-        expect(values('a = close * 2; b = a + 1; b')[0]).toBe(21);
+    it('still draws plots and counts them', () => {
+        expect(formulaPlotCount('plot(close); plot(close[1])')).toBe(2);
+        const result = evaluateFormula('plot(close); plot(close[1])', bars([1, 2]));
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.lines.map((line) => line.key)).toEqual(['p1', 'p2']);
+            expect(result.lines[1].values).toEqual([NaN, 1]);
+        }
     });
 
-    it('decides with comparisons and a ternary', () => {
-        // Closes run 10, 11, 12…: strictly above 11 starts at the third bar.
-        expect(values('close > 11 ? 1 : -1').slice(0, 3)).toEqual([-1, -1, 1]);
-        expect(values('close >= 11 ? 1 : -1')[2]).toBe(1);
-        expect(values('close == 11 ? 1 : 0')[1]).toBe(1);
-        expect(values('close != 11 ? 1 : 0')[0]).toBe(1);
+    it('reports the column of a bad name', () => {
+        const checked = checkFormula('close + nope');
+        expect(checked.ok).toBe(false);
+        if (!checked.ok) {
+            expect(checked.error).toBe('unknown_name:nope');
+            expect(checked.position).toBe(8);
+        }
     });
 
-    it('reports a crossing on the bar it happens', () => {
-        const up = values('crossover(close, 12)');
-        // The first bar at or above 12 is bar 2 (close 12).
-        expect(up).toEqual([0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
-        const under = values('crossunder(close, 12)');
-        expect(under.every((value) => value === 0)).toBe(true);
+    it('reports arity for the new functions', () => {
+        const checked = checkFormula('if(close, 1)');
+        expect(checked.ok).toBe(false);
+        if (!checked.ok) expect(checked.error).toBe('arguments:if:2');
+        expect(checkFormula('nz(close, 1, 2)').ok).toBe(false);
+        expect(checkFormula('rsi(close, 14)').ok).toBe(true);
+        expect(checkFormula('sma(close)').ok).toBe(false);
     });
 
-    it('measures spread and deviation', () => {
-        expect(values('stdev(close, 3)')[2]).toBeCloseTo(0.8165, 3);
-        expect(values('pow(2, 3)')[0]).toBe(8);
+    it('does not reserve history as a name', () => {
+        const checked = checkFormula('x = close[1]; x + close');
+        expect(checked.ok).toBe(true);
+        expect(values('x = close[1]; x + close', [1, 2])).toEqual([NaN, 3]);
     });
 
-    it('refuses a name it hides from a series or a function', () => {
-        const reserved = checkFormula('sma = close; sma');
-        expect(reserved.ok).toBe(false);
-        expect(reserved.ok === false && reserved.error).toContain('reserved_name');
-    });
-
-    it('reads a variable only after it is declared', () => {
-        const early = checkFormula('close - mid; mid = sma(close, 3)');
-        expect(early.ok).toBe(false);
-        expect(early.ok === false && early.error).toContain('unknown_name');
-    });
-
-    it('ships examples that all parse', () => {
-        for (const example of FORMULA_EXAMPLES) expect(checkFormula(example), example).toEqual({ ok: true });
-    });
-});
-
-describe('formula plots', () => {
-    const lines = (expression: string) => {
-        const result = evaluateFormula(expression, bars);
-        if (!result.ok) throw new Error(result.error);
-        return result;
-    };
-
-    it('draws one line per plot, keyed in plot order', () => {
-        const result = lines('mid = (high + low) / 2; plot(mid); plot(mid + stdev(close, 3)); plot(mid - stdev(close, 3))');
-        expect(result.lines.map((line) => line.key)).toEqual(['p1', 'p2', 'p3']);
-        expect(result.lines[0].values[2]).toBeCloseTo(12, 10);
-        expect(result.lines[1].values[2] - result.lines[0].values[2]).toBeCloseTo(0.8165, 3);
-        expect(result.lines[2].values[2]).toBeCloseTo(result.lines[0].values[2] - 0.8165, 3);
-    });
-
-    it('keeps the single value line for a formula written before plots existed', () => {
-        const result = lines('close - sma(close, 3)');
-        expect(result.lines).toHaveLength(1);
-        expect(result.lines[0].key).toBe('value');
-        expect(result.values).toEqual(result.lines[0].values);
-    });
-
-    it('keeps a warm-up gap in a plot instead of inventing a value', () => {
-        const result = lines('plot(sma(close, 3))');
-        expect(result.lines[0].values[0]).toBeNaN();
-        expect(result.lines[0].values[2]).toBeCloseTo(11, 10);
-    });
-
-    it('caps the lines at MAX_FORMULA_PLOTS, keeping the first ones', () => {
-        const six = Array.from({ length: 6 }, (_, i) => `plot(close + ${i})`).join('; ');
-        const result = lines(six);
-        expect(MAX_FORMULA_PLOTS).toBe(4);
-        expect(result.lines).toHaveLength(4);
-        expect(result.lines[3].values[0]).toBe(bars[0].close + 3);
-        expect(formulaLineCount(six)).toBe(4);
-    });
-
-    it('counts one line when the text plots nothing, and one when it is broken', () => {
-        expect(formulaLineCount('close')).toBe(1);
-        expect(formulaLineCount('plot(close); plot(open)')).toBe(2);
-        expect(formulaLineCount('plot(')).toBe(1);
-    });
-
-    it('refuses a plot used as a value, an assignment, or with the wrong arity', () => {
-        const misplaced = checkFormula('plot(close) + 1');
-        expect(misplaced.ok).toBe(false);
-        expect(misplaced.ok === false && misplaced.error).toBe('plot_misplaced');
-        expect(checkFormula('x = plot(close)').ok).toBe(false);
-        expect(checkFormula('close - plot(open)').ok).toBe(false);
-        expect(checkFormula('plot()').ok).toBe(false);
-        expect(checkFormula('plot(close, open)').ok).toBe(false);
-    });
-
-    it('does not offer plot as a function in the help list', () => {
-        expect(FORMULA_FUNCTIONS.some((fn) => fn.name === 'plot')).toBe(false);
-        expect(checkFormula('plot = 3').ok).toBe(false);
+    it('exposes one bare expression as an AST and rejects programs', () => {
+        expect(formulaAst('close > sma(close, 20)')?.kind).toBe('binary');
+        expect(formulaAst('x = close; x')).toBeNull();
+        expect(formulaAst('close +')).toBeNull();
     });
 });

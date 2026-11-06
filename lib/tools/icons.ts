@@ -14,6 +14,7 @@ import {
     Equal,
     FunctionSquare,
     Gauge,
+    GitBranch,
     GitCompare,
     Grid2x2,
     Hash,
@@ -62,6 +63,7 @@ const SECTION_ICON: Record<ToolSectionId, LucideIcon> = {
     'formula.stat': Activity,
     'formula.cross': GitCompare,
     'formula.math': Equal,
+    'formula.logic': GitBranch,
 };
 
 const TOOL_ICON: Record<string, LucideIcon> = {

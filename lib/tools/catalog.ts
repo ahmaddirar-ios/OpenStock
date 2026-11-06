@@ -28,7 +28,8 @@ export type ToolSectionId =
     | 'formula.average'
     | 'formula.stat'
     | 'formula.cross'
-    | 'formula.math';
+    | 'formula.math'
+    | 'formula.logic';
 
 export type ToolEntry = {
     /** Unique across the four families: `drawing:trend`, `study:sma`, `chartType:pnf`. */
@@ -77,6 +78,7 @@ export const TOOL_SECTIONS: readonly ToolSection[] = [
     { id: 'formula.stat', family: 'formula', nameKey: 'tools.section.formula.stat' },
     { id: 'formula.cross', family: 'formula', nameKey: 'tools.section.formula.cross' },
     { id: 'formula.math', family: 'formula', nameKey: 'tools.section.formula.math' },
+    { id: 'formula.logic', family: 'formula', nameKey: 'tools.section.formula.logic' },
 ];
 
 /** Synonyms a trader would actually type, in both languages. The translated name is free. */
@@ -177,9 +179,10 @@ const hotkeyFor = new Map<string, string>(TOOL_SHORTCUTS.map((shortcut) => [shor
  */
 const FORMULA_SECTIONS: Record<string, ToolSectionId> = {
     sma: 'formula.average', ema: 'formula.average', rma: 'formula.average', sum: 'formula.average',
-    stdev: 'formula.stat', highest: 'formula.stat', lowest: 'formula.stat', change: 'formula.stat',
+    stdev: 'formula.stat', highest: 'formula.stat', lowest: 'formula.stat', change: 'formula.stat', rsi: 'formula.stat',
     crossover: 'formula.cross', crossunder: 'formula.cross',
     abs: 'formula.math', sqrt: 'formula.math', pow: 'formula.math', max: 'formula.math', min: 'formula.math',
+    if: 'formula.logic', nz: 'formula.logic',
 };
 
 /** A one-line use of every function: the example the palette drops into a new Formula study. */
@@ -189,6 +192,7 @@ const FORMULA_EXAMPLES: Record<string, string> = {
     rma: 'rma(close, 14)',
     sum: 'sum(volume, 20)',
     stdev: 'stdev(close, 20)',
+    rsi: 'rsi(close, 14)',
     highest: 'highest(high, 20)',
     lowest: 'lowest(low, 20)',
     change: 'change(close)',
@@ -199,6 +203,8 @@ const FORMULA_EXAMPLES: Record<string, string> = {
     pow: 'pow(close, 2)',
     max: 'max(close, sma(close, 20))',
     min: 'min(close, sma(close, 20))',
+    if: 'if(close > open, close - open, 0)',
+    nz: 'nz(close[1], close)',
 };
 
 const drawingEntries = (): ToolEntry[] => [
