@@ -712,11 +712,11 @@ describe('the exotics on the chart', () => {
         expect(empty.texts).toContain('chart.imagePlaceholder');
     });
 
-    it('averages the candles from the anchor forward', () => {
+    it('averages the candles from the anchor forward, inside two deviation bands', () => {
         const { paths } = renderTool('avwap', [a], [], undefined, { candles });
-        expect(paths).toHaveLength(1);
-        // One point per candle from the anchor on, in one path.
-        expect(paths[0].split('L')).toHaveLength(6);
+        // The VWAP plus ±1σ and ±2σ: five lines, each one point per candle from the anchor on.
+        expect(paths).toHaveLength(5);
+        for (const path of paths) expect(path.split('L')).toHaveLength(6);
     });
 
     it('draws nothing for a VWAP when the drawing layer has no candles', () => {

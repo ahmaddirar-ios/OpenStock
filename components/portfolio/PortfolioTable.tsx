@@ -25,6 +25,10 @@ export type PortfolioRow = {
     changePercent: number;
     currency: string;
     logo?: string;
+    /** A ledger row was replayed from trades; a manual row was typed in. */
+    source?: 'ledger' | 'manual';
+    /** Profit already banked on this symbol, from closed lots. */
+    realizedPnl?: number;
 };
 
 const num = (value: number, lang: Lang, digits = 2) =>
@@ -160,7 +164,12 @@ export default function PortfolioTable({ initialRows, lang }: { initialRows: Por
                                                             )}
                                                             <span className="min-w-0">
                                                                 <span dir="auto" className="block truncate font-semibold text-foreground group-hover:text-brand-ink transition-colors" title={company}>{company}</span>
-                                                                <span dir="ltr" className="mono block text-[12px] text-faint">{row.symbol}</span>
+                                                                <span className="flex items-center gap-1.5">
+                                                                    <span dir="ltr" className="mono block text-[12px] text-faint">{row.symbol}</span>
+                                                                    {row.source === 'ledger' && (
+                                                                        <span className="pill is-brand text-[10px]">{tx(lang, 'pf.fromLedger')}</span>
+                                                                    )}
+                                                                </span>
                                                             </span>
                                                         </Link>
                                                     </td>

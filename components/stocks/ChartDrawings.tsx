@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -1390,13 +1390,25 @@ export default function ChartDrawings({
 
         if (kind === 'avwap') {
             // toScreen wants a chart point; a VWAP point is a time and a value, which is the same shape.
-            const points = anchoredVwap(candles, drawing.points[0].time)
-                .map((point) => toScreen({ time: point.time, price: point.value }))
-                .filter((point): point is ScreenPoint => point != null);
-            const path = points.length > 1 ? polylinePath(points) : null;
+            const bands = anchoredVwapBands(candles, drawing.points[0].time);
+            const project = (pick: (point: (typeof bands)[number]) => number) =>
+                bands
+                    .map((point) => toScreen({ time: point.time, price: pick(point) }))
+                    .filter((point): point is ScreenPoint => point != null);
+            const line = project((point) => point.value);
+            const upper1 = project((point) => point.upper1);
+            const lower1 = project((point) => point.lower1);
+            const upper2 = project((point) => point.upper2);
+            const lower2 = project((point) => point.lower2);
+            const path = (points: ScreenPoint[]) => (points.length > 1 ? polylinePath(points) : null);
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
-                    {path && <path d={path} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />}
+                    {/* The second band is the outer edge: faint, so it frames without shouting. */}
+                    {path(upper2) && <path d={path(upper2)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.35} />}
+                    {path(lower2) && <path d={path(lower2)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.35} />}
+                    {path(upper1) && <path d={path(upper1)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.6} strokeDasharray="4 3" />}
+                    {path(lower1) && <path d={path(lower1)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.6} strokeDasharray="4 3" />}
+                    {path(line) && <path d={path(line)!} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />}
                     {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, opacity, TEXT_DOT)}
                     {selectionHandles(screen)}
                 </g>
@@ -1432,14 +1444,35 @@ export default function ChartDrawings({
                             />
                         );
                     })}
+                    {/* The value area: the band holding 70% of the range's volume, marked by two
+                        rules so a trader can see where the market accepted price. */}
+                    {profile.valueArea && (() => {
+                        const top = stepY(profile.valueArea.high);
+                        const bottom = stepY(profile.valueArea.low);
+                        if (top == null || bottom == null) return null;
+                        return (
+                            <g>
+                                <rect
+                                    x={left}
+                                    y={Math.min(top, bottom)}
+                                    width={span}
+                                    height={Math.abs(bottom - top)}
+                                    fill={`color-mix(in oklab, ${color} 10%, transparent)`}
+                                    stroke="none"
+                                />
+                                <line x1={left} y1={top} x2={left + span} y2={top} stroke={color} strokeWidth={1} opacity={0.7} strokeDasharray="3 3" />
+                                <line x1={left} y1={bottom} x2={left + span} y2={bottom} stroke={color} strokeWidth={1} opacity={0.7} strokeDasharray="3 3" />
+                            </g>
+                        );
+                    })()}
                     {/* The row that traded most: the point of control, with its price. */}
                     {(() => {
-                        const poc = profile.rows.find((row) => row.volume === profile.max);
-                        const y = poc ? stepY(poc.price) : null;
-                        if (!poc || y == null) return null;
+                        const poc = profile.poc;
+                        const y = poc != null ? stepY(poc) : null;
+                        if (poc == null || y == null) return null;
                         return (
                             <text x={left + span + 4} y={y + 4} fontSize={10.5} className="mono" fill={color}>
-                                {priceLabel(poc.price)}
+                                {priceLabel(poc)}
                             </text>
                         );
                     })()}

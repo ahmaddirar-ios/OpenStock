@@ -434,3 +434,55 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
         return [];
     }
 });
+
+// -- Earnings dates ----------------------------------------------------------------------------
+//
+// The chart marks results days the way it marks dividends: a fact about a bar, printed on the bar.
+// Tadawul dates come from the TradingView scanner the stock page already reads; US dates come from
+// Finnhub's earnings calendar. Either source may be silent, and a missing date is not an error.
+
+export type EarningsDates = {
+    symbol: string;
+    /** Epoch ms of the last reported results, or null. */
+    last: number | null;
+    /** Epoch ms of the next scheduled results, or null. */
+    next: number | null;
+};
+
+export async function getEarningsDates(symbol: string): Promise<EarningsDates | null> {
+    const ticker = String(symbol ?? '').trim().toUpperCase();
+    if (!ticker) return null;
+
+    if (isTadawulSymbol(ticker)) {
+        try {
+            const { fetchSaudiFundamentals } = await import('@/lib/saudi-fundamentals');
+            const fundamentals = await fetchSaudiFundamentals([ticker]);
+            const entry = fundamentals[ticker];
+            if (!entry) return { symbol: ticker, last: null, next: null };
+            return { symbol: ticker, last: entry.lastEarningsDate, next: entry.nextEarningsDate };
+        } catch (error) {
+            console.error('Error fetching Saudi earnings dates:', error);
+            return null;
+        }
+    }
+
+    if (!finnhubCanAnswer(ticker)) return null;
+    try {
+        // A two-year window covers the last report and the next scheduled one for any listing.
+        const now = Date.now();
+        const from = new Date(now - 400 * 86_400_000).toISOString().slice(0, 10);
+        const to = new Date(now + 400 * 86_400_000).toISOString().slice(0, 10);
+        const url = `${FINNHUB_BASE_URL}/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${from}&to=${to}`;
+        const data = await request<{ earningsCalendar?: { date: string; hour?: string }[] }>(url, 21_600);
+        const dates = (data?.earningsCalendar ?? [])
+            .map((entry) => Date.parse(`${entry.date}T12:00:00Z`))
+            .filter((value) => Number.isFinite(value))
+            .sort((a, b) => a - b);
+        const last = [...dates].reverse().find((value) => value <= now) ?? null;
+        const next = dates.find((value) => value > now) ?? null;
+        return { symbol: ticker, last, next };
+    } catch (error) {
+        console.error('Error fetching earnings dates:', error);
+        return null;
+    }
+}

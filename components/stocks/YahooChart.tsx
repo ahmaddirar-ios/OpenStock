@@ -70,6 +70,7 @@ import StrategyMenu from '@/components/stocks/StrategyMenu';
 import ReplayPanel from '@/components/stocks/ReplayPanel';
 import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { CANDLE_INTERVALS, eventLabel, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
+import { getEarningsDates } from '@/lib/actions/finnhub.actions';
 import {
     MIN_WARMUP_BARS,
     buy as paperBuy,
@@ -239,6 +240,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const markersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
     /** The dividends and splits of the symbol, drawn beside whatever a strategy marks. */
     const eventMarkersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
+    /** Results days: the last report and the next scheduled one, when the feed knows them. */
+    const earningsMarkersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
     const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     // The candle host is kept so a replay step can replace the candles in place: rebuilding the
     // chart on every bar would throw away the trader's zoom, which is exactly what a replay needs.
@@ -970,10 +973,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
                 seriesRef.current = series;
-                // Both lists from the start: the events are already known when the chart is built.
+                // Every list from the start: the events are already known when the chart is built.
                 markersApiRef.current = createSeriesMarkers(
                     series,
-                    [...eventMarkersRef.current, ...markersRef.current].sort((a, b) => Number(a.time) - Number(b.time)),
+                    [...eventMarkersRef.current, ...earningsMarkersRef.current, ...markersRef.current].sort(
+                        (a, b) => Number(a.time) - Number(b.time)
+                    ),
                 );
             },
             extend,
@@ -1145,9 +1150,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         else host.fit();
     }, [replay, intervalId, displayData]);
 
-    /** Both lists on one series: the events sit under whatever the strategy is marking. */
+    /** Every list on one series: events and results sit under whatever the strategy is marking. */
     const syncMarkers = useCallback(() => {
-        const all = [...eventMarkersRef.current, ...markersRef.current].sort((a, b) => Number(a.time) - Number(b.time));
+        const all = [...eventMarkersRef.current, ...earningsMarkersRef.current, ...markersRef.current].sort(
+            (a, b) => Number(a.time) - Number(b.time)
+        );
         markersApiRef.current?.setMarkers(all);
     }, []);
     const applyStrategyMarkers = useCallback(
@@ -1181,6 +1188,42 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             }));
         syncMarkers();
     }, [data, intervalId, syncMarkers]);
+
+    // Results days. A report is a day, not a bar, so it is only marked on daily-and-lower intervals;
+    // the last report and the next scheduled one are both worth seeing on a chart.
+    useEffect(() => {
+        const intraday = ['1m', '5m', '15m', '30m', '60m', '2h', '4h'].includes(intervalId);
+        const candles = data?.candles ?? [];
+        if (intraday || candles.length === 0) {
+            earningsMarkersRef.current = [];
+            syncMarkers();
+            return;
+        }
+        let cancelled = false;
+        void getEarningsDates(symbol)
+            .then((dates) => {
+                if (cancelled || !dates) return;
+                const first = candles[0].time;
+                const last = candles[candles.length - 1].time;
+                const markers: SeriesMarker<UTCTimestamp>[] = [];
+                const add = (ms: number | null, text: string, position: 'aboveBar' | 'belowBar') => {
+                    if (ms == null) return;
+                    const time = Math.floor(ms / 1000);
+                    if (time < first || time > last) return;
+                    markers.push({ time: time as UTCTimestamp, position, shape: 'arrowDown', color: '#A78BFA', text });
+                };
+                add(dates.last, 'E', 'aboveBar');
+                add(dates.next, 'E?', 'belowBar');
+                earningsMarkersRef.current = markers;
+                syncMarkers();
+            })
+            .catch(() => {
+                /* A missing calendar is not a chart error. */
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [symbol, intervalId, data, syncMarkers]);
 
     useEffect(() => {
         if (!expanded) return;

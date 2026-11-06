@@ -293,7 +293,9 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'extended', group: 'lines', kind: 'extended', clicks: 2, defaultColor: 'blue' },
     { tool: 'hray', group: 'lines', kind: 'hray', clicks: 1, defaultColor: 'blue' },
     { tool: 'vline', group: 'lines', kind: 'vline', clicks: 1, defaultColor: 'white' },
-    { tool: 'cross', group: 'lines', kind: 'cross', clicks: 2, defaultColor: 'white' },
+    // A cross is fixed by one point: the renderer draws both arms from it, so a second click would
+    // only move a crosshair that is already complete.
+    { tool: 'cross', group: 'lines', kind: 'cross', clicks: 1, defaultColor: 'white' },
     { tool: 'trendangle', group: 'lines', kind: 'trendangle', clicks: 2, defaultColor: 'violet' },
     { tool: 'info', group: 'lines', kind: 'info', clicks: 2, defaultColor: 'white' },
 
@@ -739,8 +741,94 @@ export function anchoredVwap(candles: readonly DrawCandle[], anchorTime: number)
     return line;
 }
 
+/** A VWAP point with its standard-deviation bands. */
+export type VwapBandPoint = {
+    time: number;
+    value: number;
+    upper1: number;
+    lower1: number;
+    upper2: number;
+    lower2: number;
+};
+
+/**
+ * Anchored VWAP with ±1σ and ±2σ bands. The deviation is volume-weighted around the running VWAP,
+ * so a bar that traded heavily pulls the band tighter than a quiet one. Bands are what turn a VWAP
+ * from a line into a channel: price at the second band is stretched, price at the line is fair.
+ */
+export function anchoredVwapBands(candles: readonly DrawCandle[], anchorTime: number): VwapBandPoint[] {
+    const start = candles.findIndex((candle) => candle.time >= anchorTime);
+    if (start === -1) return [];
+    let weighted = 0;
+    let weightedSq = 0;
+    let volume = 0;
+    const line: VwapBandPoint[] = [];
+    for (let i = start; i < candles.length; i += 1) {
+        const candle = candles[i];
+        const typical = (candle.high + candle.low + candle.close) / 3;
+        const weight = candle.volume > 0 ? candle.volume : 1;
+        weighted += typical * weight;
+        weightedSq += typical * typical * weight;
+        volume += weight;
+        const mean = weighted / volume;
+        // Clamp the variance at zero: floating-point noise can make it a hair negative.
+        const variance = Math.max(0, weightedSq / volume - mean * mean);
+        const sd = Math.sqrt(variance);
+        line.push({
+            time: candle.time,
+            value: mean,
+            upper1: mean + sd,
+            lower1: mean - sd,
+            upper2: mean + 2 * sd,
+            lower2: mean - 2 * sd,
+        });
+    }
+    return line;
+}
+
 /** One price row of a volume profile: the volume traded in the band around `price`. */
 export type ProfileRow = { price: number; volume: number };
+
+/** The band that holds the bulk of the volume, and the row that traded most. */
+export type ProfileValueArea = { high: number; low: number; percent: number };
+
+/**
+ * The value area: the contiguous run of rows around the point of control that holds `percent` of
+ * the range's volume (70% is the convention). Rows are added one at a time, always the larger of the
+ * two neighbours, which is how the profile is read on a trading floor.
+ */
+export function valueArea(rows: ProfileRow[], step: number, percent = 0.7): ProfileValueArea | null {
+    if (rows.length === 0) return null;
+    const total = rows.reduce((sum, row) => sum + row.volume, 0);
+    if (total <= 0) return null;
+
+    let poc = 0;
+    for (let i = 1; i < rows.length; i += 1) if (rows[i].volume > rows[poc].volume) poc = i;
+
+    let top = poc;
+    let bottom = poc;
+    let held = rows[poc].volume;
+    const target = total * percent;
+
+    while (held < target && (top > 0 || bottom < rows.length - 1)) {
+        const above = top > 0 ? rows[top - 1].volume : -1;
+        const below = bottom < rows.length - 1 ? rows[bottom + 1].volume : -1;
+        if (above < 0 && below < 0) break;
+        if (above >= below) {
+            top -= 1;
+            held += rows[top].volume;
+        } else {
+            bottom += 1;
+            held += rows[bottom].volume;
+        }
+    }
+
+    return {
+        high: rows[top].price + step / 2,
+        low: rows[bottom].price - step / 2,
+        percent: Math.round((held / total) * 1000) / 10,
+    };
+}
 
 /**
  * Volume by price over a range. Each candle's volume is spread evenly across the rows its high–low
@@ -752,9 +840,21 @@ export function volumeProfile(
     fromTime: number,
     toTime: number,
     rowCount = 24,
-): { rows: ProfileRow[]; max: number; step: number; from: number; to: number } {
+): {
+    rows: ProfileRow[];
+    max: number;
+    step: number;
+    from: number;
+    to: number;
+    /** The price of the row that traded most, or null for an empty profile. */
+    poc: number | null;
+    /** The band holding 70% of the volume, or null for an empty profile. */
+    valueArea: ProfileValueArea | null;
+} {
     const inside = candlesBetween(candles, fromTime, toTime);
-    if (inside.length === 0 || rowCount < 1) return { rows: [], max: 0, step: 0, from: 0, to: 0 };
+    if (inside.length === 0 || rowCount < 1) {
+        return { rows: [], max: 0, step: 0, from: 0, to: 0, poc: null, valueArea: null };
+    }
     const high = Math.max(...inside.map((candle) => candle.high));
     const low = Math.min(...inside.map((candle) => candle.low));
     const step = (high - low) / rowCount || 1;
@@ -770,7 +870,17 @@ export function volumeProfile(
     const rows = buckets
         .map((volume, index) => ({ price: low + step * (index + 0.5), volume }))
         .reverse();
-    return { rows, max: Math.max(...buckets), step, from: Math.min(fromTime, toTime), to: Math.max(fromTime, toTime) };
+    const max = Math.max(...buckets);
+    const poc = rows.find((row) => row.volume === max)?.price ?? null;
+    return {
+        rows,
+        max,
+        step,
+        from: Math.min(fromTime, toTime),
+        to: Math.max(fromTime, toTime),
+        poc,
+        valueArea: valueArea(rows, step),
+    };
 }
 
 /** The glyphs the sticker tool cycles through — the small set a trader marks a chart with. */
@@ -1089,11 +1199,24 @@ export function hitTest(
         const drawing = drawings[i];
         const kind = kindOf(drawing);
 
-        if (kind === 'text' || kind === 'horizontal' || kind === 'signpost' || kind === 'flag' || kind === 'pricenote' || kind === 'avwap' || kind === 'icon') {
+        // One-point tools: the anchor is the whole drawing, so the pointer only has to be near it.
+        // hray, vline and cross belong here too — they are placed with a single click and the
+        // renderer derives the missing direction from the panel.
+        if (
+            kind === 'text' ||
+            kind === 'horizontal' ||
+            kind === 'signpost' ||
+            kind === 'flag' ||
+            kind === 'pricenote' ||
+            kind === 'avwap' ||
+            kind === 'icon' ||
+            kind === 'hray' ||
+            kind === 'cross'
+        ) {
             if (isNearPoint(cursor, points[0], tolerance)) return drawing;
             continue;
         }
-        if (kind === 'vlines') {
+        if (kind === 'vlines' || kind === 'vline') {
             // A vertical line belongs to a whole column, so only the x matters.
             if (points.some((p) => Math.abs(p.x - cursor.x) <= tolerance)) return drawing;
             continue;
@@ -1111,7 +1234,7 @@ export function hitTest(
             if (kind === 'tri' && points.length >= 3 && distanceToSegment(cursor, points[points.length - 1], points[0]) <= tolerance) return drawing;
             continue;
         }
-        if (kind === 'ellipse' || kind === 'circle' || kind === 'arc' || kind === 'curve' || kind === 'dcurve' || kind === 'callout' || kind === 'balloon' || kind === 'image' || kind === 'vprofile' || kind === 'bars') {
+        if (kind === 'arc' || kind === 'curve' || kind === 'dcurve' || kind === 'callout' || kind === 'balloon' || kind === 'image') {
             // These are drawn as curves between their anchors, so the anchors are what you grab.
             if (points.some((point) => isNearPoint(cursor, point, tolerance))) return drawing;
             continue;
@@ -1120,16 +1243,197 @@ export function hitTest(
             if (points.length >= 2 && distanceToSegment(cursor, points[0], points[1]) <= tolerance) return drawing;
             continue;
         }
-        // rectangle and fib: the four sides, drawn as segments between opposite corners
-        if (points.length < 2) continue;
-        const [a, b] = points;
-        const corners: ScreenPoint[] = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
-        for (let c = 0; c < corners.length; c += 1) {
-            if (distanceToSegment(cursor, corners[c], corners[(c + 1) % corners.length]) <= tolerance) return drawing;
+
+        // Boxes are grabbed by their four sides, not by their surface, so the pointer stays free for
+        // panning inside them. A volume profile and a bars pattern are boxes too.
+        if (BOX_KINDS.has(kind)) {
+            if (points.length < 2) continue;
+            const [a, b] = points;
+            const corners: ScreenPoint[] = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+            for (let c = 0; c < corners.length; c += 1) {
+                if (distanceToSegment(cursor, corners[c], corners[(c + 1) % corners.length]) <= tolerance) return drawing;
+            }
+            continue;
+        }
+
+        // Everything else — channels, pitchforks, Gann fans, projections, ranges, fib extensions —
+        // is tested against the segments it is actually painted from. The constructions are affine
+        // in (time, price), so they can be rebuilt in screen space from the projected anchors.
+        const segments = drawingSegments(kind, points);
+        for (const [a, b] of segments) {
+            if (distanceToSegment(cursor, a, b) <= tolerance) return drawing;
         }
     }
     return null;
 }
+
+type Seg = [ScreenPoint, ScreenPoint];
+
+const midPoint = (a: ScreenPoint, b: ScreenPoint): ScreenPoint => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+/** The segments a drawing is painted from, rebuilt in screen space. */
+function drawingSegments(kind: ShapeKind, points: ScreenPoint[]): Seg[] {
+    const segs: Seg[] = [];
+    const add = (a: ScreenPoint, b: ScreenPoint) => segs.push([a, b]);
+    const chain = (list: ScreenPoint[], close = false) => {
+        for (let i = 0; i + 1 < list.length; i += 1) add(list[i], list[i + 1]);
+        if (close && list.length >= 3) add(list[list.length - 1], list[0]);
+    };
+    const [a, b, c] = points;
+
+    switch (kind) {
+        case 'pitchfork':
+        case 'schiffpitchfork':
+        case 'modpitchfork':
+        case 'insidepitchfork': {
+            if (!a || !b || !c) return segs;
+            const variant = kind === 'schiffpitchfork' ? 'schiff' : kind === 'modpitchfork' ? 'modified' : kind === 'insidepitchfork' ? 'inside' : 'andrews';
+            const pivot = variant === 'andrews' ? a : variant === 'schiff' ? midPoint(a, b) : midPoint(a, b);
+            const target = variant === 'inside' ? c : midPoint(b, c);
+            const slope = { x: target.x - pivot.x, y: target.y - pivot.y };
+            const through = (point: ScreenPoint): Seg => [point, { x: point.x + slope.x, y: point.y + slope.y }];
+            add(...through(pivot));
+            add(...through(b));
+            add(...through(c));
+            return segs;
+        }
+        case 'channel': {
+            if (!a || !b || !c) return segs;
+            const offset = { x: c.x - b.x, y: c.y - b.y };
+            add(a, b);
+            add({ x: a.x + offset.x, y: a.y + offset.y }, { x: b.x + offset.x, y: b.y + offset.y });
+            return segs;
+        }
+        case 'disjoint': {
+            if (!a || !b || !c) return segs;
+            add(a, b);
+            add(c, { x: c.x + (b.x - a.x), y: c.y + (b.y - a.y) });
+            return segs;
+        }
+        case 'fibchannel': {
+            if (!a || !b || !c) return segs;
+            for (const ratio of FIB_RATIOS) {
+                add(
+                    { x: a.x + (c.x - a.x) * ratio, y: a.y + (c.y - a.y) * ratio },
+                    { x: b.x + (c.x - b.x) * ratio, y: b.y + (c.y - b.y) * ratio }
+                );
+            }
+            return segs;
+        }
+        case 'gannfan': {
+            if (!a || !b) return segs;
+            const edgeX = Math.max(a.x, b.x) + 2000;
+            const slope = b.x === a.x ? 0 : (b.y - a.y) / (b.x - a.x);
+            for (const ratio of GANN_RATIOS) add(a, { x: edgeX, y: a.y + slope * ratio * (edgeX - a.x) });
+            return segs;
+        }
+        case 'fibfan': {
+            if (!a || !b) return segs;
+            for (const ratio of FIB_RATIOS) add(a, { x: b.x, y: a.y + (b.y - a.y) * ratio });
+            return segs;
+        }
+        case 'flattop': {
+            if (!a || !b) return segs;
+            const top = Math.min(a.y, b.y);
+            const bottom = Math.max(a.y, b.y);
+            add({ x: a.x, y: top }, { x: b.x, y: top });
+            add({ x: a.x, y: bottom }, { x: b.x, y: bottom });
+            return segs;
+        }
+        case 'projection': {
+            if (!a || !b) return segs;
+            add(b, { x: b.x + (b.x - a.x), y: b.y + (b.y - a.y) });
+            return segs;
+        }
+        case 'longpos':
+        case 'shortpos': {
+            if (!a || !b || !c) return segs;
+            const width = b.x - a.x;
+            add(a, b);
+            add(a, { x: a.x + width, y: c.y });
+            add({ x: a.x + width, y: c.y }, b);
+            return segs;
+        }
+        case 'pricerange':
+        case 'daterange':
+        case 'dprange':
+        case 'xrect':
+        case 'gannbox':
+        case 'gannsquare': {
+            if (!a || !b) return segs;
+            const corners: ScreenPoint[] = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+            chain(corners, true);
+            if (kind === 'gannbox' || kind === 'gannsquare') {
+                add(a, b);
+                add(corners[1], corners[3]);
+            }
+            return segs;
+        }
+        case 'fibext':
+        case 'fibtrendext': {
+            if (!a || !b || !c) return segs;
+            const left = Math.min(a.x, b.x, c.x);
+            const right = Math.max(a.x, b.x, c.x);
+            for (const ratio of FIB_EXT_RATIOS) {
+                const y = c.y + (b.y - a.y) * ratio;
+                add({ x: left, y }, { x: right, y });
+            }
+            return segs;
+        }
+        case 'fibtime': {
+            if (!a || !b) return segs;
+            const top = Math.min(a.y, b.y) - 2000;
+            const bottom = Math.max(a.y, b.y) + 2000;
+            for (const multiple of fibTimeMultiples(8)) {
+                const x = a.x + (b.x - a.x) * multiple;
+                add({ x, y: top }, { x, y: bottom });
+            }
+            return segs;
+        }
+        case 'fibarc':
+        case 'fibspeed':
+        case 'regression':
+        case 'arrow':
+        case 'ray':
+        case 'extended':
+        case 'trendangle':
+        case 'info':
+        case 'trend':
+        case 'pricetime':
+        default:
+            chain(points, CLOSED_KINDS.has(kind));
+            return segs;
+    }
+}
+
+/** Kinds painted as a rectangle between two opposite corners. */
+const BOX_KINDS = new Set<ShapeKind>([
+    'rectangle',
+    'xrect',
+    'gannbox',
+    'gannsquare',
+    'ellipse',
+    'circle',
+    'vprofile',
+    'bars',
+]);
+
+/** Kinds whose outline closes back to the first anchor. */
+const CLOSED_KINDS = new Set<ShapeKind>([
+    'tri',
+    'triangle',
+    'hs',
+    'poly',
+    'fibchannel',
+    'gannbox',
+    'gannsquare',
+    'rectangle',
+    'xrect',
+    'ellipse',
+    'circle',
+    'vprofile',
+    'bars',
+]);
 
 /** Which of a drawing's handles the pointer grabbed, or null when it grabbed none. */
 export function handleIndex(screenPoints: ScreenPoint[], cursor: ScreenPoint, tolerance: number): number | null {

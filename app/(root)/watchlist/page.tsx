@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { Plus } from 'lucide-react';
-import { getUserWatchlist } from '@/lib/actions/watchlist.actions';
+import { getUserWatchlist, type WatchlistItemRecord } from '@/lib/actions/watchlist.actions';
 import { getUserAlerts } from '@/lib/actions/alert.actions';
 import { getWatchlistData } from '@/lib/actions/finnhub.actions';
 import { getWatchlistNews } from '@/lib/actions/news.actions';
@@ -27,8 +27,9 @@ const RowsSkeleton = ({ rows = 4 }: { rows?: number }) => (
     </div>
 );
 
-async function Symbols({ symbols, lang }: { symbols: string[]; lang: Lang }) {
-    return <WatchlistTable initialRows={await getWatchlistData(symbols)} lang={lang} />;
+async function Symbols({ items, lang }: { items: WatchlistItemRecord[]; lang: Lang }) {
+    const symbols = items.map((item) => item.symbol);
+    return <WatchlistTable initialRows={await getWatchlistData(symbols)} items={items} lang={lang} />;
 }
 
 async function News({ symbols, lang }: { symbols: string[]; lang: Lang }) {
@@ -58,7 +59,7 @@ export default async function WatchlistPage() {
                 <div className="flex min-w-0 flex-col gap-3">
                     <Panel title={tx(lang, 'wl.symbols')} sub={tx(lang, 'wl.symbolsSub')}>
                         <Suspense fallback={<RowsSkeleton rows={Math.max(1, Math.min(symbols.length, 6))} />}>
-                            <Symbols symbols={symbols} lang={lang} />
+                            <Symbols items={items as WatchlistItemRecord[]} lang={lang} />
                         </Suspense>
                     </Panel>
                     <Panel title={tx(lang, 'wl.news')} sub={symbols.length ? tx(lang, 'wl.newsSub') : tx(lang, 'wl.newsGeneral')}>

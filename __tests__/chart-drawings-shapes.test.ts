@@ -324,7 +324,9 @@ describe('the seven basic line tools', () => {
         // A horizontal ray and a vertical line are fixed by where the pointer was.
         expect(pointsNeeded('hray')).toBe(1);
         expect(pointsNeeded('vline')).toBe(1);
-        for (const tool of ['ray', 'extended', 'cross', 'trendangle', 'info'] as const) {
+        // A cross is complete at one point: the renderer draws both arms from it.
+        expect(pointsNeeded('cross')).toBe(1);
+        for (const tool of ['ray', 'extended', 'trendangle', 'info'] as const) {
             expect(pointsNeeded(tool), tool).toBe(2);
         }
     });
