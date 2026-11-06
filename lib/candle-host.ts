@@ -36,6 +36,7 @@ import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-read
 import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
 import type { Series } from '@/lib/indicators';
 import type { CandleSet } from '@/lib/yahoo-candles';
+import type { ChartPalette } from '@/lib/chart-palette';
 
 export type CandleHost = {
     chart: IChartApi;
@@ -74,6 +75,8 @@ export type CandleHost = {
     setVolumeVisible: (on: boolean) => void;
     /** The page's theme changed: re-read every token and repaint what depends on them. */
     setTheme: () => void;
+    /** Paints the chart with this palette, or follows the app theme again when null. */
+    setPalette: (palette: ChartPalette | null) => void;
     setTimeVisible: (visible: boolean) => void;
     /** The chart as an image, for the export button; null before the library is ready. */
     screenshot: () => HTMLCanvasElement | null;
@@ -119,6 +122,8 @@ export type CandleHostOptions = {
     pnfReversal?: number;
     /** Whether the volume histogram opens visible. */
     volumeVisible?: boolean;
+    /** The colours to open with; null (or absent) follows the app theme. */
+    palette?: ChartPalette | null;
     /**
      * Called with the price series now on screen — once at creation and again whenever the chart
      * type replaces it, so the page can re-attach markers to the series that exists.
@@ -182,19 +187,52 @@ const overlay = (
 };
 
 export function createCandleHost(container: HTMLElement, options: CandleHostOptions = {}): CandleHost {
-    // Re-resolved on a theme change: the tokens are CSS variables, and the canvas cannot read them,
-    // so every colour the chart paints with is rasterised from the live token at the moment it is used.
-    let up = token('--up', '#4ade80');
-    let down = token('--down', '#f87171');
-    let grid = token('--line', '#1c2320');
-    let upFill = token('--up', '#4ade80', 0.4);
-    let downFill = token('--down', '#f87171', 0.4);
+    // Re-resolved on a theme change or a palette change: the tokens are CSS variables, and the
+    // canvas cannot read them, so every colour the chart paints with is rasterised from the live
+    // token at the moment it is used. A palette, when one is set, wins over the tokens outright.
+    let palette: ChartPalette | null = options.palette ?? null;
+    let up = '#4ade80';
+    let down = '#f87171';
+    let grid = '#1c2320';
+    let upFill = 'rgba(74, 222, 128, 0.4)';
+    let downFill = 'rgba(248, 113, 113, 0.4)';
+    let brand = '#34d399';
+    let brandFill = 'rgba(52, 211, 153, 0.24)';
+    let text = '#7d8a84';
+    let background = 'transparent';
+
+    const resolveColors = () => {
+        if (palette) {
+            up = palette.up;
+            down = palette.down;
+            grid = palette.grid;
+            text = palette.text;
+            background = palette.background;
+            upFill = toRgba(palette.up, palette.up, 0.4);
+            downFill = toRgba(palette.down, palette.down, 0.4);
+            // A line or an area has one colour, not two: it takes the rising colour so the chart
+            // still reads as the same instrument in every type.
+            brand = palette.up;
+            brandFill = toRgba(palette.up, palette.up, 0.24);
+            return;
+        }
+        up = token('--up', '#4ade80');
+        down = token('--down', '#f87171');
+        grid = token('--line', '#1c2320');
+        text = token('--faint', '#7d8a84');
+        background = 'transparent';
+        upFill = token('--up', '#4ade80', 0.4);
+        downFill = token('--down', '#f87171', 0.4);
+        brand = token('--brand', '#34d399');
+        brandFill = token('--brand', '#34d399', 0.24);
+    };
+    resolveColors();
 
     const chartOptions: DeepPartial<TimeChartOptions> = {
         autoSize: true,
         layout: {
-            background: { color: 'transparent' },
-            textColor: token('--faint', '#7d8a84'),
+            background: { color: background },
+            textColor: text,
             attributionLogo: false,
             fontFamily: 'inherit',
         },
@@ -214,8 +252,6 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
     const chart = createChart(container, chartOptions);
 
-    let brand = token('--brand', '#34d399');
-    let brandFill = token('--brand', '#34d399', 0.24);
     let chartType: ChartType = options.chartType ?? 'candles';
 
     const PRICE_SCALE_MODE: Record<ScaleMode, PriceScaleMode> = {
@@ -553,6 +589,23 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         });
     };
 
+    // Every colour the chart paints with has just been re-resolved: push the ones the chart owns
+    // (the tile, the grid, the axis text) and rebuild the price series, which carries its own.
+    const repaint = () => {
+        chart.applyOptions({
+            layout: { textColor: text, background: { color: background } },
+            grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+            rightPriceScale: { borderColor: grid },
+            timeScale: { borderColor: grid },
+        });
+        chart.removeSeries(price);
+        price = createPriceSeries();
+        applyCandles();
+        buildStudies();
+        emitReadout();
+        options.onPriceSeries?.(price);
+    };
+
     const host: CandleHost = {
         chart,
         get price() {
@@ -622,26 +675,14 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         },
         setTheme: () => {
             colorCache.clear();
-            up = token('--up', '#4ade80');
-            down = token('--down', '#f87171');
-            grid = token('--line', '#1c2320');
-            upFill = token('--up', '#4ade80', 0.4);
-            downFill = token('--down', '#f87171', 0.4);
-            brand = token('--brand', '#34d399');
-            brandFill = token('--brand', '#34d399', 0.24);
-            chart.applyOptions({
-                layout: { textColor: token('--faint', '#7d8a84') },
-                grid: { vertLines: { color: grid }, horzLines: { color: grid } },
-                rightPriceScale: { borderColor: grid },
-                timeScale: { borderColor: grid },
-            });
-            // The price series carries its own colours, so it is rebuilt rather than patched.
-            chart.removeSeries(price);
-            price = createPriceSeries();
-            applyCandles();
-            buildStudies();
-            emitReadout();
-            options.onPriceSeries?.(price);
+            resolveColors();
+            repaint();
+        },
+        setPalette: (next) => {
+            palette = next;
+            colorCache.clear();
+            resolveColors();
+            repaint();
         },
         setVolumeVisible: (on) => {
             volumeVisible = on;

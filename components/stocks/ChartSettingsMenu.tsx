@@ -1,16 +1,26 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Settings2, X } from 'lucide-react';
+import { RotateCcw, Settings2, X } from 'lucide-react';
 import { tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { TIME_ZONES, type TimeZoneId } from '@/lib/chart-time';
 import { SCALE_MODES, SCALE_MODE_KEYS, type ScaleMode } from '@/lib/chart-view';
+import {
+    CHART_PALETTE_IDS,
+    CHART_PALETTE_KEYS,
+    DEFAULT_PALETTE_STATE,
+    PALETTE_FIELDS,
+    PALETTE_FIELD_KEYS,
+    type ChartPalette,
+    type ChartPaletteState,
+} from '@/lib/chart-palette';
 
 /**
- * The four settings a trader changes once and then forgets — the clock, the price axis, an inverted
- * axis, session gaps. They used to hold four permanent slots on the toolbar, which made the bar read
- * as a list of everything the chart can do. Behind one gear they cost nothing until asked for.
+ * The settings a trader changes once and then forgets — the clock, the price axis, an inverted axis,
+ * session gaps — and the chart's own colours. They used to hold permanent slots on the toolbar,
+ * which made the bar read as a list of everything the chart can do. Behind one gear they cost
+ * nothing until asked for.
  *
  * The panel only reports; the chart owns the state, so nothing here can drift out of step with it.
  */
@@ -20,10 +30,13 @@ export default function ChartSettingsMenu({
     scaleMode,
     invert,
     sessionBreaks,
+    paletteState,
+    palette,
     onTimeZone,
     onScaleMode,
     onInvert,
     onSessionBreaks,
+    onPalette,
     className,
 }: {
     lang: Lang;
@@ -31,10 +44,15 @@ export default function ChartSettingsMenu({
     scaleMode: ScaleMode;
     invert: boolean;
     sessionBreaks: boolean;
+    /** The preset the trader picked, plus any colour they overrode by hand. */
+    paletteState: ChartPaletteState;
+    /** The five colours actually on screen — the theme's own when no preset is set. */
+    palette: ChartPalette;
     onTimeZone: (zone: TimeZoneId) => void;
     onScaleMode: (mode: ScaleMode) => void;
     onInvert: (value: boolean) => void;
     onSessionBreaks: (value: boolean) => void;
+    onPalette: (state: ChartPaletteState) => void;
     className?: string;
 }) {
     const [open, setOpen] = useState(false);
@@ -54,6 +72,16 @@ export default function ChartSettingsMenu({
     }, [open]);
 
     const label = tx(lang, 'chart.settings');
+
+    // Editing a colour while on "follow theme" pins the five colours on screen and switches to
+    // custom, so the change is visible instead of being swallowed by the theme.
+    const setField = (field: keyof ChartPalette, value: string) => {
+        if (paletteState.id === 'theme') {
+            onPalette({ id: 'custom', custom: { ...palette, [field]: value } });
+            return;
+        }
+        onPalette({ id: paletteState.id, custom: { ...paletteState.custom, [field]: value } });
+    };
 
     return (
         <div className={cn('relative', className)}>
@@ -76,7 +104,7 @@ export default function ChartSettingsMenu({
                     <div
                         role="dialog"
                         aria-label={label}
-                        className="chart-settings absolute end-0 z-30 mt-1 flex w-[19rem] flex-col gap-3 rounded-[12px] bg-card p-3 text-start shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]"
+                        className="chart-settings absolute end-0 z-30 mt-1 flex max-h-[min(70vh,34rem)] w-[19rem] flex-col gap-3 overflow-y-auto overscroll-contain rounded-[12px] bg-card p-3 text-start shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]"
                     >
                         <div className="flex items-center justify-between">
                             <span className="text-[12px] font-semibold text-foreground">{label}</span>
@@ -144,6 +172,56 @@ export default function ChartSettingsMenu({
                                 className="chart-switch"
                             />
                         </label>
+
+                        <div className="h-px bg-line" aria-hidden />
+
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-medium text-faint">{tx(lang, 'chart.palette.title')}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => onPalette(DEFAULT_PALETTE_STATE)}
+                                    className="flex items-center gap-1 text-[10.5px] text-faint transition-colors hover:text-foreground"
+                                    aria-label={tx(lang, 'chart.palette.reset')}
+                                    title={tx(lang, 'chart.palette.reset')}
+                                >
+                                    <RotateCcw className="size-3" />
+                                    {tx(lang, 'chart.palette.reset')}
+                                </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1" role="group" aria-label={tx(lang, 'chart.palette.title')}>
+                                {CHART_PALETTE_IDS.map((id) => (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        onClick={() => onPalette({ id, custom: {} })}
+                                        aria-pressed={paletteState.id === id}
+                                        className={cn('chart-tf-pill', paletteState.id === id && 'is-up')}
+                                    >
+                                        {tx(lang, CHART_PALETTE_KEYS[id])}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                                {PALETTE_FIELDS.map((field) => (
+                                    <label key={field} className="flex items-center justify-between gap-2">
+                                        <span className="text-[12px] text-foreground">{tx(lang, PALETTE_FIELD_KEYS[field])}</span>
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="mono text-[10.5px] uppercase text-faint" dir="ltr">{palette[field]}</span>
+                                            <input
+                                                type="color"
+                                                value={palette[field]}
+                                                onChange={(event) => setField(field, event.target.value)}
+                                                aria-label={`${tx(lang, PALETTE_FIELD_KEYS[field])} — ${tx(lang, 'chart.palette.pick')}`}
+                                                className="size-6 cursor-pointer rounded-[6px] border border-line bg-transparent p-0"
+                                            />
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </>
             )}

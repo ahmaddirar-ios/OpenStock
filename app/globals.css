@@ -1408,6 +1408,9 @@
         overflow-x: auto;
         overscroll-behavior-x: contain;
         scrollbar-width: none;
+        /* The belt runs right up to the label and the panel's edge: a soft edge on both sides stops
+           a headline from being cut mid-word against them. */
+        mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
     }
     .news-strip-viewport::-webkit-scrollbar { display: none; }
     .news-strip-viewport.is-rolling { overflow: hidden; }
@@ -1796,8 +1799,31 @@ html[lang="ar"] [lang="en"] {
     /* The keyboard sheet is a convenience, not a control: the palette and the help menu still
        reach it, so the bar spends the pixel on the chart instead. */
     .chart-toolbar-main .chart-toolbar-optional { display: none; }
-    /* The watch column gives the chart its 40px back before the toolbar has to wrap. */
+}
+
+/* The watch column gives the chart its 40px back before the toolbar has to wrap. Scoped to the
+   two-column range: below 1024px the grid stacks, and an unscoped rule here would win over the
+   stacking rule that comes earlier in the sheet and squeeze the chart to a sliver. */
+@media (min-width: 1024px) and (max-width: 1400px) {
     .overview-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
+}
+
+/* A phone has no room for a 22rem dropdown hanging off a 66px button: the palette and the settings
+   sheet pin to the bottom of the screen, where the thumb already is, and span the width instead of
+   growing leftwards off the edge. */
+@media (max-width: 1023px) {
+    .tool-palette,
+    .chart-settings {
+        position: fixed;
+        inset-inline: 12px;
+        bottom: 12px;
+        top: auto;
+        width: auto;
+        max-width: none;
+        margin: 0;
+    }
+    .tool-palette { max-height: min(62vh, 26rem); }
+    .chart-settings { max-height: min(72vh, 34rem); }
 }
 
 /* The intervals are one choice, so they sit in one recessed track with the chosen segment raised —

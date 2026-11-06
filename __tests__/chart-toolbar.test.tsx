@@ -50,10 +50,13 @@ describe('the settings gear', () => {
             scaleMode="linear"
             invert={false}
             sessionBreaks={false}
+            paletteState={{ id: 'theme', custom: {} }}
+            palette={{ up: '#4ade80', down: '#f87171', background: '#16181c', grid: '#1c2320', text: '#7d8a84' }}
             onTimeZone={() => {}}
             onScaleMode={() => {}}
             onInvert={() => {}}
             onSessionBreaks={() => {}}
+            onPalette={() => {}}
             {...over}
         />
     );

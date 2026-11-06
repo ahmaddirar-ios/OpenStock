@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
     LineSeries,
@@ -138,6 +138,17 @@ import ChartPeriods from '@/components/stocks/ChartPeriods';
 import { formatPrice, signedPercent } from '@/lib/market-ribbon';
 import { riyadhNow, sessionChange, tadawulPhase, type TadawulPhase } from '@/lib/chart-quote';
 import ChartSettingsMenu from '@/components/stocks/ChartSettingsMenu';
+import {
+    DEFAULT_PALETTE_STATE,
+    FALLBACK_THEME_PALETTE,
+    paletteVars,
+    readPaletteState,
+    resolvePalette,
+    themePalette,
+    writePaletteState,
+    type ChartPalette,
+    type ChartPaletteState,
+} from '@/lib/chart-palette';
 import CreateAlertModal from '@/components/watchlist/CreateAlertModal';
 import {
     CHART_TYPES,
@@ -247,6 +258,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [invertScale, setInvertScale] = useState(false);
     const invertScaleRef = useRef(false);
     invertScaleRef.current = invertScale;
+    // The chart's own colours: a preset plus any hand-picked override, remembered per browser.
+    const [paletteState, setPaletteState] = useState<ChartPaletteState>(DEFAULT_PALETTE_STATE);
+    const paletteStateRef = useRef<ChartPaletteState>(DEFAULT_PALETTE_STATE);
+    paletteStateRef.current = paletteState;
+    // The theme's five colours, read from the live tokens so the pickers can show and edit them.
+    const [themeColors, setThemeColors] = useState<ChartPalette>(FALLBACK_THEME_PALETTE);
+    // The palette the chart is painting with, and the five colours the pickers show: the preset's
+    // own when one is set, the theme's when it is not.
+    const resolvedPalette = useMemo(() => resolvePalette(paletteState), [paletteState]);
+    const effectivePalette = resolvedPalette ?? themeColors;
     const [renkoBox, setRenkoBox] = useState<number | undefined>(undefined);
     const renkoBoxRef = useRef<number | undefined>(undefined);
     renkoBoxRef.current = renkoBox;
@@ -270,6 +291,18 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         setRenkoBox(readRenkoBox(window.localStorage));
         setKagiReversal(readKagiReversal(window.localStorage));
         setLineBreakCount(readLineBreakCount(window.localStorage));
+        setPaletteState(readPaletteState());
+    }, []);
+    useEffect(() => {
+        writePaletteState(paletteState);
+    }, [paletteState]);
+    // The theme's tokens are CSS variables, so they are read from the live document — and re-read
+    // when the shell flips the theme, so the pickers never show a colour the chart is not using.
+    useEffect(() => {
+        const sync = () => setThemeColors(themePalette());
+        sync();
+        window.addEventListener('rovex:theme', sync);
+        return () => window.removeEventListener('rovex:theme', sync);
     }, []);
     useEffect(() => {
         writeChartType(window.localStorage, chartType);
@@ -908,6 +941,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             sessionBreaks: sessionBreaksRef.current,
             volumeVisible: volumeVisibleRef.current,
             invertScale: invertScaleRef.current,
+            palette: resolvePalette(paletteStateRef.current),
             renkoBox: renkoBoxRef.current,
             kagiReversal: kagiReversalRef.current,
             lineBreakCount: lineBreakCountRef.current,
@@ -990,6 +1024,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     useEffect(() => {
         candleHostRef.current?.setVolumeVisible(volumeVisible);
     }, [volumeVisible]);
+    // A palette change repaints the candles, the tile and the grid without rebuilding the chart.
+    useEffect(() => {
+        candleHostRef.current?.setPalette(resolvePalette(paletteState));
+    }, [paletteState]);
     // The theme toggle lives in the shell; the chart repaints itself when it flips.
     useEffect(() => {
         const onTheme = () => candleHostRef.current?.setTheme();
@@ -1393,6 +1431,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         out.height = shot.height;
         const ctx = out.getContext('2d');
         if (!ctx) return;
+        // A palette paints the tile, so the PNG gets the same tile instead of a transparent hole.
+        if (resolvedPalette) {
+            ctx.fillStyle = resolvedPalette.background;
+            ctx.fillRect(0, 0, out.width, out.height);
+        }
         ctx.drawImage(shot, 0, 0);
 
         // The drawings are an SVG layer over the canvas, so it is serialised and painted on top.
@@ -1425,7 +1468,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         link.download = `openstock-${symbol.replace(/[^A-Za-z0-9]/g, '')}-${intervalId}.png`;
         link.href = out.toDataURL('image/png');
         link.click();
-    }, [symbol, intervalId]);
+    }, [symbol, intervalId, resolvedPalette]);
 
     const addCompare = () => {
         const candidate = compareYahooSymbol(compareInput);
@@ -1686,6 +1729,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     // anchored VWAP and volume profile count them.
     const drawingCandles = useMemo(() => data?.candles ?? [], [data]);
 
+
+
     const body = (
         // dir=ltr on the plotting area too: the labels drawn on the canvas overlay are SVG text
         // (Fibonacci ratios, notes), and in an RTL page "0.786" would otherwise reorder to "786.0".
@@ -1837,7 +1882,14 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     );
 
     return (
-        <div className={cn('flex flex-col gap-2', fill && 'h-full min-h-0')}>
+        <div
+            className={cn('flex flex-col gap-2', fill && 'h-full min-h-0')}
+            // A palette makes the chart its own surface: the tile, the toolbar and the quote header
+            // all read on the same background instead of the page's.
+            style={resolvedPalette
+                ? ({ background: resolvedPalette.background, ...paletteVars(resolvedPalette) } as CSSProperties)
+                : undefined}
+        >
             {/* The quote header, overview only: what the pane is showing, in the order a trader asks
                 it — instrument, last, change, is the market open, is this data late. */}
             {fill && (
@@ -2110,10 +2162,13 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     scaleMode={scaleMode}
                     invert={invertScale}
                     sessionBreaks={sessionBreaks}
+                    paletteState={paletteState}
+                    palette={effectivePalette}
                     onTimeZone={setTimeZone}
                     onScaleMode={setScaleMode}
                     onInvert={setInvertScale}
                     onSessionBreaks={setSessionBreaks}
+                    onPalette={setPaletteState}
                 />
                 <span className="tool-divider" aria-hidden />
                 <button
@@ -2240,6 +2295,28 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         dir="auto"
                     />
                 )}
+                {/* The stroke palette: the eight colours the drawings ship with, one click each. */}
+                <div role="group" aria-label={t('chart.tool.color')} className="flex items-center gap-0.5">
+                    {COLOR_KEYS.map((key) => {
+                        const active = selectedDrawing ? drawingColor(selectedDrawing) === DRAWING_COLORS[key].toLowerCase() : false;
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => restyleDrawing({ color: key, customColor: undefined })}
+                                disabled={!selectedId}
+                                aria-pressed={active}
+                                aria-label={`${t('chart.tool.color')} ${key}`}
+                                title={`${t('chart.tool.color')} ${key}`}
+                                className={cn(
+                                    'size-4 rounded-[4px] border border-white/25 transition-transform hover:scale-110 disabled:opacity-40',
+                                    active && 'ring-2 ring-brand',
+                                )}
+                                style={{ background: DRAWING_COLORS[key] }}
+                            />
+                        );
+                    })}
+                </div>
                 {/* Any colour, not just the palette: a chart palette (black, grey, a broker's teal). */}
                 <label
                     className={cn('relative size-6 cursor-pointer rounded-[6px] border border-white/25', !selectedId && 'opacity-50')}

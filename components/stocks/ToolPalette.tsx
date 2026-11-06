@@ -70,7 +70,7 @@ export default function ToolPalette({
                 // Physically right-anchored, in both directions: the button sits right of centre in
                 // either layout, so the panel has to grow leftwards. A logical `end-0` flips with the
                 // page direction and pushed the panel off-screen in Arabic.
-                'absolute right-0 z-30 mt-1 flex max-h-[26rem] w-[22rem] max-w-[calc(100vw-1.5rem)] flex-col rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]',
+                'tool-palette absolute right-0 z-30 mt-1 flex max-h-[26rem] w-[22rem] max-w-[calc(100vw-1.5rem)] flex-col rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]',
                 className,
             )}
         >
