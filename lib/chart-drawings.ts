@@ -40,10 +40,12 @@ export type ShapeKind =
     | 'ellipse'
     | 'circle'
     | 'tri'
+    | 'rotrect'
     | 'polyline'
     | 'arc'
     | 'curve'
     | 'dcurve'
+    | 'fibspiral'
     | 'brush'
     | 'highlighter'
     | 'callout'
@@ -85,7 +87,9 @@ export type ShapeTool =
     // the Fibonacci family
     | 'fibext' | 'fibtrendext' | 'fibfan' | 'fibchannel' | 'fibtime' | 'fibarc' | 'fibspeed'
     // geometric shapes (a polyline is open-ended: it takes clicks until it is finished)
-    | 'ellipse' | 'circle' | 'tri' | 'polyline' | 'arc' | 'curve' | 'dcurve'
+    | 'ellipse' | 'circle' | 'tri' | 'rotrect' | 'polyline' | 'arc' | 'curve' | 'dcurve'
+    // Fibonacci spiral: a logarithmic curve through the golden ratio from a centre
+    | 'fibspiral'
     // freehand strokes (drawn by dragging, not by clicking)
     | 'brush' | 'highlighter'
     // annotations: a label the trader writes, or the price at the point they marked
@@ -182,6 +186,7 @@ const TOOL_FILL_DEFAULT: Partial<Record<ShapeTool, number>> = {
     ellipse: 10,
     circle: 10,
     tri: 10,
+    rotrect: 10,
 };
 
 /**
@@ -317,12 +322,17 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'fibtime', group: 'fib', kind: 'fibtime', clicks: 2, defaultColor: 'cyan' },
     { tool: 'fibarc', group: 'fib', kind: 'fibarc', clicks: 3, defaultColor: 'gold' },
     { tool: 'fibspeed', group: 'fib', kind: 'fibspeed', clicks: 2, defaultColor: 'violet' },
+    // The spiral: a centre, then a point that sets the first radius and the starting angle.
+    { tool: 'fibspiral', group: 'fib', kind: 'fibspiral', clicks: 2, defaultColor: 'gold' },
 
     // Geometric shapes. A polyline is open-ended (`clicks: 0`): it keeps taking points until the
     // trader double-clicks to finish it.
     { tool: 'ellipse', group: 'shapes', kind: 'ellipse', clicks: 2, defaultColor: 'cyan' },
     { tool: 'circle', group: 'shapes', kind: 'circle', clicks: 2, defaultColor: 'cyan' },
     { tool: 'tri', group: 'shapes', kind: 'tri', clicks: 3, defaultColor: 'cyan' },
+    // A box that can be turned: two corners set the width, the third lifts the height off the base
+    // line, so the rectangle is free to sit at any angle.
+    { tool: 'rotrect', group: 'shapes', kind: 'rotrect', clicks: 3, defaultColor: 'cyan' },
     { tool: 'polyline', group: 'shapes', kind: 'polyline', clicks: 0, defaultColor: 'cyan' },
     { tool: 'arc', group: 'shapes', kind: 'arc', clicks: 3, defaultColor: 'cyan' },
     { tool: 'curve', group: 'shapes', kind: 'curve', clicks: 3, defaultColor: 'cyan' },
@@ -987,6 +997,48 @@ export function circleFrom(centre: ScreenPoint, edge: ScreenPoint): { cx: number
     return { cx: centre.x, cy: centre.y, r: distance(centre, edge) };
 }
 
+/**
+ * A rectangle that can sit at any angle: the first two points are one edge (its direction is the
+ * rectangle's), and the third lifts the height off that edge's line. The corner order is
+ * clockwise from the first point, so the shape can be filled and hit-tested like an upright box.
+ */
+export function rotatedRectCorners(a: ScreenPoint, b: ScreenPoint, c: ScreenPoint): ScreenPoint[] {
+    const len = distance(a, b);
+    if (len < 1e-6) return [a, b, c];
+    // The unit normal to the base edge; the third point's projection on it is the height.
+    const nx = -(b.y - a.y) / len;
+    const ny = (b.x - a.x) / len;
+    const height = (c.x - a.x) * nx + (c.y - a.y) * ny;
+    const dx = nx * height;
+    const dy = ny * height;
+    return [a, b, { x: b.x + dx, y: b.y + dy }, { x: a.x + dx, y: a.y + dy }];
+}
+
+/** How many quarter-turns the Fibonacci spiral runs for by default. */
+export const FIB_SPIRAL_TURNS = 8;
+
+/**
+ * A logarithmic spiral through the golden ratio: r grows by φ every quarter turn, so the curve
+ * expands the way the ratio does. Returned as screen points, because the spiral is drawn in screen
+ * space — the price and time axes have different scales, and a spiral that stretched with them would
+ * not read as one.
+ */
+export function fibSpiralPoints(centre: ScreenPoint, edge: ScreenPoint, turns = FIB_SPIRAL_TURNS, stepsPerTurn = 12): ScreenPoint[] {
+    const r0 = distance(centre, edge);
+    if (r0 < 1e-6 || turns <= 0) return [];
+    const start = Math.atan2(edge.y - centre.y, edge.x - centre.x);
+    const phi = (1 + Math.sqrt(5)) / 2;
+    const points: ScreenPoint[] = [];
+    const steps = Math.round(turns * stepsPerTurn);
+    for (let i = 0; i <= steps; i += 1) {
+        const t = i / stepsPerTurn; // quarter-turns from the start
+        const r = r0 * Math.pow(phi, t);
+        const angle = start + t * (Math.PI / 2);
+        points.push({ x: centre.x + Math.cos(angle) * r, y: centre.y + Math.sin(angle) * r });
+    }
+    return points;
+}
+
 /** The `points` attribute of a closed polygon. */
 export const polygonPoints = (points: ScreenPoint[]): string => points.map((point) => `${point.x},${point.y}`).join(' ');
 
@@ -1254,6 +1306,19 @@ export function hitTest(
             if (points.length >= 2 && distanceToSegment(cursor, points[0], points[1]) <= tolerance) return drawing;
             continue;
         }
+        if (kind === 'rotrect') {
+            if (points.length < 3) continue;
+            const corners = rotatedRectCorners(points[0], points[1], points[2]);
+            for (let c = 0; c < corners.length; c += 1) {
+                if (distanceToSegment(cursor, corners[c], corners[(c + 1) % corners.length]) <= tolerance) return drawing;
+            }
+            continue;
+        }
+        if (kind === 'fibspiral') {
+            // The curve itself is dense; the two anchors are what a trader grabs.
+            if (points.some((point) => isNearPoint(cursor, point, tolerance))) return drawing;
+            continue;
+        }
 
         // Boxes are grabbed by their four sides, not by their surface, so the pointer stays free for
         // panning inside them. A volume profile and a bars pattern are boxes too.
@@ -1399,6 +1464,16 @@ function drawingSegments(kind: ShapeKind, points: ScreenPoint[]): Seg[] {
                 const x = a.x + (b.x - a.x) * multiple;
                 add({ x, y: top }, { x, y: bottom });
             }
+            return segs;
+        }
+        case 'rotrect': {
+            if (!a || !b || !c) return segs;
+            chain(rotatedRectCorners(a, b, c), true);
+            return segs;
+        }
+        case 'fibspiral': {
+            if (!a || !b) return segs;
+            chain(fibSpiralPoints(a, b));
             return segs;
         }
         case 'fibarc':

@@ -85,6 +85,7 @@ describe('drawing rail groups', () => {
             'fibtime',
             'fibarc',
             'fibspeed',
+            'fibspiral',
         ]);
     });
 
@@ -93,6 +94,7 @@ describe('drawing rail groups', () => {
             'ellipse',
             'circle',
             'tri',
+            'rotrect',
             'polyline',
             'arc',
             'curve',

@@ -14,10 +14,12 @@ import {
     doubleCurvePath,
     ellipseFrom,
     extendedEnds,
+    FIB_SPIRAL_TURNS,
     fibArcRadii,
     fibChannelLevels,
     fibExtension,
     fibFanEnds,
+    fibSpiralPoints,
     fibTimeMultiples,
     flattenLines,
     gannBoxGuides,
@@ -39,6 +41,7 @@ import {
     rangeReadout,
     rayEnd,
     regressionChannel,
+    rotatedRectCorners,
     serializeDrawings,
     speedFanEnds,
     TEXT_MAX,
@@ -288,6 +291,54 @@ describe('the geometric shapes', () => {
         expect(long?.cy).toBeCloseTo(200 / 3, 6);
         expect(long?.r).toBeCloseTo(250 / 3, 6);
         expect(long?.path).toMatch(/^M0,0 A 83\.33\d* 83\.33\d* 0 1 0 100,0$/);
+    });
+});
+
+describe('the rotated rectangle and the Fibonacci spiral', () => {
+    it('lifts the height off the base edge, squarely', () => {
+        // A level base: the third point's height is straight up, so the corners form an upright box.
+        const level = rotatedRectCorners({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: -40 });
+        expect(level).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -40 }, { x: 0, y: -40 }]);
+    });
+
+    it('turns the box with its base, keeping the corners square', () => {
+        // A base along the diagonal (0,0)->(100,100); the normal points up-right, height 50*sqrt2.
+        const corners = rotatedRectCorners({ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 0, y: -Math.SQRT2 * 50 });
+        // First two corners are the base, unchanged.
+        expect(corners[0]).toEqual({ x: 0, y: 0 });
+        expect(corners[1]).toEqual({ x: 100, y: 100 });
+        // Every corner is at right angles: the side vectors dot to zero.
+        const side = { x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y };
+        const rise = { x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y };
+        expect(side.x * rise.x + side.y * rise.y).toBeCloseTo(0, 6);
+        // Opposite sides are equal length.
+        expect(Math.hypot(rise.x, rise.y)).toBeCloseTo(Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y), 6);
+    });
+
+    it('degrades safely when the two base points are the same', () => {
+        const point = { x: 10, y: 10 };
+        expect(rotatedRectCorners(point, { ...point }, { x: 20, y: 20 })).toEqual([point, { ...point }, { x: 20, y: 20 }]);
+    });
+
+    it('grows by the golden ratio every quarter turn', () => {
+        const centre = { x: 0, y: 0 };
+        const points = fibSpiralPoints(centre, { x: 10, y: 0 });
+        // twelve steps to the turn, so one quarter-turn is twelve points along.
+        const quarter = 12;
+        const r = (p: { x: number; y: number }) => Math.hypot(p.x, p.y);
+        const phi = (1 + Math.sqrt(5)) / 2;
+        expect(r(points[quarter]) / r(points[0])).toBeCloseTo(phi, 6);
+        expect(r(points[quarter * 2]) / r(points[quarter])).toBeCloseTo(phi, 6);
+        // First point sits on the edge, at angle 0.
+        expect(points[0].x).toBeCloseTo(10, 6);
+        expect(points[0].y).toBeCloseTo(0, 6);
+        // The default run is eight turns of twelve steps, plus the closing point.
+        expect(points).toHaveLength(FIB_SPIRAL_TURNS * 12 + 1);
+    });
+
+    it('has nothing to draw from a point centre or no turns', () => {
+        expect(fibSpiralPoints({ x: 0, y: 0 }, { x: 0, y: 0 })).toEqual([]);
+        expect(fibSpiralPoints({ x: 0, y: 0 }, { x: 10, y: 0 }, 0)).toEqual([]);
     });
 });
 

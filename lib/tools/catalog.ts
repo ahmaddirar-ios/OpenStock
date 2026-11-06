@@ -1,4 +1,4 @@
-// One catalog for every tool the chart offers: the 74 drawings, the 27 studies, the 11 chart types
+// One catalog for every tool the chart offers: the 76 drawings, the 27 studies, the 11 chart types
 // and the 15 formula functions. It exists so that four things can never disagree about a tool again
 // — the rail, the menus, the search palette, and the guide that will be written from it.
 //
