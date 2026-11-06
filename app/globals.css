@@ -2044,13 +2044,20 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Drawing rail — the vertical tool strip docked inside the plotting area.
-   The chart body is `dir="ltr"` on purpose, so `inset-inline-start` docks left in
-   every language (TradingView does the same) and never lands on the price scale.
+   The chart body is `dir="ltr"` on purpose, so the rail docks left in every
+   language (TradingView does the same) and never lands on the price scale.
+
+   Physical `left`, not `inset-inline-start`: the production build lowers logical
+   properties to `:lang(ar) { right: … }`, which follows the *document* language
+   and ignores the `dir="ltr"` on the chart body — the rail then sat on the price
+   axis on the Arabic site while looking right on a dev build. `left` cannot be
+   re-interpreted by a language selector.
    ───────────────────────────────────────────────────────────────────────────── */
 .draw-rail-root {
     position: absolute;
-    inset-block: 8px;
-    inset-inline-start: 8px;
+    top: 8px;
+    bottom: 8px;
+    left: 8px;
     z-index: 20;
     display: flex;
     align-items: flex-start;
@@ -2097,7 +2104,8 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 .draw-rail-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .draw-rail-flyout {
     position: absolute;
-    inset-inline-start: 44px;
+    /* Physical, for the same reason as the rail: the flyout opens to the right of the strip. */
+    left: 44px;
     z-index: 30;
     min-width: 208px;
     /* A group can hold fifteen tools (Fibonacci): the flyout scrolls instead of running past the
