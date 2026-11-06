@@ -215,16 +215,24 @@ const fill = (price: number, direction: 'buy' | 'sell', costs: Costs): number =>
     return direction === 'buy' ? price * (1 + slip) * (1 + commission) : price * (1 - slip) * (1 - commission);
 };
 
+/** A benchmark series: the closes the strategy is measured against, on its own calendar. */
+export type BenchmarkSeries = readonly { time: number; close: number }[];
+
 /**
  * One position at a time, filled on the next bar's open, marked to market on every close, with the
  * stop checked before the target and before the next open — the pessimistic order, so a bar that
  * touches both is never reported as a winner.
+ *
+ * `benchmark` is optional: without it the line is buy-and-hold of the tested symbol, which is the
+ * honest default. With it, the line is buy-and-hold of another series (an index, a peer), read on
+ * the strategy's own bar times so the two curves share an x-axis.
  */
 export function backtest(
     candles: readonly Candle[],
     id: StrategyId,
     params: Params = {},
     costs: Costs = DEFAULT_COSTS,
+    benchmark?: BenchmarkSeries,
 ): Backtest | null {
     if (candles.length < 2) return null;
     const p = withDefaults(id, params);
@@ -241,7 +249,28 @@ export function backtest(
     const drawdown: DrawdownPoint[] = [];
 
     const start = 100;
-    const benchEntry = fill(candles[0].open, 'buy', costs);
+    // The benchmark's close on or before a bar's time: an index that did not trade that day keeps
+    // its last print, so a holiday never punches a hole in the line.
+    const benchSeries = benchmark && benchmark.length > 0 ? [...benchmark].sort((a, b) => a.time - b.time) : null;
+    const benchCloseAt = (time: number): number | null => {
+        if (!benchSeries) return null;
+        let lo = 0;
+        let hi = benchSeries.length - 1;
+        let best: number | null = null;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (benchSeries[mid].time <= time) {
+                best = benchSeries[mid].close;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return best ?? benchSeries[0].close;
+    };
+    const benchEntry = benchSeries
+        ? fill(benchCloseAt(candles[0].time) ?? benchSeries[0].close, 'buy', costs)
+        : fill(candles[0].open, 'buy', costs);
     const benchExit = 1 - Math.max(0, costs.slippageBps) / 10_000;
     let cash = start;
     let inPosition = false;
@@ -297,10 +326,11 @@ export function backtest(
 
         const value = inPosition ? (entryEquity * candle.close) / entryPrice : cash;
         peak = Math.max(peak, value);
+        const benchClose = benchSeries ? (benchCloseAt(candle.time) ?? candle.close) : candle.close;
         equity.push({
             time: candle.time,
             value,
-            benchmark: (start * candle.close * benchExit) / benchEntry,
+            benchmark: (start * benchClose * benchExit) / benchEntry,
         });
         drawdown.push({ time: candle.time, value: value / peak - 1 });
 

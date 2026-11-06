@@ -176,6 +176,32 @@ describe('backtest', () => {
         const res = backtest(both, 'donchian-breakout', { entry: 2, exit: 2, stopPct: 10, targetPct: 20 }, FREE)!;
         expect(res.trades[0].reason).toBe('stop');
     });
+
+    it('measures against buy-and-hold of the symbol when no benchmark is given', () => {
+        const res = backtest(bars, 'donchian-breakout', { entry: 2, exit: 2, stopPct: 90 }, FREE)!;
+        // The first bar is 10 and the last is 5, so the buy-and-hold line halves.
+        expect(res.equity[0].benchmark).toBeCloseTo(100, 5);
+        expect(res.equity.at(-1)!.benchmark).toBeCloseTo(50, 5);
+    });
+
+    it('follows an external benchmark on the strategy bar times', () => {
+        const bench = bars.map((bar, i) => ({ time: bar.time, close: 100 + i * 10 }));
+        const res = backtest(bars, 'donchian-breakout', { entry: 2, exit: 2, stopPct: 90 }, FREE, bench)!;
+        expect(res.equity[0].benchmark).toBeCloseTo(100, 5);
+        expect(res.equity.at(-1)!.benchmark).toBeCloseTo(170, 5);
+    });
+
+    it('carries the last benchmark print across a day it did not trade', () => {
+        const bench = [
+            { time: bars[0].time, close: 100 },
+            { time: bars[2].time, close: 120 },
+        ];
+        const res = backtest(bars, 'donchian-breakout', { entry: 2, exit: 2, stopPct: 90 }, FREE, bench)!;
+        // Bar 1 has no print of its own, so it keeps bar 0's 100; bar 2 onward reads 120.
+        expect(res.equity[1].benchmark).toBeCloseTo(100, 5);
+        expect(res.equity[2].benchmark).toBeCloseTo(120, 5);
+        expect(res.equity.at(-1)!.benchmark).toBeCloseTo(120, 5);
+    });
 });
 
 const equityOf = (values: number[]) =>
