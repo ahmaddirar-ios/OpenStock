@@ -99,7 +99,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -252,6 +252,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const replayRef = useRef(false);
     const replayPanelRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+    const imageFileRef = useRef<HTMLInputElement>(null);
 
     const [intervalId, setIntervalId] = useState<string>(openingInterval(preferredInterval));
     // The chart type is this browser's, like the interval: read after mount, saved on change. The
@@ -377,6 +378,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     magnetRef.current = magnet;
     const [pendingLabels, setPendingLabels] = useState<string[] | null>(null);
     const [noteText, setNoteText] = useState('');
+    // An uploaded picture is a data payload, not a note: it must not leak into the next text tool.
+    useEffect(() => {
+        if (tool !== 'image' && noteText.startsWith('data:image')) setNoteText('');
+    }, [tool, noteText]);
     // The drawing list is a timeline: every discrete edit is a step, a whole drag is one step.
     const [timeline, setTimeline] = useState<DrawingHistory<Drawing[]>>(() => createHistory<Drawing[]>([]));
     const drawings = timeline.present;
@@ -2466,14 +2471,70 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     </CreateAlertModal>
                 )}
                 {tool != null && tool !== 'select' && tool !== 'measure' && carriesText(tool) && (
-                    <input
-                        value={noteText}
-                        onChange={(event) => setNoteText(event.target.value)}
-                        placeholder={t(tool === 'image' ? 'chart.imagePlaceholder' : 'chart.notePlaceholder')}
-                        maxLength={tool === 'image' ? 300 : 80}
-                        className="h-7 w-40 rounded-full bg-page px-3 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
-                        dir="auto"
-                    />
+                    <div className="flex items-center gap-1">
+                        {tool === 'image' && noteText.startsWith('data:image') ? (
+                            <span className="flex h-7 items-center gap-1.5 rounded-full bg-page px-2 text-[11px] shadow-[inset_0_0_0_1px_var(--line)]">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={noteText} alt="" className="size-5 rounded-[4px] object-cover" />
+                                <button
+                                    type="button"
+                                    onClick={() => setNoteText('')}
+                                    aria-label={t('chart.imageRemove')}
+                                    title={t('chart.imageRemove')}
+                                    className="text-faint hover:text-foreground"
+                                >
+                                    <X className="size-3" />
+                                </button>
+                            </span>
+                        ) : (
+                            <input
+                                value={noteText}
+                                onChange={(event) => setNoteText(event.target.value)}
+                                placeholder={t(tool === 'image' ? 'chart.imagePlaceholder' : 'chart.notePlaceholder')}
+                                maxLength={tool === 'image' ? 300 : 80}
+                                className="h-7 w-40 rounded-full bg-page px-3 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
+                                dir="auto"
+                            />
+                        )}
+                        {tool === 'image' && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => imageFileRef.current?.click()}
+                                    className="icon-btn"
+                                    aria-label={t('chart.imageUpload')}
+                                    title={t('chart.imageUpload')}
+                                >
+                                    <Upload className="size-3.5" />
+                                </button>
+                                <input
+                                    ref={imageFileRef}
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp,image/gif"
+                                    className="hidden"
+                                    onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        event.target.value = '';
+                                        if (!file) return;
+                                        if (file.size > 300_000) {
+                                            toast.error(t('chart.imageTooLarge'));
+                                            return;
+                                        }
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                            const result = typeof reader.result === 'string' ? reader.result : '';
+                                            if (!result || result.length > IMAGE_DATA_MAX) {
+                                                toast.error(t('chart.imageTooLarge'));
+                                                return;
+                                            }
+                                            setNoteText(result);
+                                        };
+                                        reader.readAsDataURL(file);
+                                    }}
+                                />
+                            </>
+                        )}
+                    </div>
                 )}
                 {/* The stroke palette: the eight colours the drawings ship with, one click each. */}
                 <div role="group" aria-label={t('chart.tool.color')} className="flex items-center gap-0.5">

@@ -23,6 +23,7 @@ import {
     gannBoxGuides,
     gannFanEnds,
     ICON_GLYPHS,
+    IMAGE_DATA_MAX,
     IMAGE_URL_MAX,
     isImageUrl,
     measureSpan,
@@ -390,6 +391,12 @@ describe('the words a new annotation carries', () => {
         expect(annotationText('trend', 100, 'x')).toBeUndefined();
         expect(annotationText('pricenote', 100, 'x')).toBeUndefined();
     });
+
+    it('keeps an uploaded picture as a data payload', () => {
+        const data = 'data:image/png;base64,iVBORw0KGgo=';
+        expect(annotationText('image', 100, data)).toBe(data);
+        expect(annotationText('image', 100, 'https://example.com/a.png')).toBe('https://example.com/a.png');
+    });
 });
 
 describe('the Gann and pitchfork family', () => {
@@ -543,8 +550,10 @@ describe('the sticker and the pasted image', () => {
     it('only accepts a plain web address for an image', () => {
         expect(isImageUrl('https://example.com/a.png')).toBe(true);
         expect(isImageUrl('http://example.com/a.png')).toBe(true);
-        // A data: payload or a local path is not an address this chart will fetch.
-        expect(isImageUrl('data:image/png;base64,AAAA')).toBe(false);
+        // An uploaded picture is a data payload, and it is allowed; a local path is not.
+        expect(isImageUrl('data:image/png;base64,AAAA')).toBe(true);
+        expect(isImageUrl('data:image/jpeg;base64,/9j/4AAQ')).toBe(true);
+        expect(isImageUrl('data:text/html;base64,AAAA')).toBe(false);
         expect(isImageUrl('/tmp/a.png')).toBe(false);
         expect(isImageUrl('javascript:alert(1)')).toBe(false);
         expect(isImageUrl('https://example.com/a b.png')).toBe(false);
@@ -568,7 +577,9 @@ describe('how much wording a tool may keep', () => {
     });
 
     it('bounds the limit by the tool', () => {
-        expect(textLimit('image')).toBe(IMAGE_URL_MAX);
+        expect(textLimit('image')).toBe(IMAGE_DATA_MAX);
         expect(textLimit('text')).toBe(TEXT_MAX);
+        // A typed address is still short; the data payload is the reason the image cap is large.
+        expect(IMAGE_URL_MAX).toBeLessThan(IMAGE_DATA_MAX);
     });
 });

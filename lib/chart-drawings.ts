@@ -426,7 +426,7 @@ export function annotationText(tool: ShapeTool, price: number, typed?: string | 
     // A sticker starts on the first glyph of the set; an image starts empty until its address is
     // pasted, because a price would not be an address.
     if (tool === 'icon') return cleanText(typed ?? '') ?? ICON_GLYPHS[0];
-    if (tool === 'image') return cleanText(typed ?? '', IMAGE_URL_MAX) ?? undefined;
+    if (tool === 'image') return cleanText(typed ?? '', IMAGE_DATA_MAX) ?? undefined;
     return cleanText(typed ?? '') ?? priceLabel(price);
 }
 
@@ -886,8 +886,19 @@ export function volumeProfile(
 /** The glyphs the sticker tool cycles through — the small set a trader marks a chart with. */
 export const ICON_GLYPHS = ['★', '⚑', '✔', '✖', '↑', '↓', '⚡', '!' ] as const;
 
-/** An image may only be drawn from a plain web address: never a data: payload or a local path. */
-export const isImageUrl = (value: string): boolean => /^https?:\/\/[^\s]+$/i.test(value.trim());
+/**
+ * An image is drawn from a plain web address, or from a picture the trader picked off their own
+ * machine (a `data:image/...;base64,` payload). A local path is never accepted: the browser cannot
+ * read it, and a stored path would break on every other device. The data payload is capped so one
+ * picture cannot fill the browser's storage.
+ */
+export const IMAGE_DATA_MAX = 400_000;
+
+export const isImageUrl = (value: string): boolean => {
+    const text = value.trim();
+    if (/^https?:\/\/[^\s]+$/i.test(text)) return true;
+    return text.length <= IMAGE_DATA_MAX && /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(text);
+};
 
 /** The far end of a projection: the a→b move repeated `steps` times forward from b, drawn as the
  *  dotted continuation a trader reads as "if this move runs again". */
@@ -1450,8 +1461,8 @@ export const TEXT_MAX = 80;
 /** An image is addressed by a URL, which is longer than a note's words. */
 export const IMAGE_URL_MAX = 300;
 
-/** How long a tool's own wording may be. */
-export const textLimit = (tool: ShapeTool): number => (tool === 'image' ? IMAGE_URL_MAX : TEXT_MAX);
+/** How long a tool's own wording may be. An uploaded picture is a data payload, so it gets its own cap. */
+export const textLimit = (tool: ShapeTool): number => (tool === 'image' ? IMAGE_DATA_MAX : TEXT_MAX);
 
 /** Trimmed and collapsed, or null when there is nothing worth printing. */
 export function cleanText(text: unknown, max = TEXT_MAX): string | null {
