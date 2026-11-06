@@ -196,6 +196,9 @@ export function paletteVars(palette: ChartPalette): Record<string, string> {
         '--brand-ink': palette.up,
         '--brand-soft': `color-mix(in oklab, ${palette.up} 16%, transparent)`,
         '--hover': `color-mix(in oklab, ${strong} 8%, transparent)`,
+        // The hatch shell's diagonal weave is a token too, so a paletted chart does not sit in a
+        // frame woven in the app theme's grey.
+        '--hatch-weave': `color-mix(in oklab, ${strong} 9%, transparent)`,
     };
 }
 

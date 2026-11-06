@@ -28,18 +28,18 @@ async function TradingViewHeader({ symbol, lang }: { symbol: string; lang: Lang 
     const tvSymbol = formatSymbolForTradingView(symbol);
     return (
         <section className="hatch">
-            <div className="card flex flex-wrap items-center justify-between gap-x-6 gap-y-4 p-4">
+            <div className="card flex flex-wrap items-center justify-between gap-x-5 gap-y-3 px-3.5 py-2.5">
                 <div className="min-w-0">
-                    <h1 dir="ltr" className="mono text-[22px] font-bold leading-none tracking-[-0.02em]">{symbol}</h1>
-                    <p className="mt-1.5 truncate text-[12.5px] text-faint">
+                    <h1 dir="ltr" className="mono text-[20px] font-bold leading-none tracking-[-0.02em]">{symbol}</h1>
+                    <p className="mt-1 truncate text-[12px] text-faint">
                         {[tvSymbol.split(':')[0], (lang === 'ar' ? saudiSymbolNameAr(symbol) : null) ?? saudi?.name, tadawul ? tx(lang, 'stock.yahooQuote') : tx(lang, 'stock.tvQuote')].filter(Boolean).join(' · ')}
                     </p>
                 </div>
-                <div className="ms-auto flex items-center gap-5">
+                <div className="ms-auto flex items-center gap-3">
                     {saudi && (
-                        <div className="text-end">
-                            <p className="num text-[30px] font-bold leading-none tracking-[-0.035em]"><Price value={saudi.price} currency={saudi.currency} lang={lang} /></p>
-                            <div className="mt-2 flex justify-end"><ChangePill value={saudi.changePercent} lang={lang} /></div>
+                        <div className="flex items-baseline gap-2.5">
+                            <p className="num text-[26px] font-bold leading-none tracking-[-0.035em]"><Price value={saudi.price} currency={saudi.currency} lang={lang} /></p>
+                            <ChangePill value={saudi.changePercent} lang={lang} />
                         </div>
                     )}
                     <div className="flex items-center gap-2">
@@ -50,7 +50,7 @@ async function TradingViewHeader({ symbol, lang }: { symbol: string; lang: Lang 
                             <button type="button" className="btn btn-primary"><Bell /> {tx(lang, 'stock.setAlert')}</button>
                         </CreateAlertModal>
                     ) : (
-                        <span className="pill h-9 px-3" title={tx(lang, 'alert.tooltipQuote')}>
+                        <span className="pill h-8 px-3" title={tx(lang, 'alert.tooltipQuote')}>
                             <Bell /> {tx(lang, 'stock.alertsTV')}
                         </span>
                     )}
@@ -89,15 +89,15 @@ export default async function StockHeader({ symbol, lang }: { symbol: string; la
 
     return (
         <section className="hatch">
-            <div className="card flex flex-wrap items-center gap-x-6 gap-y-4 p-4">
+            <div className="card flex flex-wrap items-center gap-x-5 gap-y-3 px-3.5 py-2.5">
                 <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
                     {profile?.logo ? (
-                        <span className="logo-well size-11"><img src={profile.logo} alt="" className="size-full object-contain p-1.5" /></span>
+                        <span className="logo-well size-9"><img src={profile.logo} alt="" className="size-full object-contain p-1.5" /></span>
                     ) : (
-                        <span className="logo-well is-empty size-11">{symbol[0]}</span>
+                        <span className="logo-well is-empty size-9">{symbol[0]}</span>
                     )}
                     <div className="min-w-0">
-                        <h1 className="truncate text-xl font-bold tracking-[-0.03em]">{company}</h1>
+                        <h1 className="truncate text-[18px] font-bold tracking-[-0.03em]">{company}</h1>
                         <p className="mono truncate text-[12.5px] text-faint">
                             {[symbol, profile?.exchange, profile?.finnhubIndustry].filter(Boolean).join(' · ')}
                         </p>

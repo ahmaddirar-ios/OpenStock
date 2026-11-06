@@ -2,7 +2,7 @@
 // on an exchange whose session is in another one — and which the browser's own zone cannot be
 // trusted to provide on a phone that has travelled.
 
-import type { StringKey } from '@/lib/i18n';
+import type { Lang, StringKey } from '@/lib/i18n';
 
 export type TimeZoneId = 'local' | 'UTC' | 'Asia/Riyadh' | 'America/New_York' | 'Europe/London' | 'Asia/Tokyo';
 
@@ -58,19 +58,25 @@ const OPTIONS: Record<TickKind, Intl.DateTimeFormatOptions> = {
     seconds: { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false },
 };
 
-/** The label for one axis tick, in the chosen zone. Numbers stay Latin, like the price axis. */
-export function tickLabel(kind: TickKind, seconds: number, zone: TimeZoneId): string {
+/**
+ * The locale the canvas is formatted in. The Arabic locale names the months in Arabic and prints
+ * Arabic-Indic digits; the canvas needs no bidi isolates, it shapes the run itself.
+ */
+const locale = (lang: Lang) => (lang === 'ar' ? 'ar' : 'en-GB');
+
+/** The label for one axis tick, in the chosen zone and the interface's language. */
+export function tickLabel(kind: TickKind, seconds: number, zone: TimeZoneId, lang: Lang = 'en'): string {
     try {
-        return new Intl.DateTimeFormat('en-GB', { ...OPTIONS[kind], timeZone: zoneOption(zone) }).format(seconds * 1000);
+        return new Intl.DateTimeFormat(locale(lang), { ...OPTIONS[kind], timeZone: zoneOption(zone) }).format(seconds * 1000);
     } catch {
         return '';
     }
 }
 
-/** The full stamp for the crosshair readout: `12 Nov 2026, 14:30`. */
-export function timeLabel(seconds: number, zone: TimeZoneId): string {
+/** The full stamp for the crosshair tooltip: `12 Nov 2026, 14:30` / `١٢ نوفمبر ٢٠٢٦، ١٤:٣٠`. */
+export function timeLabel(seconds: number, zone: TimeZoneId, lang: Lang = 'en'): string {
     try {
-        return new Intl.DateTimeFormat('en-GB', {
+        return new Intl.DateTimeFormat(locale(lang), {
             day: 'numeric',
             month: 'short',
             year: 'numeric',

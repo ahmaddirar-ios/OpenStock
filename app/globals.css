@@ -763,7 +763,7 @@
         padding: var(--shell-pad);
         border-radius: calc(var(--inner-r) + var(--shell-pad));
         background:
-            repeating-linear-gradient(-45deg, oklch(0.42 0.008 240 / 0.11) 0 1px, transparent 1px 7px),
+            repeating-linear-gradient(-45deg, var(--hatch-weave, oklch(0.42 0.008 240 / 0.11)) 0 1px, transparent 1px 7px),
             var(--frame);
         box-shadow: 0 0 0 1px oklch(1 0 0 / 0.035), 0 6px 18px oklch(0 0 0 / 0.22);
     }

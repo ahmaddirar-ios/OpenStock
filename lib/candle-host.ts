@@ -33,6 +33,7 @@ import { LineBreakPaneView, type LineBreakDatum } from '@/lib/linebreak-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
+import { arNumberDigits, type Lang } from '@/lib/i18n';
 import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
 import type { Series } from '@/lib/indicators';
 import type { CandleSet } from '@/lib/yahoo-candles';
@@ -91,7 +92,18 @@ export type CandleHost = {
      * replaced, so a legend follows a replay step without knowing about replay.
      */
     subscribeReadout: (listener: (readout: BarReadout | null) => void) => () => void;
+    /**
+     * The same readout plus where the pointer is, in the chart's own pixels. The point is null once
+     * the cursor leaves the pane, which is how a tooltip knows to hide.
+     */
+    subscribeHover: (listener: (state: HoverState) => void) => () => void;
     destroy: () => void;
+};
+
+/** The bar under the cursor and the cursor's position inside the chart, for a hover tooltip. */
+export type HoverState = {
+    readout: BarReadout | null;
+    point: { x: number; y: number } | null;
 };
 
 export type CandleHostOptions = {
@@ -106,6 +118,8 @@ export type CandleHostOptions = {
     scaleMode?: ScaleMode;
     /** The zone the time axis is labelled in; `local` is the browser's. */
     timeZone?: TimeZoneId;
+    /** The interface language: Arabic labels the axis in Arabic months and Arabic-Indic digits. */
+    lang?: Lang;
     /** Whether closed-market gaps are shown as empty space. */
     sessionBreaks?: boolean;
     /** Mirror the price axis. */
@@ -228,6 +242,10 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
     resolveColors();
 
+    const lang: Lang = options.lang ?? 'en';
+    // The canvas prints what the formatter returns; Arabic-Indic digits need no bidi isolates there.
+    const formatPrice = (value: number) => arNumberDigits(value.toFixed(2), lang);
+
     const chartOptions: DeepPartial<TimeChartOptions> = {
         autoSize: true,
         layout: {
@@ -243,11 +261,15 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             timeVisible: options.timeVisible ?? true,
             secondsVisible: false,
             tickMarkFormatter: (time: Time, type: TickMarkType) =>
-                tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone),
+                tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone, lang),
         },
         localization: {
-            locale: 'en-US',
-            timeFormatter: (time: Time) => timeLabel(Number(time), timeZone),
+            locale: lang === 'ar' ? 'ar' : 'en-US',
+            priceFormatter: formatPrice,
+            // The compare pane draws percent change: it keeps its own sign and unit, only the
+            // digits turn Arabic-Indic like the price axis.
+            percentageFormatter: (value: number) => `${arNumberDigits(value.toFixed(2), lang)}%`,
+            timeFormatter: (time: Time) => timeLabel(Number(time), timeZone, lang),
         },
     };
     const chart = createChart(container, chartOptions);
@@ -281,7 +303,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let pnfBox = options.pnfBox;
     let pnfReversal = options.pnfReversal;
     const tickFormatter = () => (time: Time, type: TickMarkType) =>
-        tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone);
+        tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone, lang);
 
     const applyScaleMode = (mode: ScaleMode) => {
         // The right axis only: the volume scale keeps its own units either way.
@@ -391,20 +413,27 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     // crosshair last stood on. Capturing them here means the legend cannot disagree with the chart.
     let readoutSeries: ReadoutSeries = {};
     let hoverTime: number | null = null;
+    // Where the cursor is, in chart pixels. Null once it leaves the pane; the tooltip uses this to
+    // follow the pointer and to know when to disappear.
+    let hoverPoint: { x: number; y: number } | null = null;
     const readoutListeners = new Set<(readout: BarReadout | null) => void>();
+    const hoverListeners = new Set<(state: HoverState) => void>();
 
     const readAt = (time: number | null = hoverTime) => readoutAt(bars(), readoutSeries, time);
     const emitReadout = () => {
         const readout = readAt();
         for (const listener of readoutListeners) listener(readout);
+        for (const listener of hoverListeners) listener({ readout, point: hoverPoint });
     };
 
     // A time outside the candles (the empty space to the right) is "no hovered bar", which the
     // readout answers with the last bar — exactly the fallback TradingView's legend uses.
     const handleCrosshair = (param: MouseEventParams) => {
         const time = typeof param.time === 'number' ? param.time : null;
-        if (time === hoverTime) return;
+        const point = param.point ? { x: param.point.x, y: param.point.y } : null;
+        if (time === hoverTime && point?.x === hoverPoint?.x && point?.y === hoverPoint?.y) return;
         hoverTime = time;
+        hoverPoint = point;
         emitReadout();
     };
 
@@ -667,7 +696,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             // The formatters are closures over `timeZone`, so they are replaced to take effect.
             const tickOptions: DeepPartial<TimeScaleOptions> = { tickMarkFormatter: tickFormatter() };
             chart.timeScale().applyOptions(tickOptions);
-            chart.applyOptions({ localization: { timeFormatter: (time: Time) => timeLabel(Number(time), timeZone) } });
+            chart.applyOptions({ localization: { timeFormatter: (time: Time) => timeLabel(Number(time), timeZone, lang) } });
         },
         setSessionBreaks: (on) => {
             sessionBreaks = on;
@@ -721,6 +750,13 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 readoutListeners.delete(listener);
             };
         },
+        subscribeHover: (listener) => {
+            hoverListeners.add(listener);
+            listener({ readout: readAt(), point: hoverPoint });
+            return () => {
+                hoverListeners.delete(listener);
+            };
+        },
         fit: () => {
             const count = bars().length;
             if (count === 0) {
@@ -731,6 +767,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         },
         destroy: () => {
             readoutListeners.clear();
+            hoverListeners.clear();
             chart.unsubscribeCrosshairMove(handleCrosshair);
             if (options.onRangeChange) chart.timeScale().unsubscribeVisibleLogicalRangeChange(options.onRangeChange);
             chart.remove();

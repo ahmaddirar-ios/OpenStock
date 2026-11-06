@@ -113,6 +113,7 @@ import { decodeChartShare, sharePath } from '@/lib/chart-share';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
+import CandleTooltip from '@/components/stocks/CandleTooltip';
 import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
 import ToolPalette from '@/components/stocks/ToolPalette';
 import ChartToolbarMore from '@/components/stocks/ChartToolbarMore';
@@ -228,6 +229,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
 
     const hostRef = useRef<HTMLDivElement>(null);
+    // The chart's outermost element: its nearest hatch shell takes the palette too, so the frame
+    // around the pane is painted in the same five colours as the pane itself.
+    const rootRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
     // Strategy markers live on the price series; the plugin is rebuilt with every host, so the
@@ -351,6 +355,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     studiesRef.current = studies;
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
+    // The same bar plus the pointer, for the tooltip that follows a hovered candle.
+    const [hover, setHover] = useState<{ readout: BarReadout | null; point: { x: number; y: number } | null }>({
+        readout: null,
+        point: null,
+    });
     const [tool, setTool] = useState<ActiveTool | null>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     // Hide-all: the drawings stay in memory, the layer just stops rendering.
@@ -947,6 +956,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             chartType: chartTypeRef.current,
             scaleMode: scaleModeRef.current,
             timeZone: timeZoneRef.current,
+            lang,
             sessionBreaks: sessionBreaksRef.current,
             volumeVisible: volumeVisibleRef.current,
             invertScale: invertScaleRef.current,
@@ -981,17 +991,19 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         // The host owns the crosshair and the indicator arrays, so the legend cannot drift from the
         // chart: it fires on hover, on a replay step, and on an indicator toggle alike.
         const unsubscribeReadout = host.subscribeReadout(setReadout);
+        const unsubscribeHover = host.subscribeHover(setHover);
         chartRef.current = host.chart;
 
         return () => {
             unsubscribeReadout();
+            unsubscribeHover();
             candleHostRef.current = null;
             chartRef.current = null;
             seriesRef.current = null;
             markersApiRef.current = null;
             host.destroy();
         };
-    }, [hasDisplay, intervalId, compareList, compareData, symbol, compareFrom]);
+    }, [hasDisplay, intervalId, compareList, compareData, symbol, compareFrom, lang]);
 
     // Studies are redrawn in place: the bars, the zoom and the replay never move.
     useEffect(() => {
@@ -1037,6 +1049,17 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     useEffect(() => {
         candleHostRef.current?.setPalette(resolvePalette(paletteState));
     }, [paletteState]);
+    // The shell around the chart is not inside the chart's own style scope, so its frame tokens are
+    // mirrored onto the nearest `.hatch`. Removed on cleanup, which hands the frame back to the theme.
+    useEffect(() => {
+        const hatch = rootRef.current?.closest('.hatch') as HTMLElement | null;
+        if (!hatch || !resolvedPalette) return;
+        const vars = paletteVars(resolvedPalette);
+        for (const [name, value] of Object.entries(vars)) hatch.style.setProperty(name, value);
+        return () => {
+            for (const name of Object.keys(vars)) hatch.style.removeProperty(name);
+        };
+    }, [resolvedPalette]);
     // The theme toggle lives in the shell; the chart repaints itself when it flips.
     useEffect(() => {
         const onTheme = () => candleHostRef.current?.setTheme();
@@ -1751,6 +1774,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 a browser check pointed at the chart rather than at the widget's inner canvases. */}
             <div ref={hostRef} data-chart="price" className="size-full" />
 
+            {status === 'ready' && (
+                <CandleTooltip readout={hover.readout} point={hover.point} lang={lang} zone={timeZone} />
+            )}
+
             {status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
 
             {status === 'ready' && !replay && (
@@ -1892,6 +1919,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
     return (
         <div
+            ref={rootRef}
             className={cn('flex flex-col gap-2', fill && 'h-full min-h-0')}
             // A palette makes the chart its own surface: the tile, the toolbar and the quote header
             // all read on the same background instead of the page's.
