@@ -5,8 +5,10 @@ import PortfolioTable, { type PortfolioRow } from '@/components/portfolio/Portfo
 import PositionFormModal from '@/components/portfolio/PositionFormModal';
 import TradeLedger from '@/components/portfolio/TradeLedger';
 import BenchmarkCard from '@/components/portfolio/BenchmarkCard';
-import { buildLedger, mergePositions, totalReturnPercent } from '@/lib/portfolio-ledger';
+import EquityCurveCard from '@/components/portfolio/EquityCurveCard';
+import { buildLedger, buildEquityCurve, mergePositions, totalReturnPercent, type PriceBar } from '@/lib/portfolio-ledger';
 import { summarizePortfolio, computePositionMetrics } from '@/lib/portfolio';
+import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { isTadawulSymbol } from '@/lib/yahoo';
 import { getLang } from '@/lib/i18n-server';
 import { tx, arDigits } from '@/lib/i18n';
@@ -65,6 +67,18 @@ export default async function PortfolioPage() {
               : new Date().toISOString();
     const benchmark = rows.length > 0 ? await getPortfolioBenchmark(since, currency) : null;
 
+    // The curve needs a daily close for every symbol the ledger ever touched. The calls are cached
+    // for an hour, and the list is capped so a large ledger cannot turn one page into fifty fetches.
+    const curveSymbols = [...new Set(trades.map((trade) => trade.symbol))].slice(0, 20);
+    const priceSets = await Promise.all(
+        curveSymbols.map(async (symbol) => {
+            const set = await getStrategyCandles(symbol, '1d').catch(() => null);
+            return [symbol, set ? set.candles.map((candle) => ({ time: candle.time, close: candle.close })) : []] as const;
+        })
+    );
+    const prices: Record<string, PriceBar[]> = Object.fromEntries(priceSets);
+    const equity = buildEquityCurve(trades, prices);
+
     const lang = await getLang();
 
     return (
@@ -85,6 +99,8 @@ export default async function PortfolioPage() {
                 </div>
                 <BenchmarkCard benchmark={benchmark} portfolioReturnPct={portfolioReturnPct} lang={lang} />
             </div>
+
+            <EquityCurveCard points={equity} lang={lang} />
 
             <TradeLedger
                 trades={trades}

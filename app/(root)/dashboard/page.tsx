@@ -6,6 +6,7 @@ import Panel from "@/components/Panel";
 import YahooChart from "@/components/stocks/YahooChart";
 import StockChart from "@/components/stocks/StockChart";
 import MarketWatch from "@/components/markets/MarketWatch";
+import PortfolioWidget from "@/components/portfolio/PortfolioWidget";
 import MarketRibbon from "@/components/markets/MarketRibbon";
 import NewsStrip from "@/components/news/NewsStrip";
 import { getSaudiMarketNews } from "@/lib/actions/news.actions";
@@ -125,9 +126,14 @@ export default async function Overview() {
                     </Panel>
                 )}
 
-                <Suspense fallback={<MarketWatchSkeleton lang={lang} />}>
-                    <MarketWatchPane lang={lang} />
-                </Suspense>
+                <div className="flex min-h-0 flex-col gap-2">
+                    <Suspense fallback={null}>
+                        <PortfolioWidget lang={lang} />
+                    </Suspense>
+                    <Suspense fallback={<MarketWatchSkeleton lang={lang} />}>
+                        <MarketWatchPane lang={lang} />
+                    </Suspense>
+                </div>
             </div>
 
             <Suspense fallback={null}>

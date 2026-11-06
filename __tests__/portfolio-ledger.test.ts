@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    buildEquityCurve,
     buildLedger,
     isUsableTrade,
     mergePositions,
@@ -217,5 +218,59 @@ describe('totalReturnPercent', () => {
     });
     it('returns zero without capital', () => {
         expect(totalReturnPercent({ unrealizedPnl: 10, realizedPnl: 10, openCostBasis: 0, realizedCostBasis: 0 })).toBe(0);
+    });
+});
+
+describe('buildEquityCurve', () => {
+    const bars = (prices: number[]) =>
+        prices.map((close, index) => ({ time: Date.UTC(2026, 0, 2 + index) / 1000, close }));
+
+    it('values the holding on each trading day', () => {
+        const curve = buildEquityCurve(
+            [trade({ quantity: 10, price: 30, tradedAt: '2026-01-02T10:00:00.000Z' })],
+            { '2222.SR': bars([30, 33, 36]) }
+        );
+        expect(curve).toHaveLength(3);
+        expect(curve[0].value).toBe(300);
+        expect(curve[1].value).toBe(330);
+        expect(curve[2].value).toBe(360);
+        expect(curve[2].costBasis).toBe(300);
+    });
+
+    it('starts at the first trade, not at the first bar', () => {
+        const curve = buildEquityCurve(
+            [trade({ quantity: 10, price: 30, tradedAt: '2026-01-03T10:00:00.000Z' })],
+            { '2222.SR': bars([30, 33, 36]) }
+        );
+        expect(curve).toHaveLength(2);
+        expect(curve[0].value).toBe(330);
+    });
+
+    it('drops a sold position out of the value and banks the profit', () => {
+        const curve = buildEquityCurve(
+            [
+                trade({ quantity: 10, price: 30, tradedAt: '2026-01-02T10:00:00.000Z' }),
+                trade({ side: 'sell', quantity: 10, price: 40, tradedAt: '2026-01-03T10:00:00.000Z' }),
+            ],
+            { '2222.SR': bars([30, 40, 50]) }
+        );
+        expect(curve[1].value).toBe(0);
+        expect(curve[1].realized).toBe(100);
+        expect(curve[2].value).toBe(0);
+        expect(curve[2].realized).toBe(100);
+    });
+
+    it('carries a position at cost until its first price prints', () => {
+        const curve = buildEquityCurve(
+            [trade({ quantity: 10, price: 30, tradedAt: '2026-01-02T10:00:00.000Z' })],
+            { '2222.SR': [{ time: Date.UTC(2026, 0, 4) / 1000, close: 36 }] }
+        );
+        // The only bar is on the 4th, so the curve has one point, valued at that close.
+        expect(curve).toHaveLength(1);
+        expect(curve[0].value).toBe(360);
+    });
+
+    it('returns nothing without trades', () => {
+        expect(buildEquityCurve([], { '2222.SR': bars([30]) })).toEqual([]);
     });
 });

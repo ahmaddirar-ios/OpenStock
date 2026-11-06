@@ -457,3 +457,114 @@ export function totalReturnPercent(input: {
     if (!Number.isFinite(invested) || invested <= 0) return 0;
     return round2(((input.unrealizedPnl + input.realizedPnl) / invested) * 100);
 }
+
+// -- Equity curve ------------------------------------------------------------------------------
+
+export type PriceBar = { time: number; close: number };
+
+export type EquityPoint = {
+    /** Epoch seconds of the bar the day is measured at. */
+    time: number;
+    /** Mark-to-market value of the open holdings that day. */
+    value: number;
+    /** What those shares cost. */
+    costBasis: number;
+    /** Profit banked up to and including that day. */
+    realized: number;
+};
+
+type Holdings = { qty: number; cost: number };
+
+const dayOf = (seconds: number): string => new Date(seconds * 1000).toISOString().slice(0, 10);
+
+const dayOfIso = (iso: string): string => new Date(Date.parse(iso)).toISOString().slice(0, 10);
+
+/**
+ * Replays the ledger one trading day at a time and values the holdings on each.
+ *
+ * The timeline is the union of the symbols' own bar days, so the curve has a point wherever any held
+ * symbol traded — no invented weekends, no phantom flat days. A symbol with no price yet on a day is
+ * carried at its cost, so the curve never dips to zero because a feed was slow to start. Cost basis
+ * uses average cost here (the ledger's FIFO figure is a realised-profit convention, not a valuation
+ * one); realised profit accumulates on a sell the same way the ledger reports it.
+ */
+export function buildEquityCurve(trades: Trade[], prices: Record<string, readonly PriceBar[]>): EquityPoint[] {
+    const usable = trades.filter(isUsableTrade).sort((a, b) => {
+        const byTime = Date.parse(a.tradedAt) - Date.parse(b.tradedAt);
+        return byTime !== 0 ? byTime : (a.id ?? '').localeCompare(b.id ?? '');
+    });
+    if (usable.length === 0) return [];
+
+    const symbols = [...new Set(usable.map((trade) => trade.symbol.trim().toUpperCase()))];
+    const bars = new Map<string, PriceBar[]>();
+    for (const symbol of symbols) {
+        bars.set(symbol, [...(prices[symbol] ?? [])].filter((bar) => bar.close > 0).sort((a, b) => a.time - b.time));
+    }
+
+    const dayKeys = new Set<string>();
+    for (const symbol of symbols) for (const bar of bars.get(symbol)!) dayKeys.add(dayOf(bar.time));
+
+    const firstTradeDay = dayOfIso(usable[0].tradedAt);
+    const timeline = [...dayKeys].filter((day) => day >= firstTradeDay).sort();
+    if (timeline.length === 0) return [];
+
+    const lastClose = new Map<string, number>();
+    const cursor = new Map<string, number>();
+    const holdings = new Map<string, Holdings>();
+    let tradeIndex = 0;
+    let realized = 0;
+    const points: EquityPoint[] = [];
+
+    for (const day of timeline) {
+        // Apply every trade that has happened by this day, in order.
+        while (tradeIndex < usable.length && dayOfIso(usable[tradeIndex].tradedAt) <= day) {
+            const trade = usable[tradeIndex];
+            const symbol = trade.symbol.trim().toUpperCase();
+            const book = holdings.get(symbol) ?? { qty: 0, cost: 0 };
+            const quantity = finite(trade.quantity);
+            const price = finite(trade.price);
+            const fee = Math.max(0, finite(trade.fee));
+
+            if (trade.side === 'buy') {
+                book.qty += quantity;
+                book.cost += quantity * price + fee;
+            } else {
+                const sold = Math.min(quantity, book.qty);
+                if (sold > 0) {
+                    const unitCost = book.cost / book.qty;
+                    const soldCost = sold * unitCost;
+                    book.cost -= soldCost;
+                    book.qty -= sold;
+                    realized += sold * price - (quantity > 0 ? (fee * sold) / quantity : 0) - soldCost;
+                }
+            }
+            holdings.set(symbol, book);
+            tradeIndex += 1;
+        }
+
+        // Advance each symbol's price pointer to the newest bar on or before this day.
+        for (const symbol of symbols) {
+            const list = bars.get(symbol)!;
+            let pointer = cursor.get(symbol) ?? 0;
+            while (pointer < list.length && dayOf(list[pointer].time) <= day) {
+                lastClose.set(symbol, list[pointer].close);
+                pointer += 1;
+            }
+            cursor.set(symbol, pointer);
+        }
+
+        let value = 0;
+        let costBasis = 0;
+        for (const [symbol, book] of holdings) {
+            if (book.qty <= 1e-9) continue;
+            const mark = lastClose.get(symbol);
+            // No price printed yet: carry the position at cost rather than at zero.
+            value += book.qty * (mark ?? (book.cost > 0 ? book.cost / book.qty : 0));
+            costBasis += book.cost;
+        }
+
+        points.push({ time: Math.floor(Date.parse(`${day}T12:00:00Z`) / 1000), value: round2(value), costBasis: round2(costBasis), realized: round2(realized) });
+    }
+
+    return points;
+}

@@ -6,8 +6,9 @@ import { Position } from '@/database/models/position.model';
 import { Transaction } from '@/database/models/transaction.model';
 import { requireUserId } from '@/lib/better-auth/auth';
 import { parseAmount } from '@/lib/portfolio';
-import { parseTradesCsv, type TradeSide } from '@/lib/portfolio-ledger';
+import { buildLedger, mergePositions, parseTradesCsv, type TradeSide } from '@/lib/portfolio-ledger';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
+import { getWatchlistData } from '@/lib/actions/finnhub.actions';
 
 // Tickers as Finnhub writes them (AAPL, BRK.B, RELIANCE.NS, M&M.NS, 0700.HK, BINANCE:BTCUSDT).
 // Every symbol here becomes a quote call on /portfolio, so it is validated like the watchlist's.
@@ -345,6 +346,82 @@ export async function getPortfolioBenchmark(since: string, currency: string): Pr
         };
     } catch (error) {
         console.error('Error fetching benchmark:', error);
+        return null;
+    }
+}
+
+// -- Dashboard summary -------------------------------------------------------------------------
+
+export type PortfolioSummary = {
+    /** Mark-to-market value of the open holdings. */
+    value: number;
+    /** Today's move, in percent of yesterday's value. */
+    dayChangePct: number;
+    /** Open profit against cost. */
+    openPnl: number;
+    openPnlPct: number;
+    /** Profit already banked. */
+    realizedPnl: number;
+    currency: string;
+    /** How many symbols are held. */
+    count: number;
+};
+
+/**
+ * The one-line portfolio the overview shows. It reads the same ledger the portfolio page does, so
+ * the two can never disagree, and it returns null when there is nothing to show rather than a row of
+ * zeros.
+ */
+export async function getPortfolioSummary(): Promise<PortfolioSummary | null> {
+    const userId = await requireUserId();
+    try {
+        await connectToDatabase();
+        const [positions, tradeDocs] = await Promise.all([
+            Position.find({ userId }).lean(),
+            Transaction.find({ userId }).sort({ tradedAt: 1, createdAt: 1 }).limit(MAX_TRADES).lean(),
+        ]);
+        const trades = tradeDocs.map((doc) => toRecord(doc as never));
+        const ledger = buildLedger(trades);
+        const merged = mergePositions(
+            positions.map((position) => ({
+                symbol: position.symbol,
+                company: position.company,
+                quantity: position.quantity,
+                averageCost: position.averageCost,
+            })),
+            ledger.positions
+        );
+        if (merged.length === 0) return null;
+
+        const quotes = await getWatchlistData(merged.map((position) => position.symbol));
+        const bySymbol = new Map(quotes.map((quote) => [quote.symbol, quote]));
+
+        let value = 0;
+        let cost = 0;
+        let previous = 0;
+        let currency = 'USD';
+        for (const position of merged) {
+            const quote = bySymbol.get(position.symbol);
+            const price = quote?.price ?? position.averageCost;
+            const change = quote?.change ?? 0;
+            value += position.quantity * price;
+            cost += position.quantity * position.averageCost;
+            previous += position.quantity * (price - change);
+            if (quote?.currency) currency = quote.currency;
+        }
+
+        const openPnl = value - cost;
+        return {
+            value: Math.round(value * 100) / 100,
+            dayChangePct: previous > 0 ? Math.round(((value - previous) / previous) * 10000) / 100 : 0,
+            openPnl: Math.round(openPnl * 100) / 100,
+            openPnlPct: cost > 0 ? Math.round((openPnl / cost) * 10000) / 100 : 0,
+            realizedPnl: ledger.totalRealized,
+            currency,
+            count: merged.length,
+        };
+    } catch (error) {
+        console.error('Error building portfolio summary:', error);
         return null;
     }
 }
