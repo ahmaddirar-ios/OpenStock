@@ -230,10 +230,12 @@ export const checkStockAlerts = inngest.createFunction(
             symbol: string;
             condition: AlertCondition;
             targetPrice: number;
-            params?: { period?: number; window?: number; band?: number };
+            params?: { period?: number; window?: number; band?: number; expression?: string; strategy?: unknown };
             lastPrice?: number | null;
             anchor?: unknown;
             lastGap?: number | null;
+            rules?: { condition: AlertCondition; targetPrice: number; params?: unknown; lastValue?: number | null; lastGap?: number | null }[];
+            join?: 'and' | 'or';
         };
         const alerts = activeAlerts as unknown as StoredAlert[];
         const symbols = [...new Set(alerts.map((alert) => alert.symbol))];
@@ -269,19 +271,23 @@ export const checkStockAlerts = inngest.createFunction(
 
         // Step 4: the same decision the alert centre makes, from the same pure function, so the
         // two paths cannot disagree about what fired or what the next cross compares against.
-        const { needsCandles, planCheck } = await import("@/lib/alerts");
+        const { needsCandles, planGroups, groupedRowsFromAlerts, rememberUpdate } = await import("@/lib/alerts");
         const { parseAnchor } = await import("@/lib/drawing-alert");
         type Snapshot = { price: number; changePercent: number };
-        const rows = alerts.map((alert) => ({
-            id: String(alert._id),
-            symbol: alert.symbol,
-            condition: alert.condition,
-            targetPrice: alert.targetPrice,
-            params: alert.params ?? {},
-            lastPrice: alert.lastPrice ?? null,
-            anchor: alert.anchor ? parseAnchor(alert.anchor) : null,
-            lastGap: alert.lastGap ?? null,
-        }));
+        const { rows, owners } = groupedRowsFromAlerts(
+            alerts.map((alert) => ({
+                id: String(alert._id),
+                symbol: alert.symbol,
+                condition: alert.condition,
+                targetPrice: alert.targetPrice,
+                params: (alert.params ?? {}) as { period?: number; window?: number; band?: number; expression?: string; strategy?: never },
+                lastPrice: alert.lastPrice ?? null,
+                anchor: alert.anchor ? parseAnchor(alert.anchor) : null,
+                lastGap: alert.lastGap ?? null,
+                rules: (alert.rules ?? []) as never,
+                join: alert.join,
+            })),
+        );
 
         // Only the symbols whose rules measure a series pay for candles; the rest live on quotes.
         const measured = [...new Set(rows.filter((row) => needsCandles(row.condition)).map((row) => row.symbol))];
@@ -298,21 +304,25 @@ export const checkStockAlerts = inngest.createFunction(
             })
             : {};
 
-        const plan = planCheck(rows, prices as Record<string, Snapshot>, series as Record<string, Candle[]>);
+        const plan = planGroups(rows, prices as Record<string, Snapshot>, series as Record<string, Candle[]>);
 
         // Remember what each rule saw on this check, so a cross has a previous value next time.
-        if (plan.misses.length > 0) {
+        if (plan.updates.length > 0) {
             await step.run('remember-prices', async () => {
                 const { connectToDatabase } = await import("@/database/mongoose");
                 const { Alert } = await import("@/database/models/alert.model");
                 await connectToDatabase();
                 await Alert.bulkWrite(
-                    plan.misses.map(({ id, value, gap }) => ({
-                        updateOne: {
-                            filter: { _id: id, triggered: false },
-                            update: { $set: { lastPrice: value, ...(gap === undefined ? {} : { lastGap: gap }) } },
-                        },
-                    })),
+                    plan.updates.flatMap(({ id, value, gap }) => {
+                        const owner = owners.get(id);
+                        if (!owner) return [];
+                        return [{
+                            updateOne: {
+                                filter: { _id: owner.alertId, triggered: false },
+                                update: { $set: rememberUpdate(owner, value, gap) },
+                            },
+                        }];
+                    }),
                 );
             });
         }
@@ -329,7 +339,7 @@ export const checkStockAlerts = inngest.createFunction(
                 const byId = new Map(alerts.map((alert) => [String(alert._id), alert]));
 
                 for (const fire of plan.fires) {
-                    const alert = byId.get(fire.id);
+                    const alert = byId.get(fire.groupId);
                     if (!alert) continue;
                     // Claim the alert atomically before emailing. Inngest's concurrency limits steps, not
                     // whole runs, so two overlapping runs can hold the same alert; only one wins this update.
@@ -347,6 +357,27 @@ export const checkStockAlerts = inngest.createFunction(
                         },
                     );
                     if (!claimed) continue;
+
+                    // The log outlives the alert: it records what happened, not what is watched.
+                    try {
+                        const { AlertEvent } = await import("@/database/models/alert-event.model");
+                        const { groupedRuleCount } = await import("@/lib/alerts");
+                        await AlertEvent.create({
+                            userId: alert.userId,
+                            alertId: String(alert._id),
+                            symbol: alert.symbol,
+                            condition: alert.condition,
+                            targetPrice: alert.targetPrice,
+                            value: fire.value,
+                            price: fire.price ?? null,
+                            changePercent: fire.changePercent ?? null,
+                            join: fire.join,
+                            rules: groupedRuleCount(alert),
+                        });
+                    } catch (error) {
+                        console.error('Error writing alert event:', error);
+                    }
+
                     const release = () => Alert.findByIdAndUpdate(alert._id, {
                         triggered: false,
                         active: true,
@@ -366,8 +397,8 @@ export const checkStockAlerts = inngest.createFunction(
                             const reader = (lang === 'ar' ? 'ar' : 'en') as Lang;
                             return alertPushPayload({
                                 symbol: alert.symbol,
-                                label: `${alertConditionLabel(reader, alert.condition)} ${alertTargetLabel(reader, alert.condition, alert.targetPrice)}`,
-                                value: measureLabel(reader, alert.condition, fire.value),
+                                label: `${alertConditionLabel(reader, fire.condition)} ${alertTargetLabel(reader, fire.condition, fire.targetPrice)}`,
+                                value: measureLabel(reader, fire.condition, fire.value),
                             });
                         });
                     } catch (error) {
@@ -376,7 +407,7 @@ export const checkStockAlerts = inngest.createFunction(
 
                     // The mail templates speak in prices; the four newer rules are announced in the
                     // alert centre only, so an e-mail never quotes a percentage as a price.
-                    if (alert.condition !== 'ABOVE' && alert.condition !== 'BELOW') continue;
+                    if (fire.condition !== 'ABOVE' && fire.condition !== 'BELOW') continue;
 
                     // Per-alert try/catch: a failure releases the claim so the next 5-min run retries it,
                     // and never throws the step (a step retry would re-email alerts already sent in this loop).
@@ -394,8 +425,8 @@ export const checkStockAlerts = inngest.createFunction(
                                 symbol: alert.symbol,
                                 // The mail speaks in prices, and it is only sent for the price rules.
                                 currentPrice: fire.price ?? fire.value,
-                                targetPrice: alert.targetPrice,
-                                condition: alert.condition,
+                                targetPrice: fire.targetPrice,
+                                condition: fire.condition,
                             });
                             // Email not configured: release so the alert fires once email works
                             if (result.status === 'skipped') await release();

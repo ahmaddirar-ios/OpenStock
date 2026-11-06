@@ -19,6 +19,8 @@ export const ALERT_CONDITIONS: AlertCondition[] = [
     'ATR_ABOVE',
     'CROSS_52W_HIGH',
     'CROSS_52W_LOW',
+    'FORMULA',
+    'STRATEGY',
 ];
 
 const CONDITION_KEYS: Record<AlertCondition, StringKey> = {
@@ -39,6 +41,8 @@ const CONDITION_KEYS: Record<AlertCondition, StringKey> = {
     DRAWING_CROSS_UP: 'alerts.cond.drawingCrossUp',
     DRAWING_CROSS_DOWN: 'alerts.cond.drawingCrossDown',
     DRAWING_TOUCH: 'alerts.cond.drawingTouch',
+    FORMULA: 'alerts.cond.formula',
+    STRATEGY: 'alerts.cond.strategy',
 };
 
 /** A rule attached to a drawing: its number is the line's own price, not something the trader types. */
@@ -52,6 +56,9 @@ export const alertConditionLabel = (lang: Lang, condition: AlertCondition): stri
     tx(lang, CONDITION_KEYS[condition] ?? 'alerts.cond.above');
 
 /** The unit the target is typed in, for the form's suffix. */
+/** A rule that carries no number: the formula or the strategy is the whole condition. */
+export const isTextAlert = (condition: AlertCondition): boolean => condition === 'FORMULA' || condition === 'STRATEGY';
+
 export const alertTargetUnit = (condition: AlertCondition): string =>
     condition === 'VOLUME_SPIKE' ? '×' : isPercentAlert(condition) || condition === 'ATR_ABOVE' ? '%' : '';
 
@@ -66,6 +73,7 @@ export const alertTargetPlaceholder = (condition: AlertCondition): StringKey => 
  * except the SMA crosses, whose number is the period, so it is named as one.
  */
 export const alertTargetLabel = (lang: Lang, condition: AlertCondition, target: number): string => {
+    if (isTextAlert(condition)) return '';
     if (isPercentAlert(condition) || condition === 'ATR_ABOVE') return `${arDigits(target, lang)}%`;
     if (condition === 'PRICE_CROSS_UP_SMA' || condition === 'PRICE_CROSS_DOWN_SMA') {
         return `SMA ${arDigits(Math.round(target), lang)}`;
@@ -92,6 +100,8 @@ export const alertParamsLabel = (lang: Lang, condition: AlertCondition, params?:
 
 /** What a rule measured, unit included, for the row's "last …" and "fired …" text. */
 export const measureLabel = (lang: Lang, condition: AlertCondition, value: number): string => {
+    // A formula or a strategy answers yes or no; the number behind it is not what a trader reads.
+    if (isTextAlert(condition)) return tx(lang, value !== 0 ? 'alerts.measure.true' : 'alerts.measure.false');
     if (condition === 'VOLUME_SPIKE') return `${arDigits(value.toFixed(2), lang)}×`;
     if (condition === 'ATR_ABOVE') return `${arDigits(Number(value).toFixed(2), lang)}%`;
     if (condition === 'RSI_BELOW' || condition === 'RSI_ABOVE') return arDigits(Number(value).toFixed(1), lang);

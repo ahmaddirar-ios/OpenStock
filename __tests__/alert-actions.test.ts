@@ -42,6 +42,10 @@ const getYahooDailyQuotes = vi.fn();
 vi.mock('@/lib/actions/yahoo.actions', () => ({ getYahooDailyQuotes: (...args: unknown[]) => getYahooDailyQuotes(...args) }));
 const getAlertCandles = vi.fn();
 vi.mock('@/lib/actions/yahoo-candles.actions', () => ({ getAlertCandles: (...args: unknown[]) => getAlertCandles(...args) }));
+const alertEventCreate = vi.fn();
+vi.mock('@/database/models/alert-event.model', () => ({
+    AlertEvent: { create: (...args: unknown[]) => alertEventCreate(...args) },
+}));
 
 import {
     checkAlerts,
@@ -66,6 +70,7 @@ beforeEach(() => {
     getLiveQuotes.mockResolvedValue({});
     getYahooDailyQuotes.mockResolvedValue({});
     getAlertCandles.mockResolvedValue(null);
+    alertEventCreate.mockResolvedValue({});
 });
 
 describe('alert actions are scoped to the session user', () => {
@@ -140,7 +145,16 @@ describe('alerts work without OpenStock Cloud', () => {
     it('creates a watchlist-only alert with no realtime flag involved', async () => {
         // The demo has no realtime mode, no cron and no mailer: creating must still succeed.
         await createAlert({ symbol: '2222', targetPrice: 30, condition: 'CROSS_UP' });
-        expect(create).toHaveBeenCalledWith({ userId: 'user-123', symbol: '2222.SR', targetPrice: 30, condition: 'CROSS_UP', params: {}, active: true });
+        expect(create).toHaveBeenCalledWith({
+            userId: 'user-123',
+            symbol: '2222.SR',
+            targetPrice: 30,
+            condition: 'CROSS_UP',
+            params: {},
+            rules: [{ condition: 'CROSS_UP', targetPrice: 30, params: {} }],
+            join: 'and',
+            active: true,
+        });
     });
 
     it('prices the demo’s Tadawul rules through Yahoo', async () => {
@@ -173,7 +187,16 @@ describe('createAlert validates untrusted input', () => {
 
     it('stores only validated fields, so callers cannot pre-trigger or extend an alert', async () => {
         await createAlert({ symbol: ' brk.b ', targetPrice: 400, condition: 'BELOW', triggered: true, expiresAt: new Date(2100, 0) } as never);
-        expect(create).toHaveBeenCalledWith({ userId: 'user-123', symbol: 'BRK.B', targetPrice: 400, condition: 'BELOW', params: {}, active: true });
+        expect(create).toHaveBeenCalledWith({
+            userId: 'user-123',
+            symbol: 'BRK.B',
+            targetPrice: 400,
+            condition: 'BELOW',
+            params: {},
+            rules: [{ condition: 'BELOW', targetPrice: 400, params: {} }],
+            join: 'and',
+            active: true,
+        });
     });
 
     it('clears the remembered price when the condition changes, so a stale cross cannot fire', async () => {
@@ -300,7 +323,10 @@ describe('checkAlerts', () => {
 
         const result = await checkAlerts();
         expect(result.fired).toHaveLength(0);
-        expect(updateOne).toHaveBeenCalledWith({ _id: 'a1', triggered: false }, { $set: { lastPrice: 150 } });
+        expect(updateOne).toHaveBeenCalledWith(
+            { _id: 'a1', triggered: false },
+            { $set: { 'rules.0.lastValue': 150, lastPrice: 150 } },
+        );
     });
 
     it('counts rules it could not price as not checked, and still prices the rest', async () => {
@@ -384,5 +410,131 @@ describe('indicator rules in the actions', () => {
         expect(result.skipped).toBe(1);
         expect(findOneAndUpdate).not.toHaveBeenCalled();
         expect(updateOne).not.toHaveBeenCalled();
+    });
+});
+
+describe('alert groups in the actions', () => {
+    it('stores extra rules and the join, mirroring the first rule on the document', async () => {
+        await createAlert({
+            symbol: 'AAPL',
+            condition: 'ABOVE',
+            targetPrice: 200,
+            rules: [{ condition: 'RSI_BELOW', targetPrice: 30, params: { period: 14 } }],
+            join: 'and',
+        });
+        expect(create).toHaveBeenCalledWith(expect.objectContaining({
+            condition: 'ABOVE',
+            targetPrice: 200,
+            join: 'and',
+            rules: [
+                { condition: 'ABOVE', targetPrice: 200, params: {} },
+                { condition: 'RSI_BELOW', targetPrice: 30, params: { period: 14 } },
+            ],
+        }));
+    });
+
+    it('refuses a sixth rule and a text rule with an invalid formula', async () => {
+        const many = Array.from({ length: 5 }, () => ({ condition: 'ABOVE' as const, targetPrice: 100 }));
+        await expect(createAlert({ symbol: 'AAPL', condition: 'ABOVE', targetPrice: 100, rules: many })).rejects.toThrow('tooManyRules');
+        await expect(createAlert({
+            symbol: 'AAPL',
+            condition: 'FORMULA',
+            targetPrice: 0,
+            params: { expression: 'close >' },
+        })).rejects.toThrow('invalidTarget');
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it('stores a formula with no number, and a strategy as a full object', async () => {
+        await createAlert({
+            symbol: 'AAPL',
+            condition: 'FORMULA',
+            targetPrice: 0,
+            params: { expression: 'close > sma(close, 20)' },
+        });
+        expect(create).toHaveBeenLastCalledWith(expect.objectContaining({
+            condition: 'FORMULA',
+            targetPrice: 0,
+            params: { expression: 'close > sma(close, 20)' },
+        }));
+
+        const strategy = {
+            id: 's1', name: 'Mine', entry: 'close > 0', exit: 'close < 0',
+            params: [], stopPct: 5, targetPct: 0, trailingPct: 0, riskPct: 0, direction: 'long' as const,
+        };
+        await createAlert({ symbol: 'AAPL', condition: 'STRATEGY', targetPrice: 0, params: { strategy } });
+        expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ condition: 'STRATEGY', params: { strategy } }));
+    });
+
+    it('fires an AND group only when every rule is true, and records the event once', async () => {
+        lean.mockResolvedValue([
+            {
+                _id: 'a1', userId: 'user-123', symbol: 'AAPL', condition: 'ABOVE', targetPrice: 100,
+                join: 'and',
+                rules: [
+                    { condition: 'ABOVE', targetPrice: 100, params: {} },
+                    { condition: 'ABOVE', targetPrice: 200, params: {} },
+                ],
+            },
+        ]);
+        getLiveQuotes.mockResolvedValue({ AAPL: { c: 250, dp: 1 } });
+
+        const result = await checkAlerts();
+        expect(result.fired).toHaveLength(1);
+        expect(result.fired[0]).toMatchObject({ id: 'a1', symbol: 'AAPL', join: 'and', rules: 2 });
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { _id: 'a1', triggered: false, active: true },
+            expect.objectContaining({ $set: expect.objectContaining({ triggered: true }) }),
+            { new: true },
+        );
+        expect(alertEventCreate).toHaveBeenCalledWith(expect.objectContaining({
+            alertId: 'a1',
+            symbol: 'AAPL',
+            join: 'and',
+            rules: 2,
+        }));
+    });
+
+    it('does not fire an AND group when one rule is false, and remembers the rules it read', async () => {
+        lean.mockResolvedValue([
+            {
+                _id: 'a1', userId: 'user-123', symbol: 'AAPL', condition: 'ABOVE', targetPrice: 100,
+                join: 'and',
+                rules: [
+                    { condition: 'ABOVE', targetPrice: 100, params: {} },
+                    { condition: 'ABOVE', targetPrice: 300, params: {} },
+                ],
+            },
+        ]);
+        getLiveQuotes.mockResolvedValue({ AAPL: { c: 250, dp: 1 } });
+
+        const result = await checkAlerts();
+        expect(result.fired).toHaveLength(0);
+        expect(updateOne).toHaveBeenCalledWith(
+            { _id: 'a1', triggered: false },
+            { $set: { 'rules.0.lastValue': 250, lastPrice: 250 } },
+        );
+        expect(updateOne).toHaveBeenCalledWith(
+            { _id: 'a1', triggered: false },
+            { $set: { 'rules.1.lastValue': 250 } },
+        );
+    });
+
+    it('fires an OR group as soon as one rule is true', async () => {
+        lean.mockResolvedValue([
+            {
+                _id: 'a1', userId: 'user-123', symbol: 'AAPL', condition: 'ABOVE', targetPrice: 300,
+                join: 'or',
+                rules: [
+                    { condition: 'ABOVE', targetPrice: 300, params: {} },
+                    { condition: 'ABOVE', targetPrice: 100, params: {} },
+                ],
+            },
+        ]);
+        getLiveQuotes.mockResolvedValue({ AAPL: { c: 250, dp: 1 } });
+
+        const result = await checkAlerts();
+        expect(result.fired).toHaveLength(1);
+        expect(result.fired[0].join).toBe('or');
     });
 });

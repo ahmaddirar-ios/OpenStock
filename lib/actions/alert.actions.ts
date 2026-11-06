@@ -3,6 +3,7 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { anchorPriceAt, isDrawingCondition, parseAnchor } from '@/lib/drawing-alert';
 import { Alert } from '@/database/models/alert.model';
+import { AlertEvent } from '@/database/models/alert-event.model';
 import { revalidatePath } from 'next/cache';
 import { requireUserId } from '@/lib/better-auth/auth';
 import { getLiveQuotes } from '@/lib/actions/finnhub.actions';
@@ -15,18 +16,33 @@ import {
     alertStoredSymbol,
     alertYahooSymbol,
     isAlertCondition,
+    groupedRowsFromAlerts,
     needsCandles,
     normalizeAlertParams,
-    planCheck,
+    planGroups,
+    groupedRuleCount,
+    rememberUpdate,
     validateAlertParams,
     validateAlertTarget,
     type AlertCondition,
     type AlertParams,
+    MAX_ALERT_RULES,
+    MAX_ALERT_EVENTS,
     type AlertSnapshot,
+    type GroupJoin,
+    type StoredAlertRule,
 } from '@/lib/alerts';
 
 // The checker re-prices every active alert's symbol on each visit and every five minutes in Cloud.
 const MAX_ACTIVE_ALERTS = 50;
+
+
+/** One rule in an alert's set, as the caller supplies it. */
+export type AlertRuleInput = {
+    condition: AlertCondition;
+    targetPrice: number;
+    params?: AlertParams;
+};
 
 export type AlertInput = {
     symbol: string;
@@ -39,6 +55,10 @@ export type AlertInput = {
      * later, so editing the drawing afterwards does not silently change what was promised.
      */
     anchor?: unknown;
+    /** Extra rules the first one is combined with. Empty means a group of one. */
+    rules?: AlertRuleInput[];
+    /** How the rules combine: all of them (default) or any of them. */
+    join?: GroupJoin;
 };
 
 export type FiredAlert = {
@@ -50,6 +70,10 @@ export type FiredAlert = {
     value: number;
     price?: number;
     changePercent?: number;
+    /** How the alert's rules were joined (a single rule is `and`). */
+    join?: GroupJoin;
+    /** How many rules the alert had. */
+    rules?: number;
 };
 
 export type CheckResult = {
@@ -68,9 +92,30 @@ function fail(code: string): never {
     throw new Error(code);
 }
 
+/** Checks one rule and returns exactly what gets stored. Throws codes the UI already translates. */
+function normalizeRule(input: AlertRuleInput, options: { allowDrawing: boolean }): StoredAlertRule {
+    const condition = input.condition;
+    if (!isAlertCondition(condition)) fail('invalidCondition');
+    // A drawing is the alert's own first rule: it carries an anchor the other rules have no slot for.
+    if (!options.allowDrawing && isDrawingCondition(condition)) fail('invalidAnchor');
+
+    const params = normalizeAlertParams(condition, input.params);
+    if (!validateAlertParams(condition, params)) fail('invalidTarget');
+
+    // A formula or a strategy has no number to type, so it stores a zero rather than a NaN.
+    const targetPrice = condition === 'FORMULA' || condition === 'STRATEGY' ? 0 : Number(input.targetPrice);
+    if (!validateAlertTarget(condition, targetPrice)) fail('invalidTarget');
+
+    return { condition, targetPrice, params };
+}
+
 /**
  * Creates an alert. On the public demo alerts are checked when the centre is opened; in
  * Cloud the same rows are also checked by the five-minute cron and mailed out.
+ *
+ * An alert is one or more rules joined by AND/OR. The first rule mirrors the document's own
+ * `condition`/`targetPrice`/`params`, so a single-rule alert stays exactly what it was before
+ * groups existed.
  */
 export async function createAlert(params: AlertInput) {
     const userId = await requireUserId();
@@ -81,19 +126,25 @@ export async function createAlert(params: AlertInput) {
     const condition = params.condition;
     if (!isAlertCondition(condition)) fail('invalidCondition');
 
-    // A series rule needs a candle source as well as a quote source: every US ticker and Tadawul
-    // listing has one, a Binance pair does not.
-    if (needsCandles(condition) && !compareYahooSymbol(symbol)) fail('unsupportedSymbol');
-
     // A drawing rule carries the line's own price as its target: the trader does not type one.
     const anchor = isDrawingCondition(condition) ? parseAnchor(params.anchor) : null;
     if (isDrawingCondition(condition) && !anchor) fail('invalidAnchor');
     const lineNow = anchor ? anchorPriceAt(anchor, Math.floor(Date.now() / 1000)) : null;
-    const targetPrice = lineNow != null && Number.isFinite(lineNow) ? lineNow : Number(params.targetPrice);
-    if (!validateAlertTarget(condition, targetPrice)) fail('invalidTarget');
+    const baseTarget = lineNow != null && Number.isFinite(lineNow) ? lineNow : Number(params.targetPrice);
 
-    const ruleParams = normalizeAlertParams(condition, params.params);
-    if (!validateAlertParams(condition, ruleParams)) fail('invalidTarget');
+    const extras = Array.isArray(params.rules) ? params.rules : [];
+    if (extras.length > MAX_ALERT_RULES - 1) fail('tooManyRules');
+
+    const rules = [
+        normalizeRule({ condition, targetPrice: baseTarget, params: params.params }, { allowDrawing: true }),
+        ...extras.map((rule) => normalizeRule(rule, { allowDrawing: false })),
+    ];
+
+    // Every series rule needs a candle source as well as a quote source: every US ticker and
+    // Tadawul listing has one, a Binance pair does not.
+    if (rules.some((rule) => needsCandles(rule.condition)) && !compareYahooSymbol(symbol)) fail('unsupportedSymbol');
+
+    const join: GroupJoin = params.join === 'or' ? 'or' : 'and';
 
     await connectToDatabase();
     if ((await Alert.countDocuments({ userId, active: true })) >= MAX_ACTIVE_ALERTS) fail('limit');
@@ -103,9 +154,11 @@ export async function createAlert(params: AlertInput) {
         const alert = await Alert.create({
             userId,
             symbol,
-            targetPrice,
-            condition,
-            params: ruleParams,
+            targetPrice: rules[0].targetPrice,
+            condition: rules[0].condition,
+            params: rules[0].params,
+            rules,
+            join,
             active: true,
             ...(anchor ? { anchor } : {}),
         });
@@ -252,8 +305,8 @@ async function candleSeries(symbols: string[]): Promise<Record<string, Candle[]>
 }
 
 /**
- * The on-visit check. Every live rule is priced once and handed to `planCheck`, the same
- * decision the Inngest cron runs; the rules it says fired are claimed atomically so two
+ * The on-visit check. Every live rule is priced once and handed to `planGroups`, the same
+ * decision the Inngest cron runs; the groups it says fired are claimed atomically so two
  * tabs cannot both report one. Quotes that fail to load are skipped, never read as zero.
  */
 export async function checkAlerts(): Promise<CheckResult> {
@@ -266,37 +319,41 @@ export async function checkAlerts(): Promise<CheckResult> {
 
     // Pay only for what the live rules read: a quote for the price rules, a daily series for the
     // indicator rules. One call per symbol either way.
-    const rules = alerts.map((alert) => ({
-        id: String(alert._id),
-        symbol: alert.symbol,
-        condition: alert.condition as AlertCondition,
-        targetPrice: alert.targetPrice,
-        params: (alert.params ?? {}) as AlertParams,
-        lastPrice: alert.lastPrice ?? null,
-        anchor: parseAnchor(alert.anchor),
-        lastGap: alert.lastGap ?? null,
-    }));
-    const quoted = [...new Set(rules.filter((rule) => !needsCandles(rule.condition)).map((rule) => rule.symbol))];
-    const measured = [...new Set(rules.filter((rule) => needsCandles(rule.condition)).map((rule) => rule.symbol))];
+    const { rows, owners } = groupedRowsFromAlerts(
+        alerts.map((alert) => ({
+            id: String(alert._id),
+            symbol: alert.symbol,
+            condition: alert.condition as AlertCondition,
+            targetPrice: alert.targetPrice,
+            params: (alert.params ?? {}) as AlertParams,
+            lastPrice: alert.lastPrice ?? null,
+            anchor: parseAnchor(alert.anchor),
+            lastGap: alert.lastGap ?? null,
+            rules: (alert.rules ?? []) as StoredAlertRule[],
+            join: alert.join as GroupJoin,
+        })),
+    );
+    const quoted = [...new Set(rows.filter((rule) => !needsCandles(rule.condition)).map((rule) => rule.symbol))];
+    const measured = [...new Set(rows.filter((rule) => needsCandles(rule.condition)).map((rule) => rule.symbol))];
 
     const [quotes, series] = await Promise.all([priceSymbols(quoted), candleSeries(measured)]);
-    const plan = planCheck(rules, quotes, series);
+    const plan = planGroups(rows, quotes, series);
 
     // Remember what each rule saw on this check, so a cross has a previous value next time.
     await Promise.all(
-        plan.misses.map(({ id, value, gap }) =>
-            Alert.updateOne(
-                { _id: id, triggered: false },
-                { $set: { lastPrice: value, ...(gap === undefined ? {} : { lastGap: gap }) } },
-            ),
-        ),
+        plan.updates.map(({ id, value, gap }) => {
+            const owner = owners.get(id);
+            if (!owner) return Promise.resolve(null);
+            return Alert.updateOne({ _id: owner.alertId, triggered: false }, { $set: rememberUpdate(owner, value, gap) });
+        }),
     );
 
+    const counts = new Map(alerts.map((alert) => [String(alert._id), groupedRuleCount(alert)]));
     const fired: FiredAlert[] = [];
     await Promise.all(
         plan.fires.map(async (fire) => {
             const claimed = await Alert.findOneAndUpdate(
-                { _id: fire.id, triggered: false, active: true },
+                { _id: fire.groupId, triggered: false, active: true },
                 {
                     $set: {
                         triggered: true,
@@ -305,26 +362,61 @@ export async function checkAlerts(): Promise<CheckResult> {
                         active: false,
                         triggeredAt: new Date(),
                         triggeredPrice: fire.value,
-                        lastPrice: fire.value,
+                        lastPrice: fire.price ?? fire.value,
                         seen: false,
                     },
                 },
                 { new: true },
             );
-            if (claimed) {
-                fired.push({
-                    id: fire.id,
+            if (!claimed) return;
+
+            const rules = counts.get(fire.groupId) ?? 1;
+            fired.push({
+                id: fire.groupId,
+                symbol: fire.symbol,
+                condition: fire.condition,
+                targetPrice: fire.targetPrice,
+                value: fire.value,
+                price: fire.price,
+                changePercent: fire.changePercent,
+                join: fire.join,
+                rules,
+            });
+
+            // The log outlives the alert: it is the record of what happened, not of what is watched.
+            try {
+                await AlertEvent.create({
+                    userId,
+                    alertId: fire.groupId,
                     symbol: fire.symbol,
                     condition: fire.condition,
                     targetPrice: fire.targetPrice,
                     value: fire.value,
-                    price: fire.price,
-                    changePercent: fire.changePercent,
+                    price: fire.price ?? null,
+                    changePercent: fire.changePercent ?? null,
+                    join: fire.join,
+                    rules,
                 });
+            } catch (error) {
+                console.error('Error writing alert event:', error);
             }
         }),
     );
 
     revalidatePath('/alerts');
     return { checked: plan.checked, skipped: plan.skipped, fired, quotes };
+}
+
+/** The alert log for one user, newest first, trimmed to the newest `MAX_ALERT_EVENTS`. */
+export async function getAlertLog(limit = 50) {
+    const userId = await requireUserId();
+    try {
+        await connectToDatabase();
+        const take = Math.min(Math.max(1, Math.floor(limit)), MAX_ALERT_EVENTS);
+        const events = await AlertEvent.find({ userId }).sort({ at: -1 }).limit(take).lean();
+        return JSON.parse(JSON.stringify(events));
+    } catch (error) {
+        console.error('Error fetching alert log:', error);
+        return [];
+    }
 }

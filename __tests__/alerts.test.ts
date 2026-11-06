@@ -247,7 +247,11 @@ describe('needsCandles', () => {
     });
 
     it('lists every condition, including the three a drawing can carry', () => {
-        expect(ALERT_CONDITIONS).toHaveLength(17);
+        expect(ALERT_CONDITIONS).toHaveLength(19);
+        for (const condition of ['FORMULA', 'STRATEGY']) {
+            expect(isAlertCondition(condition)).toBe(true);
+            expect(needsCandles(condition as never)).toBe(true);
+        }
         for (const condition of ['DRAWING_CROSS_UP', 'DRAWING_CROSS_DOWN', 'DRAWING_TOUCH'] as const) {
             expect(isAlertCondition(condition)).toBe(true);
         }
