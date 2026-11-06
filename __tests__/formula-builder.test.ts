@@ -78,6 +78,21 @@ describe('formula builder', () => {
         expect(parseBuilder('nz(close) > 1')).toBeNull();
     });
 
+    it('keeps parameter placeholders intact through the builder', () => {
+        const text = '(close > sma(close, {fast})) and (rsi(close, {period}) < {level})';
+        const parsed = parseBuilder(text, ['fast', 'period', 'level']);
+        expect(parsed).not.toBeNull();
+        expect(parsed!.conditions[0].right).toEqual({ kind: 'indicator', fn: 'sma', source: 'close', period: 1, periodParam: 'fast' });
+        expect(parsed!.conditions[1].left).toEqual({ kind: 'indicator', fn: 'rsi', source: 'close', period: 1, periodParam: 'period' });
+        expect(parsed!.conditions[1].right).toEqual({ kind: 'param', key: 'level' });
+        expect(buildExpression(parsed!)).toBe(text);
+    });
+
+    it('declines a placeholder it was not told about', () => {
+        expect(parseBuilder('close > {fast}', [])).toBeNull();
+        expect(parseBuilder('close > {fast}', ['other'])).toBeNull();
+    });
+
     it('caps the rows it builds', () => {
         const many = { ...group(), conditions: Array.from({ length: 12 }, () => defaultBuilderCondition()) };
         expect(buildExpression(many).split(' and ')).toHaveLength(8);

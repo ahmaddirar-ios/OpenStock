@@ -10,7 +10,9 @@ export type BuilderJoin = 'and' | 'or';
 export type BuilderOperand =
     | { kind: 'price'; series: string; offset?: number }
     | { kind: 'number'; value: number }
-    | { kind: 'indicator'; fn: BuilderIndicator; source: string; period: number; offset?: number };
+    | { kind: 'indicator'; fn: BuilderIndicator; source: string; period: number; periodParam?: string; offset?: number }
+    /** A `{name}` placeholder: the strategy's parameter table owns the number, the rule owns the name. */
+    | { kind: 'param'; key: string };
 
 export type BuilderIndicator = 'sma' | 'ema' | 'rsi' | 'highest' | 'lowest';
 
@@ -46,9 +48,10 @@ export const defaultBuilderCondition = (): BuilderCondition => ({
 const renderOperand = (operand: BuilderOperand): string => {
     let text: string;
     if (operand.kind === 'number') text = String(operand.value);
+    else if (operand.kind === 'param') text = `{${operand.key}}`;
     else if (operand.kind === 'price') text = operand.series;
-    else text = `${operand.fn}(${operand.source}, ${operand.period})`;
-    if (operand.kind !== 'number' && operand.offset && operand.offset > 0) text += `[${operand.offset}]`;
+    else text = `${operand.fn}(${operand.source}, ${operand.periodParam ? `{${operand.periodParam}}` : operand.period})`;
+    if ((operand.kind === 'price' || operand.kind === 'indicator') && operand.offset && operand.offset > 0) text += `[${operand.offset}]`;
     return text;
 };
 
@@ -72,19 +75,28 @@ export function buildExpression(group: BuilderGroup): string {
     return rows.map((row) => `(${row})`).join(joiner);
 }
 
-const parseOperand = (node: FormulaNode): BuilderOperand | null => {
-    if (node.kind === 'number') return Number.isFinite(node.value) ? { kind: 'number', value: node.value } : null;
+const parseOperand = (node: FormulaNode, params?: ReadonlyMap<number, string>): BuilderOperand | null => {
+    if (node.kind === 'number') {
+        if (!Number.isFinite(node.value)) return null;
+        const key = params?.get(node.value);
+        return key ? { kind: 'param', key } : { kind: 'number', value: node.value };
+    }
     if (node.kind === 'series') return { kind: 'price', series: node.name };
     if (node.kind === 'history') {
-        const inner = parseOperand(node.of);
-        if (!inner || inner.kind === 'number') return null;
+        const inner = parseOperand(node.of, params);
+        if (!inner || inner.kind === 'number' || inner.kind === 'param') return null;
         return { ...inner, offset: node.offset };
     }
     if (node.kind === 'call') {
         if (!BUILDER_INDICATORS.some((entry) => entry.id === node.name)) return null;
         const [source, period, ...rest] = node.args;
         if (rest.length > 0 || !source || source.kind !== 'series' || !period || period.kind !== 'number') return null;
-        if (!Number.isFinite(period.value) || period.value < 1) return null;
+        if (!Number.isFinite(period.value)) return null;
+        const periodParam = params?.get(period.value);
+        if (periodParam) {
+            return { kind: 'indicator', fn: node.name as BuilderIndicator, source: source.name, period: 1, periodParam };
+        }
+        if (period.value < 1) return null;
         return {
             kind: 'indicator',
             fn: node.name as BuilderIndicator,
@@ -95,17 +107,17 @@ const parseOperand = (node: FormulaNode): BuilderOperand | null => {
     return null;
 };
 
-const parseCondition = (node: FormulaNode): BuilderCondition | null => {
+const parseCondition = (node: FormulaNode, params?: ReadonlyMap<number, string>): BuilderCondition | null => {
     if (node.kind === 'call' && (node.name === 'crossover' || node.name === 'crossunder')) {
         if (node.args.length !== 2) return null;
-        const left = parseOperand(node.args[0]);
-        const right = parseOperand(node.args[1]);
+        const left = parseOperand(node.args[0], params);
+        const right = parseOperand(node.args[1], params);
         if (!left || !right) return null;
         return { left, op: node.name === 'crossover' ? 'crossesAbove' : 'crossesBelow', right };
     }
     if (node.kind === 'binary' && ['>', '>=', '<', '<=', '=='].includes(node.op)) {
-        const left = parseOperand(node.left);
-        const right = parseOperand(node.right);
+        const left = parseOperand(node.left, params);
+        const right = parseOperand(node.right, params);
         if (!left || !right) return null;
         return { left, op: node.op as BuilderOperator, right };
     }
@@ -124,16 +136,40 @@ function flatten(node: FormulaNode, join: BuilderJoin): FormulaNode[] | null {
 }
 
 /**
- * Reads a formula back into a group, or null when it is not something the rows can represent. A null
- * is not an error: it means the editor shows the formula in code mode, untouched.
+ * The parser only knows numbers, so a placeholder is swapped for a sentinel number before the parse
+ * and swapped back afterwards. The sentinels are tiny and unique per key; if the text already
+ * contains one, the builder declines rather than guessing which number was meant.
  */
-export function parseBuilder(text: string): BuilderGroup | null {
-    const ast = formulaAst(text);
+const PARAM_SENTINEL = 1_000_003;
+
+const paramSentinels = (text: string, keys: readonly string[]): Map<number, string> | null => {
+    const map = new Map<number, string>();
+    for (let index = 0; index < keys.length; index += 1) {
+        const key = keys[index];
+        const sentinel = PARAM_SENTINEL + index * 2;
+        if (text.includes(String(sentinel))) return null;
+        map.set(sentinel, key);
+    }
+    return map;
+};
+
+/**
+ * Reads a formula back into a group, or null when it is not something the rows can represent. A null
+ * is not an error: it means the editor shows the formula in code mode, untouched. `paramKeys` lets a
+ * rule that uses `{name}` placeholders open in the builder with the placeholders intact.
+ */
+export function parseBuilder(text: string, paramKeys: readonly string[] = []): BuilderGroup | null {
+    const sentinels = paramKeys.length > 0 ? paramSentinels(text, paramKeys) : new Map<number, string>();
+    if (!sentinels) return null;
+    let source = text;
+    for (const [sentinel, key] of sentinels) source = source.split(`{${key}}`).join(String(sentinel));
+
+    const ast = formulaAst(source);
     if (!ast) return null;
 
     // A single condition needs no join, but the same flatten handles both shapes.
-    if (parseCondition(ast)) {
-        const condition = parseCondition(ast)!;
+    if (parseCondition(ast, sentinels)) {
+        const condition = parseCondition(ast, sentinels)!;
         return { join: 'and', conditions: [condition] };
     }
     if (ast.kind === 'binary' && (ast.op === 'and' || ast.op === 'or')) {
@@ -141,7 +177,7 @@ export function parseBuilder(text: string): BuilderGroup | null {
         if (!parts || parts.length < 2 || parts.length > MAX_BUILDER_CONDITIONS) return null;
         const conditions: BuilderCondition[] = [];
         for (const part of parts) {
-            const condition = parseCondition(part);
+            const condition = parseCondition(part, sentinels);
             if (!condition) return null;
             conditions.push(condition);
         }

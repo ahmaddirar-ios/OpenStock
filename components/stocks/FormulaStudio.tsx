@@ -111,27 +111,33 @@ function OperandEditor({
     onChange,
     lang,
     label,
+    paramKeys = [],
 }: {
     operand: BuilderOperand;
     onChange: (next: BuilderOperand) => void;
     lang: Lang;
     label: string;
+    paramKeys?: string[];
 }) {
     const t = (key: StringKey) => tx(lang, key);
-    const offset = operand.kind === 'number' ? 0 : operand.offset ?? 0;
+    const offset = operand.kind === 'price' || operand.kind === 'indicator' ? operand.offset ?? 0 : 0;
     return (
         <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</span>
             <div className="flex min-w-0 flex-wrap items-center gap-1">
                 <select
                     value={operand.kind}
-                    onChange={(event) => onChange(defaultOperand(event.target.value as BuilderOperand['kind']))}
+                    onChange={(event) => {
+                        const kind = event.target.value as BuilderOperand['kind'];
+                        onChange(kind === 'param' ? { kind: 'param', key: paramKeys[0] ?? 'p1' } : defaultOperand(kind));
+                    }}
                     aria-label={`${label} — ${t('studio.kind')}`}
                     className="h-7 rounded-[6px] bg-page px-1.5 text-[11.5px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                     <option value="price">{t('studio.operand.price')}</option>
                     <option value="indicator">{t('studio.operand.indicator')}</option>
                     <option value="number">{t('studio.operand.number')}</option>
+                    {paramKeys.length > 0 && <option value="param">{t('studio.operand.param')}</option>}
                 </select>
 
                 {operand.kind === 'price' && (
@@ -169,19 +175,50 @@ function OperandEditor({
                                 <option key={series} value={series}>{series}</option>
                             ))}
                         </select>
-                        <input
-                            type="number"
-                            min={1}
-                            max={2000}
-                            value={operand.period}
-                            onChange={(event) => {
-                                const value = Math.max(1, Math.min(2000, Math.floor(Number(event.target.value) || 1)));
-                                onChange({ ...operand, period: value });
-                            }}
-                            aria-label={t('studio.period')}
-                            className="num h-7 w-14 rounded-[6px] bg-page px-1.5 text-[11.5px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        />
+                        {paramKeys.length > 0 && (
+                            <select
+                                value={operand.periodParam ?? ''}
+                                onChange={(event) => {
+                                    const key = event.target.value;
+                                    onChange(key ? { ...operand, periodParam: key } : { ...operand, periodParam: undefined });
+                                }}
+                                aria-label={t('studio.period')}
+                                className="mono h-7 rounded-[6px] bg-page px-1.5 text-[11.5px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            >
+                                <option value="">{t('studio.operand.number')}</option>
+                                {paramKeys.map((key) => (
+                                    <option key={key} value={key}>{`{${key}}`}</option>
+                                ))}
+                            </select>
+                        )}
+                        {!operand.periodParam && (
+                            <input
+                                type="number"
+                                min={1}
+                                max={2000}
+                                value={operand.period}
+                                onChange={(event) => {
+                                    const value = Math.max(1, Math.min(2000, Math.floor(Number(event.target.value) || 1)));
+                                    onChange({ ...operand, period: value });
+                                }}
+                                aria-label={t('studio.period')}
+                                className="num h-7 w-14 rounded-[6px] bg-page px-1.5 text-[11.5px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            />
+                        )}
                     </>
+                )}
+
+                {operand.kind === 'param' && (
+                    <select
+                        value={operand.key}
+                        onChange={(event) => onChange({ kind: 'param', key: event.target.value })}
+                        aria-label={t('studio.operand.param')}
+                        className="mono h-7 rounded-[6px] bg-page px-1.5 text-[11.5px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                        {paramKeys.map((key) => (
+                            <option key={key} value={key}>{`{${key}}`}</option>
+                        ))}
+                    </select>
                 )}
 
                 {operand.kind === 'number' && (
@@ -195,7 +232,7 @@ function OperandEditor({
                     />
                 )}
 
-                {operand.kind !== 'number' && (
+                {(operand.kind === 'price' || operand.kind === 'indicator') && (
                     <label className="flex items-center gap-1 text-[10px] text-faint">
                         <span>{t('studio.offset')}</span>
                         <input

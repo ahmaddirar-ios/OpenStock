@@ -28,7 +28,7 @@ export type Costs = { commissionBps: number; slippageBps: number };
 export const DEFAULT_COSTS: Costs = { commissionBps: 5, slippageBps: 5 };
 
 export type Signal = { index: number; kind: 'entry' | 'exit' };
-export type TradeReason = 'signal' | 'stop' | 'target';
+export type TradeReason = 'signal' | 'stop' | 'target' | 'trail';
 
 export type Trade = {
     entryIndex: number;
@@ -423,8 +423,8 @@ const CSV_HEADERS = {
 };
 
 const REASONS = {
-    en: { signal: 'signal', stop: 'stop', target: 'target' },
-    ar: { signal: 'إشارة', stop: 'وقف', target: 'هدف' },
+    en: { signal: 'signal', stop: 'stop', target: 'target', trail: 'trailing stop' },
+    ar: { signal: 'إشارة', stop: 'وقف', target: 'هدف', trail: 'وقف متحرّك' },
 };
 
 const cell = (value: string): string => (/[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
