@@ -348,6 +348,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     // Hide-all: the drawings stay in memory, the layer just stops rendering.
     const [drawingsHidden, setDrawingsHidden] = useState(false);
+    // The list of drawings is a reference, not a workspace: it stays folded to one strip until asked.
+    const [listOpen, setListOpen] = useState(false);
     // Magnet is a working mode, not a preference: it starts off and cycles weak → strong → off.
     const [magnet, setMagnet] = useState<MagnetStrength>('off');
     const magnetRef = useRef<MagnetStrength>('off');
@@ -2215,15 +2217,35 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         </label>
                     </>
                 )}
-                <button
-                    type="button"
-                    onClick={() => setShortcutsOpen(true)}
-                    className="icon-btn chart-toolbar-optional"
-                    aria-label={t('chart.shortcuts.title')}
-                    title={t('chart.shortcuts.title')}
-                >
-                    <Keyboard />
-                </button>
+                {/* One chart-level action that must not hide with the contextual drawing bar: an alert.
+                    The keyboard sheet is still ⌘/ and in the help menu, so the bar spends the pixel here. */}
+                {alertSource(symbol) ? (
+                    <CreateAlertModal
+                        symbol={symbol}
+                        currentPrice={alertPrice}
+                        currency={data?.currency ?? 'USD'}
+                        lang={lang}
+                    >
+                        <button
+                            type="button"
+                            className={cn('icon-btn', selectedLevel != null && 'is-up')}
+                            aria-label={t('chart.alert')}
+                            title={t('chart.alert')}
+                        >
+                            <Bell />
+                        </button>
+                    </CreateAlertModal>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => setShortcutsOpen(true)}
+                        className="icon-btn chart-toolbar-optional"
+                        aria-label={t('chart.shortcuts.title')}
+                        title={t('chart.shortcuts.title')}
+                    >
+                        <Keyboard />
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={() => void exportImage()}
@@ -2246,28 +2268,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 <ChartToolbarMore lang={lang} open={toolbarMore} onToggle={() => setToolbarMore((value) => !value)} />
             </div>
 
-            {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away. */}
-            {!replay && (
-            <div className={cn(
-                'chart-toolbar chart-toolbar-edit',
-                (toolbarMore || selectedId !== null || (tool !== null && tool !== 'select')) && 'is-open',
-            )}>
-                {alertSource(symbol) && (
-                    <CreateAlertModal
-                        symbol={symbol}
-                        currentPrice={alertPrice}
-                        currency={data?.currency ?? 'USD'}
-                        lang={lang}
-                    >
-                        <button
-                            type="button"
-                            className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', selectedLevel != null && 'is-up')}
-                            title={t('chart.alert')}
-                        >
-                            <Bell className="size-3.5" /> {t('chart.alert')}
-                        </button>
-                    </CreateAlertModal>
-                )}
+            {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away.
+                It is also contextual: with nothing selected and no tool armed the chart keeps one row of
+                chrome, and the bar returns the moment there is something to style. */}
+            {!replay && (toolbarMore || selectedId !== null || (tool !== null && tool !== 'select')) && (
+            <div className="chart-toolbar chart-toolbar-edit is-open">
                 {alertSource(symbol) && selectedAnchor && (
                     <CreateAlertModal
                         symbol={symbol}
@@ -2713,6 +2718,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         </>
                     )}
                 </div>
+                {/* Porting a setup: the drawings travel as JSON, out and back in. */}
                 <div className="relative">
                     <button
                         type="button"
@@ -2776,7 +2782,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             </div>
             )}
 
-            <div ref={replayPanelRef} />
+            {/* A scroll anchor for the replay panel; out of the flow (and its gap) the rest of the time. */}
+            <div ref={replayPanelRef} className={replay ? undefined : 'hidden'} />
             {replay && (
                 <ReplayPanel
                     lang={lang}
@@ -2825,10 +2832,25 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             )}
 
             {!replay && drawings.length > 0 && (
-                <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-[10px] bg-page/60 p-1">
-                    <p className="px-2 pt-0.5 text-[11px] font-semibold text-faint">
-                        {t('chart.list')} · {drawings.length}
-                    </p>
+                <div className="rounded-[10px] bg-page/60">
+                    {/* Folded by default: the list is a reference, and 100px of it above the candles
+                        costs more than it gives. The strip still names what is on the chart. */}
+                    <button
+                        type="button"
+                        onClick={() => setListOpen((value) => !value)}
+                        aria-expanded={listOpen}
+                        className="flex w-full items-center gap-2 rounded-[10px] px-2 py-1 text-[11px] font-semibold text-faint hover:bg-hover/40"
+                    >
+                        <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', !listOpen && '-rotate-90')} />
+                        <span className="shrink-0">{t('chart.list')} · {arDigits(drawings.length, lang)}</span>
+                        {!listOpen && (
+                            <span className="truncate text-[11px] font-normal text-faint">
+                                {drawings.map((drawing) => toolLabel(drawing)).join(' · ')}
+                            </span>
+                        )}
+                    </button>
+                    {listOpen && (
+                <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto px-1 pb-1">
                     {drawings.map((drawing) => (
                         <div
                             key={drawing.id}
@@ -2889,10 +2911,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         </div>
                     ))}
                 </div>
+                    )}
+                </div>
             )}
 
             {!replay && (
-                <p role="status" className="px-1 text-[11px] text-faint">
+                <p role="status" className={cn('px-1 text-[11px] text-faint', syncState === 'saved' && 'sr-only')}>
                     {t(
                         syncState === 'saving'
                             ? 'chart.sync.saving'
