@@ -99,9 +99,19 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                     {isChartEmbeddable(tvSymbol) ? (
                         <StockChart tvSymbol={tvSymbol} scriptUrl={`${scriptUrl}advanced-chart.js`} lang={lang} />
                     ) : yahooCandleSymbol(symbol) ? (
-                        // TradingView will not embed this exchange, so the chart is drawn from Yahoo's candles
-                        <Panel title={tx(lang, 'stock.chart')} sub={tx(lang, 'stock.chartYahoo')}>
-                            <YahooChart symbol={symbol} tvSymbol={tvSymbol} lang={lang} preferredInterval={isIndex ? '60m' : undefined} />
+                        // TradingView will not embed this exchange, so the chart is drawn from Yahoo's
+                        // candles. No panel head: the header card above already names the symbol and
+                        // says the price is Yahoo's, and the chart carries its own toolbar — a title
+                        // here would be 60px of furniture over the one thing the page is for.
+                        <Panel className="h-[clamp(420px,62dvh,660px)]" bodyClassName="flex min-h-0 flex-1 flex-col">
+                            <YahooChart
+                                symbol={symbol}
+                                tvSymbol={tvSymbol}
+                                lang={lang}
+                                preferredInterval={isIndex ? '60m' : undefined}
+                                fill
+                                quote={false}
+                            />
                         </Panel>
                     ) : (
                         // TradingView refuses this exchange's chart in embeds; say so instead of showing its error

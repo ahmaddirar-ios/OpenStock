@@ -210,6 +210,12 @@ type Props = {
     preferredInterval?: string;
     /** Fill the container instead of standing 420px tall — the overview's pane owns the height. */
     fill?: boolean;
+    /**
+     * Draw the quote header above the chart. Defaults to `fill`: the overview needs it because the
+     * pane has no other identity, while a symbol page already prints the same price in its header
+     * card and would only be repeating itself.
+     */
+    quote?: boolean;
 };
 
 /**
@@ -217,7 +223,8 @@ type Props = {
  * Saudi quotes use), the indicators are computed here, and the drawings are kept in this browser.
  * Nothing about it depends on a paid provider or an API key.
  */
-export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, fill = false }: Props) {
+export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, fill = false, quote: quoteHeader }: Props) {
+    const showQuote = quoteHeader ?? fill;
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
 
     const hostRef = useRef<HTMLDivElement>(null);
@@ -1894,7 +1901,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         >
             {/* The quote header, overview only: what the pane is showing, in the order a trader asks
                 it — instrument, last, change, is the market open, is this data late. */}
-            {fill && (
+            {showQuote && (
                 <div className="chart-quote">
                     <Link
                         href={`/stocks/${encodeURIComponent(symbol)}`}
