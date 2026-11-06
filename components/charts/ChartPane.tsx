@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowUpRight,
     ChevronDown,
+    Eye,
+    EyeOff,
     Loader2,
+    MousePointer2,
+    Pencil,
+    Redo2,
     RefreshCw,
+    Trash2,
+    Undo2,
     X,
 } from 'lucide-react';
 import {
@@ -25,6 +32,22 @@ import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { clipToCursor } from '@/lib/chart-grid';
 import ChartLegend from '@/components/stocks/ChartLegend';
+import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
+import ToolPalette from '@/components/stocks/ToolPalette';
+import type { ToolEntry } from '@/lib/tools/catalog';
+import {
+    loadDrawings,
+    nearestTime,
+    saveDrawings,
+    translateDrawing,
+    visibleOn,
+    withPoint,
+    withText,
+    type DrawPoint,
+    type Drawing,
+    type ScreenPoint,
+} from '@/lib/chart-drawings';
+import { applyHistory, canRedo, canUndo, checkpointHistory, createHistory, redoHistory, undoHistory, type History } from '@/lib/chart-history';
 import type { BarReadout } from '@/lib/chart-readout';
 
 export type CrosshairSync = { time: number; price: number };
@@ -104,6 +127,100 @@ export default function ChartPane({
     const [readout, setReadout] = useState<BarReadout | null>(null);
     /** Set while this pane applies someone else's view, so it does not publish the echo back. */
     const ignoreUntil = useRef(0);
+
+    // The pane's own drawings. They are the same shapes the symbol page keeps — same storage key,
+    // same tools — so a trendline drawn in the grid is there when the symbol is opened alone, and
+    // the other way round. The history is per pane: undo in one pane must not rewind another.
+    const [timeline, setTimeline] = useState<History<Drawing[]>>(() => createHistory<Drawing[]>([]));
+    const drawings = timeline.present;
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [tool, setTool] = useState<ActiveTool | null>(null);
+    const [noteText, setNoteText] = useState('');
+    const [paletteOpen, setPaletteOpen] = useState(false);
+    const [drawingsHidden, setDrawingsHidden] = useState(false);
+    const gestureStart = useRef<Drawing[] | null>(null);
+    const bodyAnchor = useRef<{ id: string; points: DrawPoint[] } | null>(null);
+
+    const setDrawings = useCallback((updater: Drawing[] | ((list: Drawing[]) => Drawing[])) => {
+        setTimeline((history) => applyHistory(history, typeof updater === 'function' ? updater(history.present) : updater));
+    }, []);
+
+    // A symbol change is a different chart: its own shapes, its own history, nothing selected.
+    useEffect(() => {
+        setTimeline(createHistory(symbol ? loadDrawings(symbol) : []));
+        setSelectedId(null);
+        setTool(null);
+        setNoteText('');
+    }, [symbol]);
+
+    // Every edit is written straight through, so a reload or a trip to the symbol page keeps it.
+    useEffect(() => {
+        if (!symbol) return;
+        saveDrawings(symbol, drawings);
+    }, [symbol, drawings]);
+
+    const fromScreen = useCallback((x: number, y: number): DrawPoint | null => {
+        const host = hostRef.current;
+        if (!host) return null;
+        const time = host.chart.timeScale().coordinateToTime(x);
+        const price = host.price.coordinateToPrice(y);
+        if (time == null || price == null) return null;
+        return { time: Number(time), price: Number(price) };
+    }, []);
+
+    const beginGesture = useCallback(() => {
+        setTimeline((history) => {
+            gestureStart.current = history.present;
+            return history;
+        });
+    }, []);
+    const endGesture = useCallback(() => {
+        const before = gestureStart.current;
+        gestureStart.current = null;
+        if (!before) return;
+        setTimeline((history) => checkpointHistory(history, before));
+    }, []);
+    const undo = useCallback(() => {
+        setTimeline((history) => undoHistory(history));
+        setSelectedId(null);
+    }, []);
+    const redo = useCallback(() => {
+        setTimeline((history) => redoHistory(history));
+        setSelectedId(null);
+    }, []);
+    const beginBodyDrag = (id: string) => {
+        const drawing = drawings.find((item) => item.id === id);
+        if (!drawing) return;
+        beginGesture();
+        bodyAnchor.current = { id, points: drawing.points.map((point) => ({ ...point })) };
+    };
+    const moveBody = (id: string, delta: { time: number; price: number }) => {
+        const anchor = bodyAnchor.current;
+        if (!anchor || anchor.id !== id) return;
+        setTimeline((history) => ({
+            ...history,
+            present: history.present.map((item) =>
+                item.id === id ? translateDrawing({ ...item, points: anchor.points }, delta) : item,
+            ),
+        }));
+    };
+    const moveHandle = (id: string, index: number, point: DrawPoint) =>
+        setTimeline((history) => ({
+            ...history,
+            present: history.present.map((item) => (item.id === id ? withPoint(item, index, point) : item)),
+        }));
+    const editText = (id: string, text: string) => setDrawings((list) => list.map((item) => (item.id === id ? withText(item, text) : item)));
+    const deleteSelected = () => {
+        if (!selectedId) return;
+        setDrawings((list) => list.filter((item) => item.id !== selectedId));
+        setSelectedId(null);
+    };
+    const insertTool = (entry: ToolEntry) => {
+        setPaletteOpen(false);
+        if (entry.family !== 'drawing') return;
+        setTool(entry.key as ActiveTool);
+    };
+    const visibleDrawings = useMemo(() => drawings.filter((drawing) => visibleOn(drawing, intervalId)), [drawings, intervalId]);
 
     const publishCrosshair = useRef(onCrosshair);
     const publishRange = useRef(onRange);
@@ -236,6 +353,22 @@ export default function ChartPane({
         hostRef.current?.setData(view);
     }, [view]);
 
+    // The bars on screen, so a drawing stored on another interval can snap to the nearest one.
+    const barTimes = useMemo(() => view?.candles.map((candle) => candle.time) ?? [], [view]);
+
+    const toScreen = useCallback(
+        (point: DrawPoint): ScreenPoint | null => {
+            const host = hostRef.current;
+            if (!host) return null;
+            const time = nearestTime(barTimes, point.time);
+            if (time == null) return null;
+            const x = host.chart.timeScale().timeToCoordinate(time as UTCTimestamp);
+            const y = host.price.priceToCoordinate(point.price);
+            return x == null || y == null ? null : { x, y };
+        },
+        [barTimes],
+    );
+
     // The header pill is a day change, so it is read from daily bars even when the pane charts weeks
     // or months — otherwise a weekly bar would quietly redefine "today". The daily set is the same
     // server call the symbol page makes, behind the same one-minute cache.
@@ -320,7 +453,14 @@ export default function ChartPane({
 
     return (
         <section
-            className={cn('card relative flex min-h-[320px] flex-col overflow-hidden', className)}
+            className={cn(
+                'card relative flex min-h-[320px] flex-col overflow-hidden',
+                // The tool palette hangs below the header, over the chart and often over the pane
+                // beneath it. While it is open this pane has to sit above its siblings and stop
+                // clipping, or the next pane's header paints over the list.
+                paletteOpen && 'z-30 overflow-visible',
+                className,
+            )}
             aria-label={symbol ? `${symbol} chart` : tx(lang, 'chart.grid.empty')}
         >
             {/* A refresh in flight never blanks the pane: a hairline at the top says it is working. */}
@@ -348,6 +488,78 @@ export default function ChartPane({
                             <span className="min-w-0 flex-1 truncate text-[11.5px] text-faint" title={name}>
                                 {name}
                             </span>
+                        )}
+                        {/* The pane's drawing controls: the same tools as the symbol page, folded into
+                            a row of glyphs so a grid of four panes still has room for its charts. */}
+                        {status === 'ready' && !replay && (
+                            <div className="relative flex items-center gap-0.5" role="group" aria-label={tx(lang, 'chart.drawings')}>
+                                <button
+                                    type="button"
+                                    onClick={() => setPaletteOpen((value) => !value)}
+                                    aria-expanded={paletteOpen}
+                                    aria-label={tx(lang, 'chart.draw')}
+                                    title={tx(lang, 'chart.draw')}
+                                    className={cn('icon-btn size-6', (paletteOpen || (tool && tool !== 'select')) && 'is-up')}
+                                >
+                                    <Pencil className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setTool((current) => (current === 'select' ? null : 'select'))}
+                                    aria-pressed={tool === 'select'}
+                                    aria-label={tx(lang, 'chart.select')}
+                                    title={tx(lang, 'chart.select')}
+                                    className={cn('icon-btn size-6', tool === 'select' && 'is-up')}
+                                >
+                                    <MousePointer2 className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={undo}
+                                    disabled={!canUndo(timeline)}
+                                    aria-label={tx(lang, 'chart.undo')}
+                                    title={tx(lang, 'chart.undo')}
+                                    className="icon-btn size-6 disabled:opacity-40"
+                                >
+                                    <Undo2 className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={redo}
+                                    disabled={!canRedo(timeline)}
+                                    aria-label={tx(lang, 'chart.redo')}
+                                    title={tx(lang, 'chart.redo')}
+                                    className="icon-btn size-6 disabled:opacity-40"
+                                >
+                                    <Redo2 className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={deleteSelected}
+                                    disabled={!selectedId}
+                                    aria-label={tx(lang, 'chart.delete')}
+                                    title={tx(lang, 'chart.delete')}
+                                    className="icon-btn size-6 disabled:opacity-40"
+                                >
+                                    <Trash2 className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setDrawingsHidden((value) => !value)}
+                                    aria-pressed={drawingsHidden}
+                                    aria-label={tx(lang, drawingsHidden ? 'chart.showDrawings' : 'chart.hideDrawings')}
+                                    title={tx(lang, drawingsHidden ? 'chart.showDrawings' : 'chart.hideDrawings')}
+                                    className={cn('icon-btn size-6', drawingsHidden && 'is-up')}
+                                >
+                                    {drawingsHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                                </button>
+                                {paletteOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-20" onClick={() => setPaletteOpen(false)} />
+                                        <ToolPalette lang={lang} onInsert={insertTool} onClose={() => setPaletteOpen(false)} />
+                                    </>
+                                )}
+                            </div>
                         )}
                         {change && (
                             <span className="ms-auto flex items-baseline gap-1.5" dir="ltr">
@@ -412,6 +624,29 @@ export default function ChartPane({
             <div className="relative min-h-0 flex-1">
                 {/* The canvas host stays mounted so the chart survives every state change. */}
                 <div ref={elRef} data-chart="pane" className="absolute inset-0" dir="ltr" />
+
+                {symbol && status === 'ready' && !replay && !drawingsHidden && (
+                    <ChartDrawings
+                        drawings={visibleDrawings}
+                        selectedId={selectedId}
+                        tool={tool}
+                        text={noteText}
+                        barTimes={barTimes}
+                        candles={view?.candles ?? []}
+                        toScreen={toScreen}
+                        fromScreen={fromScreen}
+                        onCommit={(drawing) => setDrawings((list) => [...list, drawing])}
+                        onSelect={setSelectedId}
+                        onMoveHandle={moveHandle}
+                        onMoveBody={moveBody}
+                        onMoveBodyStart={beginBodyDrag}
+                        onGestureStart={beginGesture}
+                        onGestureEnd={endGesture}
+                        onEditText={editText}
+                        onToolConsumed={() => setTool(null)}
+                        label={(key) => tx(lang, key)}
+                    />
+                )}
 
                 {symbol && status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
 
