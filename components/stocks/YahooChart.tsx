@@ -32,6 +32,7 @@ import {
     GitCompare,
     History,
     Keyboard,
+    LayoutTemplate,
     Loader2,
     Lock,
     Unlock,
@@ -110,6 +111,7 @@ import {
 } from '@/lib/drawing-styles';
 import DrawingRail from '@/components/stocks/DrawingRail';
 import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/drawing-templates';
+import { addChartTemplate, chartTemplateCounts, instantiateChartTemplate, loadChartTemplates, removeChartTemplate, saveChartTemplates, type ChartTemplate } from '@/lib/chart-templates';
 import { decodeChartShare, sharePath } from '@/lib/chart-share';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
@@ -177,7 +179,7 @@ import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { toolFromParam } from '@/lib/shell/command';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib' | 'tools' | 'tf';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'layout' | 'visibility' | 'fib' | 'tools' | 'tf';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -545,6 +547,22 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         }
     };
 
+    // A whole-chart template: the drawings are stamped on with fresh ids (so they add rather than
+    // overwrite), and the studies merge by id the same way an imported setup does.
+    const applyChartTemplate = (template: ChartTemplate) => {
+        const applied = instantiateChartTemplate(template);
+        if (applied.drawings.length > 0) setDrawings((list) => mergeDrawings(list, applied.drawings));
+        if (applied.studies.length > 0) updateStudies(mergeStudies(studies, applied.studies));
+    };
+
+    const saveChartTemplate = () => {
+        const next = addChartTemplate(chartTemplates, chartTemplateName, drawings, studies);
+        if (next === chartTemplates) return;
+        setChartTemplates(next);
+        saveChartTemplates(next);
+        setChartTemplateName('');
+    };
+
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [menu, setMenu] = useState<MenuId | null>(null);
@@ -815,12 +833,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
     const [drawingStyles, setDrawingStyles] = useState<DrawingStyleMap>({});
     const [templates, setTemplates] = useState<DrawingTemplate[]>([]);
+    // Whole-chart templates: every drawing and study, saved under a name and stamped onto any symbol.
+    const [chartTemplates, setChartTemplates] = useState<ChartTemplate[]>([]);
     const shareApplied = useRef(false);
     const [templateName, setTemplateName] = useState('');
+    const [chartTemplateName, setChartTemplateName] = useState('');
     const [levelDraft, setLevelDraft] = useState('');
     useEffect(() => {
         setDrawingStyles(loadDrawingStyles());
         setTemplates(loadTemplates());
+        setChartTemplates(loadChartTemplates());
     }, []);
     const rememberStyle = (tool: ShapeTool | undefined, style: { color?: ColorKey; width?: DrawingWidth; dash?: DrawingDash }) => {
         if (!tool) return;
@@ -2232,6 +2254,81 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 </div>
                 )}
                 {!replay && <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />}
+                {/* Whole-chart templates: every drawing and study, saved once and stamped anywhere. It
+                    lives on the always-visible bar, not the contextual drawing bar, because saving a
+                    setup must not require selecting a shape first. */}
+                {!replay && (
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setMenu((current) => (current === 'layout' ? null : 'layout'))}
+                        aria-expanded={menu === 'layout'}
+                        aria-label={t('chart.layout')}
+                        title={t('chart.layout')}
+                        className={cn('pill h-7 px-2 text-[12px] gap-1', menu === 'layout' && 'is-up')}
+                    >
+                        <LayoutTemplate className="size-3.5" />
+                    </button>
+                    {menu === 'layout' && (
+                        <>
+                            <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
+                            <div className="chart-layout-menu absolute end-0 z-30 mt-1 flex w-72 flex-col gap-1.5 rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
+                                <p className="px-1 text-[11.5px] text-faint">{t('chart.layoutHint')}</p>
+                                {chartTemplates.length === 0 && <p className="px-1 py-1 text-[12px] text-faint">{t('chart.layoutEmpty')}</p>}
+                                {chartTemplates.map((template) => {
+                                    const counts = chartTemplateCounts(template);
+                                    return (
+                                        <div key={template.id} className="flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => { applyChartTemplate(template); setMenu(null); }}
+                                                className="pill h-7 min-w-0 flex-1 gap-2 px-2 text-[12px]"
+                                            >
+                                                <LayoutTemplate className="size-3.5 shrink-0 text-faint" />
+                                                <span className="truncate">{template.name}</span>
+                                                <span className="num ms-auto shrink-0 text-[10.5px] text-faint">
+                                                    {arDigits(counts.drawings, lang)} · {arDigits(counts.studies, lang)}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const next = removeChartTemplate(chartTemplates, template.id);
+                                                    setChartTemplates(next);
+                                                    saveChartTemplates(next);
+                                                }}
+                                                aria-label={`${t('chart.layoutDelete')} ${template.name}`}
+                                                title={t('chart.layoutDelete')}
+                                                className="icon-btn is-danger"
+                                            >
+                                                <Trash2 className="size-3.5" />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                                <div className="mt-1 flex gap-1.5 border-t border-white/5 pt-2">
+                                    <input
+                                        value={chartTemplateName}
+                                        onChange={(event) => setChartTemplateName(event.target.value)}
+                                        placeholder={t('chart.layoutName')}
+                                        maxLength={40}
+                                        dir="auto"
+                                        className="h-7 min-w-0 flex-1 rounded-full bg-page px-2.5 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={saveChartTemplate}
+                                        disabled={!chartTemplateName.trim() || (drawings.length === 0 && studies.length === 0)}
+                                        className="pill h-7 px-2.5 text-[12px] is-up disabled:opacity-50"
+                                    >
+                                        {t('chart.layoutSave')}
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                )}
                 {/* The far edge: settings, then the actions that take something out of the chart. The
                     spacer is a spacer, not an auto margin: the bar is forced LTR inside an RTL page,
                     and a logical auto margin lands on the wrong side of the gear. */}

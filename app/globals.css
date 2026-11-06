@@ -1893,6 +1893,17 @@ html[lang="ar"] [lang="en"] {
     .chart-tf-pick { display: block; }
     .chart-more { display: inline-flex; }
     .chart-toolbar.chart-toolbar-edit:not(.is-open) { display: none; }
+    /* A phone has no room for a 18rem dropdown hanging off a button in the middle of a wrapped
+       toolbar: the chart-template sheet pins to the bottom, where the thumb already is. */
+    .chart-layout-menu {
+        position: fixed !important;
+        inset-inline: 8px !important;
+        inset-block-start: auto !important;
+        inset-block-end: 8px !important;
+        width: auto !important;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
 }
 
 /* Focus is a product surface, not an afterthought. */
