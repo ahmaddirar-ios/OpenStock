@@ -59,10 +59,11 @@ const OPTIONS: Record<TickKind, Intl.DateTimeFormatOptions> = {
 };
 
 /**
- * The locale the canvas is formatted in. The Arabic locale names the months in Arabic and prints
- * Arabic-Indic digits; the canvas needs no bidi isolates, it shapes the run itself.
+ * The locale the canvas is formatted in. `ar-u-nu-arab` is deliberate: plain `ar` resolves to
+ * Latin digits in current ICU, and the whole point is an axis that reads Arabic-Indic like the
+ * rest of the interface. The canvas needs no bidi isolates; it shapes the run itself.
  */
-const locale = (lang: Lang) => (lang === 'ar' ? 'ar' : 'en-GB');
+const locale = (lang: Lang) => (lang === 'ar' ? 'ar-u-nu-arab' : 'en-GB');
 
 /** The label for one axis tick, in the chosen zone and the interface's language. */
 export function tickLabel(kind: TickKind, seconds: number, zone: TimeZoneId, lang: Lang = 'en'): string {

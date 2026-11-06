@@ -264,7 +264,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 tickLabel(TICK_KIND[type] ?? 'time', Number(time), timeZone, lang),
         },
         localization: {
-            locale: lang === 'ar' ? 'ar' : 'en-US',
+            locale: lang === 'ar' ? 'ar-u-nu-arab' : 'en-US',
             priceFormatter: formatPrice,
             // The compare pane draws percent change: it keeps its own sign and unit, only the
             // digits turn Arabic-Indic like the price axis.
