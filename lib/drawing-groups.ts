@@ -92,6 +92,7 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     signpost: 'chart.tool.signpost',
     flag: 'chart.tool.flag',
     pricenote: 'chart.tool.pricenote',
+    table: 'chart.tool.table',
     gannfan: 'chart.tool.gannfan',
     gannbox: 'chart.tool.gannbox',
     gannsquare: 'chart.tool.gannsquare',

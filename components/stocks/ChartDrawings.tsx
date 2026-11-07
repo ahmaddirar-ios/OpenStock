@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -564,6 +564,50 @@ export default function ChartDrawings({
                         strokeWidth={width}
                         opacity={opacity}
                     />
+                    {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
+        if (kind === 'table') {
+            // A box of cells: the two anchors are the corners, and every row and column is drawn as
+            // an even slice of it. The text is the grid itself, so a cell is filled in where it sits.
+            const left = Math.min(screen[0].x, screen[1].x);
+            const top = Math.min(screen[0].y, screen[1].y);
+            const boxW = Math.abs(screen[1].x - screen[0].x);
+            const boxH = Math.abs(screen[1].y - screen[0].y);
+            const grid = tableGrid(drawing.text);
+            const cols = grid[0]?.length ?? 1;
+            const rows = grid.length;
+            const cellW = boxW / cols;
+            const cellH = boxH / rows;
+            const fontSize = Math.max(8, Math.min(13, cellH * 0.55));
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <rect x={left} y={top} width={boxW} height={boxH} fill={fill} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {Array.from({ length: cols - 1 }, (_, i) => (
+                        <line key={`${drawing.id}-v${i}`} x1={left + cellW * (i + 1)} y1={top} x2={left + cellW * (i + 1)} y2={top + boxH} stroke={color} strokeWidth={1} opacity={opacity * 0.65} />
+                    ))}
+                    {Array.from({ length: rows - 1 }, (_, i) => (
+                        <line key={`${drawing.id}-h${i}`} x1={left} y1={top + cellH * (i + 1)} x2={left + boxW} y2={top + cellH * (i + 1)} stroke={color} strokeWidth={1} opacity={opacity * 0.65} />
+                    ))}
+                    {grid.flatMap((row, r) =>
+                        row.map((cell, c) =>
+                            cell.length > 0 && cellW > 12 && cellH > 9 ? (
+                                <text
+                                    key={`${drawing.id}-c${r}-${c}`}
+                                    x={left + cellW * c + 4}
+                                    y={top + cellH * r + cellH / 2 + fontSize * 0.35}
+                                    fill={ink}
+                                    fontSize={fontSize}
+                                    opacity={opacity}
+                                    className="mono"
+                                >
+                                    {cell.length > Math.floor(cellW / (fontSize * 0.6)) ? `${cell.slice(0, Math.max(1, Math.floor(cellW / (fontSize * 0.6))))}…` : cell}
+                                </text>
+                            ) : null,
+                        ),
+                    )}
                     {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
                 </g>
             );
@@ -1631,29 +1675,54 @@ export default function ChartDrawings({
                 })}
             </svg>
 
-            {editing && editorAt && (
-                <div className="absolute z-20 flex items-center gap-1" style={{ left: editorAt.x + 6, top: editorAt.y - 12 }}>
-                    <input
-                        ref={inputRef}
-                        value={editing.value}
-                        maxLength={80}
-                        onChange={(event) => setEditing({ id: editing.id, value: event.target.value })}
-                        onKeyDown={(event) => {
-                            if (event.key === 'Enter') saveEdit();
-                            if (event.key === 'Escape') setEditing(null);
-                        }}
-                        className="h-6 w-40 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        dir="auto"
-                        aria-label={label('chart.editText')}
-                    />
-                    <button type="button" onClick={saveEdit} className="pill h-6 px-2 text-[11px] is-up">
-                        {label('chart.save')}
-                    </button>
-                    <button type="button" onClick={() => setEditing(null)} className="pill h-6 px-2 text-[11px]">
-                        {label('chart.cancel')}
-                    </button>
-                </div>
-            )}
+            {editing && editorAt && (() => {
+                // A table is edited as a grid, so it gets a multiline box and one line per row; every
+                // other note stays the single line it always was.
+                const isTable = editorTarget?.tool === 'table';
+                return (
+                    <div className="absolute z-20 flex flex-col gap-1" style={{ left: editorAt.x + 6, top: editorAt.y - 12 }}>
+                        <div className="flex items-center gap-1">
+                            {isTable ? (
+                                <textarea
+                                    ref={inputRef as unknown as React.RefObject<HTMLTextAreaElement>}
+                                    value={editing.value}
+                                    maxLength={TABLE_MAX}
+                                    rows={3}
+                                    onChange={(event) => setEditing({ id: editing.id, value: event.target.value })}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Escape') setEditing(null);
+                                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) saveEdit();
+                                    }}
+                                    className="h-20 w-52 rounded-[10px] bg-page px-2 py-1 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    dir="auto"
+                                    aria-label={label('chart.editText')}
+                                />
+                            ) : (
+                                <input
+                                    ref={inputRef}
+                                    value={editing.value}
+                                    maxLength={80}
+                                    onChange={(event) => setEditing({ id: editing.id, value: event.target.value })}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') saveEdit();
+                                        if (event.key === 'Escape') setEditing(null);
+                                    }}
+                                    className="h-6 w-40 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    dir="auto"
+                                    aria-label={label('chart.editText')}
+                                />
+                            )}
+                            <button type="button" onClick={saveEdit} className="pill h-6 px-2 text-[11px] is-up">
+                                {label('chart.save')}
+                            </button>
+                            <button type="button" onClick={() => setEditing(null)} className="pill h-6 px-2 text-[11px]">
+                                {label('chart.cancel')}
+                            </button>
+                        </div>
+                        {isTable && <p className="rounded bg-page/85 px-2 py-0.5 text-[10.5px] text-faint shadow-[inset_0_0_0_1px_var(--line)]">{label('chart.tool.tableHint')}</p>}
+                    </div>
+                );
+            })()}
 
             {/* How many clicks are still expected, so a five-point pattern is not a guessing game. */}
             {tool && tool !== 'select' && tool !== 'measure' && pointsNeeded(tool) > 1 && (

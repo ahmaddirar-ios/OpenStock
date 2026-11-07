@@ -1,4 +1,4 @@
-// One catalog for every tool the chart offers: the 76 drawings, the 27 studies, the 11 chart types
+// One catalog for every tool the chart offers: the 77 drawings, the 27 studies, the 11 chart types
 // and the 15 formula functions. It exists so that four things can never disagree about a tool again
 // — the rail, the menus, the search palette, and the guide that will be written from it.
 //
@@ -161,6 +161,7 @@ const DRAWING_KEYWORDS: Partial<Record<ShapeTool | 'select' | 'measure', readonl
     signpost: ['لافتة', 'علامة'],
     flag: ['علم'],
     pricenote: ['price label', 'سعر السهم'],
+    table: ['grid', 'stats', 'جدول', 'خلايا'],
     icon: ['sticker', 'رمز', 'ملصق'],
     image: ['صورة', 'لصق'],
     // brush

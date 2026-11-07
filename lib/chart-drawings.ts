@@ -70,6 +70,7 @@ export type ShapeKind =
     | 'vprofile'
     | 'fib'
     | 'gann'
+    | 'table'
     | 'text'
     | 'poly'
     | 'hs'
@@ -94,6 +95,8 @@ export type ShapeTool =
     | 'brush' | 'highlighter'
     // annotations: a label the trader writes, or the price at the point they marked
     | 'callout' | 'balloon' | 'signpost' | 'flag' | 'pricenote'
+    // a table: a two-click box whose cells the trader fills in, for a plan or a set of levels
+    | 'table'
     // Gann, pitchforks and the measured channels
     | 'gannfan' | 'gannbox' | 'gannsquare' | 'pitchfork' | 'schiffpitchfork' | 'modpitchfork' | 'insidepitchfork'
     | 'regression' | 'flattop' | 'disjoint'
@@ -353,6 +356,9 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'signpost', group: 'annotation', kind: 'signpost', clicks: 1, defaultColor: 'cyan' },
     { tool: 'flag', group: 'annotation', kind: 'flag', clicks: 1, defaultColor: 'orange' },
     { tool: 'pricenote', group: 'annotation', kind: 'pricenote', clicks: 1, defaultColor: 'white' },
+    // A table is a box of cells. Rows are lines and cells are separated by a bar, entered in the
+    // same editor a note uses; the box's two corners are what the trader places on the chart.
+    { tool: 'table', group: 'annotation', kind: 'table', clicks: 2, defaultColor: 'blue' },
 
     // Gann, pitchforks and the measured channels: the same group the design put them in.
     { tool: 'gannfan', group: 'gann', kind: 'gannfan', clicks: 2, defaultColor: 'violet' },
@@ -417,7 +423,7 @@ export const pointsNeeded = (tool: ShapeTool): number => toolDef(tool).clicks;
  * chart stores their text and re-opens the editor on a double click. The price markers derive their
  * label instead, so nothing of theirs has to be stored.
  */
-const TEXT_TOOLS = new Set<ShapeTool>(['text', 'callout', 'balloon', 'signpost', 'flag', 'icon', 'image']);
+const TEXT_TOOLS = new Set<ShapeTool>(['text', 'callout', 'balloon', 'signpost', 'flag', 'icon', 'image', 'table']);
 export const carriesText = (tool: ShapeTool): boolean => TEXT_TOOLS.has(tool);
 
 /** A price the way the chart prints it: two decimals, thousands separated. */
@@ -437,6 +443,8 @@ export function annotationText(tool: ShapeTool, price: number, typed?: string | 
     // pasted, because a price would not be an address.
     if (tool === 'icon') return cleanText(typed ?? '') ?? ICON_GLYPHS[0];
     if (tool === 'image') return cleanText(typed ?? '', IMAGE_DATA_MAX) ?? undefined;
+    // A table starts on a small blank grid, so the trader has cells to click into straight away.
+    if (tool === 'table') return tableGridText([['Title', ''], ['', '']]);
     return cleanText(typed ?? '') ?? priceLabel(price);
 }
 
@@ -1516,6 +1524,7 @@ const BOX_KINDS = new Set<ShapeKind>([
     'circle',
     'vprofile',
     'bars',
+    'table',
 ]);
 
 /** Kinds whose outline closes back to the first anchor. */
@@ -1550,14 +1559,67 @@ export const TEXT_MAX = 80;
 /** An image is addressed by a URL, which is longer than a note's words. */
 export const IMAGE_URL_MAX = 300;
 
-/** How long a tool's own wording may be. An uploaded picture is a data payload, so it gets its own cap. */
-export const textLimit = (tool: ShapeTool): number => (tool === 'image' ? IMAGE_DATA_MAX : TEXT_MAX);
+/** A table holds many cells, so its text is allowed to be longer than a one-line note. */
+export const TABLE_MAX = 600;
 
-/** Trimmed and collapsed, or null when there is nothing worth printing. */
+/** The most rows and the most columns a table keeps, so a pasted block cannot blow the box up. */
+export const TABLE_MAX_ROWS = 12;
+export const TABLE_MAX_COLS = 6;
+
+/** How long a tool's own wording may be. An uploaded picture is a data payload, so it gets its own cap. */
+export const textLimit = (tool: ShapeTool): number =>
+    tool === 'image' ? IMAGE_DATA_MAX : tool === 'table' ? TABLE_MAX : TEXT_MAX;
+
+/**
+ * Trimmed and collapsed, or null when there is nothing worth printing. A table is the one text tool
+ * whose line breaks matter: rows are lines, so its whitespace is folded per line, not across all of
+ * it. Any other tool collapses to a single line.
+ */
 export function cleanText(text: unknown, max = TEXT_MAX): string | null {
     if (typeof text !== 'string') return null;
+    if (max > TEXT_MAX) {
+        const lines = text
+            .replace(/\r\n?/g, '\n')
+            .split('\n')
+            .slice(0, TABLE_MAX_ROWS)
+            .map((line) =>
+                line
+                    .split('|')
+                    .slice(0, TABLE_MAX_COLS)
+                    .map((cell) => cell.trim().replace(/\s+/g, ' '))
+                    .join('|'),
+            );
+        const clean = lines.join('\n');
+        // A table keeps its blank trailing rows: they are cells the trader has not filled in yet.
+        return clean.trim().length === 0 || clean.length > max ? null : clean;
+    }
     const clean = text.trim().replace(/\s+/g, ' ');
     return clean.length === 0 || clean.length > max ? null : clean;
+}
+
+/** A table's text as rows of cells: lines split on the bar, padded so every row has the same width. */
+export function tableGrid(text?: string | null): string[][] {
+    const raw = typeof text === 'string' ? text : '';
+    const rows = raw
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .slice(0, TABLE_MAX_ROWS)
+        .map((line) => line.split('|').slice(0, TABLE_MAX_COLS));
+    const cols = Math.max(1, ...rows.map((row) => row.length));
+    return rows.map((row) => [...row, ...Array.from({ length: cols - row.length }, () => '')]);
+}
+
+/** The inverse: rows of cells back to the stored text. Rows keep their column count, blank cells and all. */
+export function tableGridText(rows: string[][]): string {
+    const trimmed = rows.slice(0, TABLE_MAX_ROWS).map((row) => row.slice(0, TABLE_MAX_COLS));
+    const cols = Math.max(1, ...trimmed.map((row) => row.length));
+    return trimmed
+        .map((row) =>
+            [...row, ...Array.from({ length: cols - row.length }, () => '')]
+                .map((cell) => cell.replace(/[|\n\r]/g, ' ').trim())
+                .join('|'),
+        )
+        .join('\n');
 }
 
 /** The same text on a new anchor: the note is dragged, so its point moves, not its wording. */

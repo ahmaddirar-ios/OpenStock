@@ -8,7 +8,7 @@ import { groupedTools, searchTools, toolTotal, type ToolEntry } from '@/lib/tool
 import { toolIcon } from '@/lib/tools/icons';
 
 /**
- * One field over every tool the chart has: the 76 drawings, the 27 studies, the 11 chart types and
+ * One field over every tool the chart has: the 77 drawings, the 27 studies, the 11 chart types and
  * the 15 formula functions, read from the catalog so the list cannot go stale.
  *
  * Typing searches every tool by its Arabic or English name, by a synonym, or by the function name.

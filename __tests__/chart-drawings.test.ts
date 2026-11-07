@@ -37,6 +37,10 @@ import {
     serializeDrawings,
     sinePoints,
     strokeWidthOf,
+    TABLE_MAX,
+    tableGrid,
+    tableGridText,
+    textLimit,
     toolDef,
     toolsInGroup,
     type Drawing,
@@ -99,6 +103,7 @@ describe('the tool registry', () => {
             'signpost',
             'flag',
             'pricenote',
+            'table',
             'icon',
             'image',
         ]);
@@ -577,5 +582,59 @@ describe('hiding a drawing, and the switch that keeps a tool armed', () => {
         expect(readStayDrawing(storage)).toBe(false);
         // A storage that refuses to answer never breaks the chart.
         expect(readStayDrawing({ getItem: () => { throw new Error('private mode'); } })).toBe(false);
+    });
+});
+
+describe('the table object', () => {
+    it('is a two-click annotation that carries its own text', () => {
+        expect(pointsNeeded('table')).toBe(2);
+        expect(toolDef('table').kind).toBe('table');
+        expect(textLimit('table')).toBe(TABLE_MAX);
+        expect(textLimit('text')).toBe(TEXT_MAX);
+    });
+
+    it('reads rows on lines and cells on bars, padding short rows', () => {
+        expect(tableGrid('A|B\nC|D')).toEqual([
+            ['A', 'B'],
+            ['C', 'D'],
+        ]);
+        // A short row is padded to the widest one, so the grid is always rectangular.
+        expect(tableGrid('A|B|C\nD')).toEqual([
+            ['A', 'B', 'C'],
+            ['D', '', ''],
+        ]);
+        // No text is still a one-cell grid, never a crash.
+        expect(tableGrid(undefined)).toEqual([['']]);
+    });
+
+    it('round-trips a grid through its stored text', () => {
+        const rows = [
+            ['Entry', '1.20'],
+            ['Stop', '1.10'],
+        ];
+        expect(tableGrid(tableGridText(rows))).toEqual(rows);
+    });
+
+    it('keeps line breaks when the text is cleaned, unlike a one-line note', () => {
+        expect(cleanText('A|B\nC|D', TABLE_MAX)).toBe('A|B\nC|D');
+        expect(cleanText('  A  |  B  \n  C  |  D  ', TABLE_MAX)).toBe('A|B\nC|D');
+        // A note still collapses to one line.
+        expect(cleanText('hello\nworld')).toBe('hello world');
+        // A table of nothing is not worth storing.
+        expect(cleanText('   \n  ', TABLE_MAX)).toBeNull();
+    });
+
+    it('caps rows and columns so a pasted block cannot grow without bound', () => {
+        const wide = Array.from({ length: 20 }, () => Array.from({ length: 10 }, () => 'x').join('|')).join('\n');
+        const grid = tableGrid(wide);
+        expect(grid.length).toBeLessThanOrEqual(12);
+        expect(grid[0].length).toBeLessThanOrEqual(6);
+    });
+
+    it('is grabbed by its sides like any other box', () => {
+        const table: Drawing = { id: 't1', tool: 'table', points: [{ time: 1, price: 10 }, { time: 2, price: 8 }], text: 'A|B' };
+        const screen = [[{ x: 10, y: 10 }, { x: 110, y: 60 }]];
+        expect(hitTest([table], screen, { x: 10, y: 35 }, 6)?.id).toBe('t1');
+        expect(hitTest([table], screen, { x: 60, y: 35 }, 6)).toBeNull();
     });
 });
