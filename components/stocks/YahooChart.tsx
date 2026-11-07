@@ -611,6 +611,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [intent, setIntent] = useState<ReplayIntent>({});
     const [orderError, setOrderError] = useState<OrderFailure | null>(null);
     const [resumedFrom, setResumedFrom] = useState<number | null>(null);
+    // The ghost feed: the bars after the cursor, painted faintly. Off by default, because seeing the
+    // future is a choice a replay should not make for the trader.
+    const [ghost, setGhost] = useState(false);
 
     const replayCandles = useMemo(() => replaySet?.candles ?? [], [replaySet]);
 
@@ -630,6 +633,13 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         if (!replaySet) return null;
         return { candles: visibleCandles(replayCandles, cursor), currency: replaySet.currency };
     }, [replay, data, replaySet, replayCandles, cursor]);
+
+    // The bars the replay has not reached. They go to their own faint series, never to the price
+    // series, so no indicator, drawing or marker can be shaped by them.
+    const ghostCandles = useMemo(
+        () => (replay && ghost ? replayCandles.slice(cursor + 1) : []),
+        [replay, ghost, replayCandles, cursor],
+    );
 
     // The quote header the overview draws above the chart: the instrument, its last print, the day's
     // move and whether its market is open. Every number comes from the candles already on screen —
@@ -1169,6 +1179,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     useEffect(() => {
         if (displayData) candleHostRef.current?.setData(displayData);
     }, [displayData]);
+
+    // The ghost feed follows the cursor: a step forward shortens it, a step back lengthens it.
+    useEffect(() => {
+        candleHostRef.current?.setGhost(ghostCandles);
+    }, [ghostCandles]);
 
     // Entering or leaving replay re-frames the view once. Steps after that never touch it, which is
     // what makes a fast replay readable instead of a chart that keeps re-fitting itself.
@@ -3072,6 +3087,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     onCursor={moveCursor}
                     onTogglePlay={togglePlayback}
                     onSpeed={setSpeed}
+                    ghost={ghost}
+                    onToggleGhost={() => setGhost((value) => !value)}
                     onStart={moveCursor}
                     onFirst={() => { if (replayCandles.length > 0) moveCursor(replayCandles[0].time); }}
                     onRandom={() => { if (replayCandles.length > 0) moveCursor(replayCandles[randomCursor(replayCandles.length)].time); }}

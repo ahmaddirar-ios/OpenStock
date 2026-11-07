@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CalendarDays, Download, Pause, Play, RotateCcw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
+import { CalendarDays, Download, Ghost, Pause, Play, RotateCcw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import {
     DEFAULT_COSTS,
     REPLAY_SPEEDS,
@@ -36,6 +36,9 @@ type Props = {
     onCursor: (time: number) => void;
     onTogglePlay: () => void;
     onSpeed: (speed: ReplaySpeed) => void;
+    /** Whether the bars after the cursor are painted faintly. */
+    ghost: boolean;
+    onToggleGhost: () => void;
     onStart: (time: number) => void;
     onFirst: () => void;
     onRandom: () => void;
@@ -90,6 +93,8 @@ export default function ReplayPanel({
     onCursor,
     onTogglePlay,
     onSpeed,
+    ghost,
+    onToggleGhost,
     onStart,
     onFirst,
     onRandom,
@@ -203,6 +208,18 @@ export default function ReplayPanel({
                                 {value}×
                             </button>
                         ))}
+                        <span className="mx-1 h-4 w-px bg-line" />
+                        {/* The ghost feed: the bars ahead, faint. Off by default — a replay should not
+                            show the future unless the trader asks for it. */}
+                        <button
+                            type="button"
+                            onClick={onToggleGhost}
+                            aria-pressed={ghost}
+                            className={cn('pill h-6 gap-1 px-2 text-[11.5px]', ghost && 'is-up')}
+                            title={t('replay.ghostHint')}
+                        >
+                            <Ghost className="size-3.5" /> {t('replay.ghost')}
+                        </button>
                         <button type="button" onClick={onExit} className="pill ms-auto h-7 gap-1.5 px-2.5 text-[12px]" title={t('replay.jumpLive')}>
                             <X className="size-3.5" /> {t('replay.jumpLive')}
                         </button>

@@ -36,7 +36,7 @@ import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-read
 import { arNumberDigits, type Lang } from '@/lib/i18n';
 import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
 import type { Series } from '@/lib/indicators';
-import type { CandleSet } from '@/lib/yahoo-candles';
+import type { Candle, CandleSet } from '@/lib/yahoo-candles';
 import type { ChartPalette } from '@/lib/chart-palette';
 
 export type CandleHost = {
@@ -50,6 +50,11 @@ export type CandleHost = {
     addPane: (stretch: number) => number;
     /** Replaces the candles without touching the view, so a live update never jumps the zoom. */
     setData: (set: CandleSet | null) => void;
+    /**
+     * The bars after the replay cursor, painted faintly so the trader can see where the market went
+     * without any indicator or drawing being allowed to read them. An empty list clears them.
+     */
+    setGhost: (candles: readonly Candle[]) => void;
     /** Replaces every study on the chart: overlays on the price, oscillators in their own panes. */
     setStudies: (studies: StudyConfig[]) => void;
     /** Redraws the same candles as bodies, hollow bodies, Heikin Ashi, bars, a line or an area. */
@@ -386,6 +391,27 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
 
     let price = createPriceSeries();
 
+    // The ghost feed: the bars a replay has not reached yet, painted faintly. It is a separate
+    // series on purpose — the price series, the studies and the legend never see these bars, so a
+    // ghost can never shape an indicator. Created lazily, so a normal chart pays nothing for it.
+    let ghost: ISeriesApi<'Candlestick'> | null = null;
+    const ghostColors = () => ({
+        upColor: toRgba(up, up, 0.2),
+        downColor: toRgba(down, down, 0.2),
+        wickUpColor: toRgba(up, up, 0.16),
+        wickDownColor: toRgba(down, down, 0.16),
+    });
+    const ensureGhost = (): ISeriesApi<'Candlestick'> => {
+        if (ghost) return ghost;
+        ghost = chart.addSeries(CandlestickSeries, {
+            ...ghostColors(),
+            borderVisible: false,
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+        return ghost;
+    };
+
     const volume = chart.addSeries(HistogramSeries, {
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
@@ -629,6 +655,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         });
         chart.removeSeries(price);
         price = createPriceSeries();
+        // The ghost is a separate series, so a theme change has to repaint it by hand.
+        ghost?.applyOptions(ghostColors());
         applyCandles();
         buildStudies();
         emitReadout();
@@ -646,6 +674,21 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             applyCandles();
             buildStudies();
             emitReadout();
+        },
+        setGhost: (candles) => {
+            if (candles.length === 0) {
+                ghost?.setData([]);
+                return;
+            }
+            ensureGhost().setData(
+                candles.map((candle) => ({
+                    time: candle.time as UTCTimestamp,
+                    open: candle.open,
+                    high: candle.high,
+                    low: candle.low,
+                    close: candle.close,
+                })),
+            );
         },
         setStudies: (next) => {
             studies = next;
