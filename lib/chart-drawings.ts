@@ -156,6 +156,8 @@ export type Drawing = {
     timeframes?: string[];
     /** Ratio list for the Fibonacci tools; unset keeps the classic set for that tool. */
     fibLevels?: number[];
+    /** A trend line lengthened to the panel edge on one side or both; unset is the plain segment. */
+    extend?: LineExtend;
 };
 
 /** The fill steps the toolbar offers, in percent. Zero is "no fill". */
@@ -231,11 +233,21 @@ export function fillOf(
     return { color, opacity };
 }
 
+/** How far a straight line runs past the two points it was drawn with. */
+export const LINE_EXTENDS = ['left', 'right', 'both'] as const;
+export type LineExtend = (typeof LINE_EXTENDS)[number];
+
+/** Only the plain trend line carries the setting; the ray and extended tools are already infinite. */
+export const canExtend = (tool: ShapeTool): boolean => tool === 'trend';
+
 export const DRAWING_WIDTHS = [1, 2, 3, 4] as const;
 export type DrawingWidth = (typeof DRAWING_WIDTHS)[number];
 
 export type DrawingDash = 'solid' | 'dashed' | 'dotted';
 export const DRAWING_DASHES: readonly DrawingDash[] = ['solid', 'dashed', 'dotted'];
+
+const isLineExtend = (value: unknown): value is LineExtend =>
+    typeof value === 'string' && (LINE_EXTENDS as readonly string[]).includes(value);
 
 const isWidth = (value: unknown): value is DrawingWidth =>
     typeof value === 'number' && (DRAWING_WIDTHS as readonly number[]).includes(value);
@@ -544,6 +556,27 @@ export function extendedEnds(a: DrawPoint, b: DrawPoint, minTime: number, maxTim
     return [
         { time: minTime, price: priceAt(a, b, minTime) },
         { time: maxTime, price: priceAt(a, b, maxTime) },
+    ];
+}
+
+/**
+ * A segment lengthened to the panel edges, in screen pixels. The chart's time scale is linear in x,
+ * so the extension is the same straight line the eye sees — no chart lookup, which matters because
+ * the scale stops at the last bar and an extension has to reach the panel's edge.
+ */
+export function extendSegment(
+    a: ScreenPoint,
+    b: ScreenPoint,
+    extend: LineExtend,
+    leftEdge = 0,
+    rightEdge: number,
+): [ScreenPoint, ScreenPoint] {
+    const [left, right] = a.x <= b.x ? [a, b] : [b, a];
+    const slope = right.x === left.x ? 0 : (right.y - left.y) / (right.x - left.x);
+    const at = (x: number): ScreenPoint => ({ x, y: left.y + slope * (x - left.x) });
+    return [
+        extend === 'left' || extend === 'both' ? at(leftEdge) : left,
+        extend === 'right' || extend === 'both' ? at(rightEdge) : right,
     ];
 }
 
@@ -1156,7 +1189,7 @@ export const drawingColor = (drawing: Pick<Drawing, 'tool' | 'color' | 'customCo
 
 /** A colour a trader picked themselves: one hex triplet, nothing else gets stored. */
 export const CUSTOM_COLOR = /^#[0-9a-fA-F]{6}$/;
-const isCustomColor = (value: unknown): value is string => typeof value === 'string' && CUSTOM_COLOR.test(value);
+export const isCustomColor = (value: unknown): value is string => typeof value === 'string' && CUSTOM_COLOR.test(value);
 
 // --- Fibonacci -------------------------------------------------------------
 
@@ -1305,6 +1338,9 @@ export function hitTest(
     cursor: ScreenPoint,
     tolerance: number,
     kindOf: (drawing: Drawing) => ShapeKind = (drawing) => toolDef(drawing.tool).kind,
+    /** Boxes are grabbed by their sides so the pointer stays free for panning inside them; a
+     *  right-click has no panning to protect, so it asks for the surface too. */
+    surface = false,
 ): Drawing | null {
     for (let i = drawings.length - 1; i >= 0; i -= 1) {
         const points = screenPoints[i];
@@ -1375,6 +1411,15 @@ export function hitTest(
         if (BOX_KINDS.has(kind)) {
             if (points.length < 2) continue;
             const [a, b] = points;
+            if (
+                surface &&
+                cursor.x >= Math.min(a.x, b.x) - tolerance &&
+                cursor.x <= Math.max(a.x, b.x) + tolerance &&
+                cursor.y >= Math.min(a.y, b.y) - tolerance &&
+                cursor.y <= Math.max(a.y, b.y) + tolerance
+            ) {
+                return drawing;
+            }
             const corners: ScreenPoint[] = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
             for (let c = 0; c < corners.length; c += 1) {
                 if (distanceToSegment(cursor, corners[c], corners[(c + 1) % corners.length]) <= tolerance) return drawing;
@@ -1801,6 +1846,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
     // A fill only means something on a shape that encloses an area.
     const fill = hasFill(candidate.tool) && isColorKey(candidate.fill) ? candidate.fill : undefined;
     const fillOpacity = hasFill(candidate.tool) && isFillOpacity(candidate.fillOpacity) ? candidate.fillOpacity : undefined;
+    const extend = canExtend(candidate.tool) && isLineExtend(candidate.extend) ? candidate.extend : undefined;
     const timeframes = Array.isArray(candidate.timeframes)
         ? [...new Set(candidate.timeframes.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length < 10))].slice(0, 20)
         : undefined;
@@ -1828,6 +1874,7 @@ const cleanDrawing = (value: unknown): Drawing | null => {
         ...(fillOpacity !== undefined ? { fillOpacity } : {}),
         ...(timeframes && timeframes.length > 0 ? { timeframes } : {}),
         ...(fibLevels && fibLevels.length > 0 ? { fibLevels } : {}),
+        ...(extend ? { extend } : {}),
     };
 };
 

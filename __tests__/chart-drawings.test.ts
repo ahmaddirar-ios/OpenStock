@@ -297,6 +297,17 @@ describe('hitTest', () => {
         expect(hitTest([rect], [corners], { x: 50, y: 25 }, 6)).toBeNull();
     });
 
+    it('also finds a box anywhere on its surface when the caller asks for it', () => {
+        // A right-click cannot pan, so the box as a whole is the target there.
+        const rect: Drawing = { id: 'r', tool: 'rectangle', points: [{ time: 0, price: 1 }, { time: 10, price: 2 }] };
+        const corners = [{ x: 0, y: 0 }, { x: 100, y: 50 }];
+        expect(hitTest([rect], [corners], { x: 50, y: 25 }, 6, undefined, true)?.id).toBe('r');
+        expect(hitTest([rect], [corners], { x: 160, y: 25 }, 6, undefined, true)).toBeNull();
+        // A line is still a line: the surface flag only opens up the boxes.
+        const line: Drawing = { id: 'l', tool: 'trend', points: [{ time: 0, price: 1 }, { time: 10, price: 2 }] };
+        expect(hitTest([line], [[{ x: 0, y: 0 }, { x: 100, y: 100 }]], { x: 50, y: 10 }, 6, undefined, true)).toBeNull();
+    });
+
     it('finds a polyline pattern along any of its legs', () => {
         const wave: Drawing = {
             id: 'w',

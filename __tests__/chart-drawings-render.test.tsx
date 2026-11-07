@@ -24,8 +24,8 @@ afterEach(cleanup);
 const toScreen = (point: DrawPoint): ScreenPoint => ({ x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 });
 const fromScreen = (x: number, y: number): DrawPoint => ({ time: 1000 + (x - 100) * 10, price: 100 + (500 - y) / 5 });
 
-const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string; candles?: { time: number; open: number; high: number; low: number; close: number; volume: number }[]; fromScreen?: (x: number, y: number) => DrawPoint | null } = {}) => {
-    const drawing: Drawing = { id: 'd1', tool, points, ...(extra.text ? { text: extra.text } : {}) };
+const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string; extend?: 'left' | 'right' | 'both'; candles?: { time: number; open: number; high: number; low: number; close: number; volume: number }[]; fromScreen?: (x: number, y: number) => DrawPoint | null } = {}) => {
+    const drawing: Drawing = { id: 'd1', tool, points, ...(extra.text ? { text: extra.text } : {}), ...(extra.extend ? { extend: extra.extend } : {}) };
     const { container } = render(
         <ChartDrawings
             drawings={[drawing]}
@@ -676,6 +676,34 @@ describe('the pile the drawings are painted in', () => {
         // 50px and 80px wide on this scale: which one comes first tells the stacking order.
         return Array.from(svg.querySelectorAll('g rect')).map((rect) => Number(rect.getAttribute('width')));
     };
+
+    it('lengthens a trend line to the edge it was told to reach', () => {
+        // The same shallow line, painted with each extension.
+        const plain = renderTool('trend', rise);
+        expect(plain.lines[0]).toEqual({ x1: 100, y1: 500, x2: 200, y2: 475 });
+
+        const right = renderTool('trend', rise, [], undefined, { extend: 'right' });
+        expect(right.lines[0].x2).toBe(WIDTH);
+        // The slope is unchanged: a quarter pixel up per pixel right.
+        expect(right.lines[0].y2).toBeCloseTo(500 - 0.25 * (WIDTH - 100), 5);
+
+        const both = renderTool('trend', rise, [], undefined, { extend: 'both' });
+        expect(both.lines[0].x1).toBe(0);
+        expect(both.lines[0].x2).toBe(WIDTH);
+        expect(both.lines[0].y1).toBeCloseTo(525, 5);
+    });
+
+    it('points a callout at its anchor with an arrowhead', () => {
+        const { polygons, texts } = renderTool('callout', [
+            { time: 1000, price: 100 },
+            { time: 2000, price: 112 },
+        ], [], undefined, { text: 'Watch this' });
+        expect(texts).toContain('Watch this');
+        expect(polygons).toHaveLength(1);
+        expect(polygons[0].split(' ')).toHaveLength(3);
+        // The tip sits on the anchor the callout was pinned to.
+        expect(polygons[0].startsWith('100,500 ')).toBe(true);
+    });
 
     it('paints the drawings in the order it is given, last on top', () => {
         expect(renderList([under, over])).toEqual([50, 80]);

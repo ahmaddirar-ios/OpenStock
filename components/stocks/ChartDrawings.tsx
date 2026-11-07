@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fibWedgeLines, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, gannSquareFixedCorner, GANN_SQUARE_FIXED_SIDE, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, extendSegment, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fibWedgeLines, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, gannSquareFixedCorner, GANN_SQUARE_FIXED_SIDE, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import { measureDetail, measureHeadline, measureReadout } from '@/lib/chart-measure';
 import type { StringKey } from '@/lib/i18n';
 
@@ -1345,6 +1345,10 @@ export default function ChartDrawings({
                     ) : (
                         <line x1={anchor.x} y1={anchor.y} x2={kind === 'flag' ? boxX : at.x} y2={kind === 'flag' ? boxY + boxH / 2 : at.y} stroke={color} strokeWidth={1} opacity={opacity} />
                     )}
+                    {/* A callout points at the bar it belongs to; a balloon already reads as a speech bubble. */}
+                    {kind === 'callout' && (
+                        <polygon points={arrowHeadPoints(at, anchor, 9)} fill={color} opacity={opacity} />
+                    )}
                     <rect
                         x={boxX}
                         y={boxY}
@@ -1723,10 +1727,15 @@ export default function ChartDrawings({
             );
         }
 
-        // trend: a segment between its two points
+        // trend: a segment between its two points, lengthened to the panel edge when the trader asked
+        // for it. The extension is screen arithmetic (lib/chart-drawings), so it reaches the edge even
+        // where the time scale has run out of bars.
+        const [segmentFrom, segmentTo] = drawing.extend
+            ? extendSegment(screen[0], screen[1], drawing.extend, 0, edgeX)
+            : [screen[0], screen[1]];
         return (
             <g key={drawing.id} strokeDasharray={dash}>
-                <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                <line x1={segmentFrom.x} y1={segmentFrom.y} x2={segmentTo.x} y2={segmentTo.y} stroke={color} strokeWidth={width} opacity={opacity} />
                 {selected && !locked &&
                     screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
             </g>

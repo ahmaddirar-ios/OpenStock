@@ -36,6 +36,8 @@ import {
     LayoutTemplate,
     Loader2,
     Lock,
+    Paintbrush,
+    PaintBucket,
     Unlock,
     Maximize2,
     Minimize2,
@@ -51,6 +53,7 @@ import {
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
+import { applyCopiedStyle, copyStyleOf, type CopiedStyle } from '@/lib/drawing-style-copy';
 import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
 import { EDIT_SHORTCUTS, MEASURE_KEY, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
 import {
@@ -100,7 +103,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, hitTest, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, canExtend, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, hitTest, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -517,7 +520,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         setDrawings((list) => [...list, ...copies]);
         setSelectedId(copies.map((copy) => copy.id));
     }, [drawings, selectedIds, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'color' | 'textColor' | 'customColor' | 'customFill' | 'customTextColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'color' | 'textColor' | 'customColor' | 'customFill' | 'customTextColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels' | 'extend'>>) => {
         if (selectedIds.length === 0) return;
         const chosen = new Set(selectedIds);
         setDrawings((list) => list.map((d) => {
@@ -598,6 +601,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [toolbarMore, setToolbarMore] = useState(false);
     // The right-click object menu: where it is anchored, and which drawing it acts on.
     const [objectMenu, setObjectMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+    // A copied look, held for the session: paste it onto any drawing the trader picks next.
+    const [styleClipboard, setStyleClipboard] = useState<CopiedStyle | null>(null);
     // The count the automatic numbering targets: whatever degree/kind was last picked by hand.
     const [countChoice, setCountChoice] = useState<{ degree: CountDegree; kind: CountKind }>({
         degree: 'minor',
@@ -1627,6 +1632,28 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         setDrawings((list) => list.filter((d) => !gone.has(d.id)));
         setSelectedId([]);
     };
+    /** Copy the look of the drawing the trader picked last; the geometry and the words stay behind. */
+    const copyStyleSelected = () => {
+        const source = selectedId ? drawings.find((drawing) => drawing.id === selectedId) : null;
+        if (!source) return;
+        setStyleClipboard(copyStyleOf(source));
+        toast.success(t('chart.style.copied'));
+    };
+    /** Paint the copied look onto everything selected, replacing each drawing's own style. */
+    const pasteStyleSelected = () => {
+        if (!styleClipboard || selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        setDrawings((list) => list.map((drawing) => (chosen.has(drawing.id) ? applyCopiedStyle(drawing, styleClipboard) : drawing)));
+    };
+    /** One side of the trend line's extension, toggled independently of the other. */
+    const toggleExtend = (side: 'left' | 'right') => {
+        if (!selectedDrawing) return;
+        const current = selectedDrawing.extend;
+        const on = current === 'both' || current === side;
+        const left = side === 'left' ? !on : current === 'both' || current === 'left';
+        const right = side === 'right' ? !on : current === 'both' || current === 'right';
+        restyleDrawing({ extend: left && right ? 'both' : left ? 'left' : right ? 'right' : undefined });
+    };
     const openObjectMenu = useCallback((hit: { id: string; x: number; y: number } | null) => {
         setObjectMenu(hit);
     }, []);
@@ -2002,7 +2029,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             const screen = drawing.points.map((point) => toScreen(point) ?? { x: NaN, y: NaN });
             return screen.every((spot) => Number.isFinite(spot.x) && Number.isFinite(spot.y)) ? screen : [];
         });
-        const hit = hitTest(visibleDrawings, points, cursor, 9);
+        // A right-click inside a box is a click on the box: there is no panning to protect here.
+        const hit = hitTest(visibleDrawings, points, cursor, 9, undefined, true);
         if (!hit) return;
         event.preventDefault();
         setSelectedId([hit.id]);
@@ -2915,6 +2943,48 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 >
                     {hasDefaultStyle ? <BookmarkCheck /> : <Bookmark />}
                 </button>
+                {/* A look carried from one drawing to another, without touching the tool's default. */}
+                <button
+                    type="button"
+                    onClick={copyStyleSelected}
+                    disabled={!selectedId}
+                    className="icon-btn"
+                    title={t('chart.style.copy')}
+                    aria-label={t('chart.style.copy')}
+                >
+                    <Paintbrush />
+                </button>
+                <button
+                    type="button"
+                    onClick={pasteStyleSelected}
+                    disabled={!styleClipboard || !selectedId}
+                    className="icon-btn"
+                    title={t('chart.style.paste')}
+                    aria-label={t('chart.style.paste')}
+                >
+                    <PaintBucket />
+                </button>
+                {/* A trend line can run past its two points, the way TradingView's Extend left/right does. */}
+                {selectedDrawing && canExtend(selectedDrawing.tool) && (
+                    <div role="group" aria-label={t('chart.extend')} className="flex items-center gap-0.5">
+                        {(['left', 'right'] as const).map((side) => {
+                            const on = selectedDrawing.extend === 'both' || selectedDrawing.extend === side;
+                            return (
+                                <button
+                                    key={side}
+                                    type="button"
+                                    onClick={() => toggleExtend(side)}
+                                    aria-pressed={on}
+                                    aria-label={t(`chart.extend.${side}`)}
+                                    title={t(`chart.extend.${side}`)}
+                                    className={cn('icon-btn text-[13px]', on && 'text-brand')}
+                                >
+                                    {side === 'left' ? '↤' : '↦'}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
                 <button type="button" onClick={copySelected} disabled={!selectedId} className="icon-btn" title={t('chart.tool.copy')} aria-label={t('chart.tool.copy')}>
                     <Copy />
                 </button>
@@ -3442,7 +3512,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     className="fixed z-[70] flex w-44 flex-col rounded-[10px] bg-card p-1 text-[12.5px] shadow-[0_14px_40px_rgba(0,0,0,0.45)] ring-1 ring-line"
                     style={{
                         left: Math.min(objectMenu.x, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerWidth) - 184)),
-                        top: Math.min(objectMenu.y, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerHeight) - 260)),
+                        top: Math.min(objectMenu.y, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerHeight) - 330)),
                     }}
                 >
                     {[
@@ -3450,6 +3520,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         { key: 'layer-back', label: t('chart.layer.back'), run: () => layerSelected('back') },
                         { key: 'duplicate', label: t('chart.tool.duplicate'), run: duplicateSelected },
                         { key: 'copy', label: t('chart.tool.copy'), run: copySelected },
+                        { key: 'copy-style', label: t('chart.style.copy'), run: copyStyleSelected },
+                        { key: 'paste-style', label: t('chart.style.paste'), run: pasteStyleSelected },
                         {
                             key: 'lock',
                             label: t(objectTarget.locked ? 'chart.tool.unlock' : 'chart.tool.lock'),
