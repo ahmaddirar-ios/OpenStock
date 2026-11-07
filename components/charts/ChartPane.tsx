@@ -6,13 +6,16 @@ import {
     ChevronDown,
     Eye,
     EyeOff,
+    List,
     Loader2,
+    Lock,
     MousePointer2,
     Pencil,
     Redo2,
     RefreshCw,
     Trash2,
     Undo2,
+    Unlock,
     X,
 } from 'lucide-react';
 import {
@@ -36,9 +39,14 @@ import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawing
 import ToolPalette from '@/components/stocks/ToolPalette';
 import type { ToolEntry } from '@/lib/tools/catalog';
 import {
+    carriesText,
+    drawingColor,
+    isColorKey,
     loadDrawings,
     nearestTime,
+    nextColor,
     saveDrawings,
+    toolDef,
     translateDrawing,
     visibleOn,
     withPoint,
@@ -47,6 +55,7 @@ import {
     type Drawing,
     type ScreenPoint,
 } from '@/lib/chart-drawings';
+import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import { applyHistory, canRedo, canUndo, checkpointHistory, createHistory, redoHistory, undoHistory, type History } from '@/lib/chart-history';
 import type { BarReadout } from '@/lib/chart-readout';
 
@@ -137,6 +146,8 @@ export default function ChartPane({
     const [tool, setTool] = useState<ActiveTool | null>(null);
     const [noteText, setNoteText] = useState('');
     const [paletteOpen, setPaletteOpen] = useState(false);
+    const [listOpen, setListOpen] = useState(false);
+    const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [drawingsHidden, setDrawingsHidden] = useState(false);
     // A resize moves the chart's coordinates without changing its visible range; this counter is
     // what repaints the drawings layer so a shape stays under the pointer after the pane resizes.
@@ -154,6 +165,8 @@ export default function ChartPane({
         setSelectedId([]);
         setTool(null);
         setNoteText('');
+        setListOpen(false);
+        setEditRequest(null);
     }, [symbol]);
 
     // Every edit is written straight through, so a reload or a trip to the symbol page keeps it.
@@ -226,6 +239,38 @@ export default function ChartPane({
         setDrawings((list) => list.filter((item) => !gone.has(item.id)));
         setSelectedId([]);
     };
+    const selectOnly = (id: string | null) => setSelectedId(id ? [id] : []);
+    const removeDrawing = (id: string) => {
+        setDrawings((list) => list.filter((item) => item.id !== id));
+        setSelectedId((current) => current.filter((selected) => selected !== id));
+    };
+    const cycleColor = (id: string) =>
+        setDrawings((list) =>
+            list.map((item) =>
+                item.id === id ? { ...item, color: nextColor(isColorKey(item.color) ? item.color : toolDef(item.tool).defaultColor) } : item,
+            ),
+        );
+    const toggleLock = (id: string) => setDrawings((list) => list.map((item) => (item.id === id ? { ...item, locked: !item.locked } : item)));
+    const toggleHidden = (id: string) => setDrawings((list) => list.map((item) => (item.id === id ? { ...item, hidden: !item.hidden } : item)));
+    // The same two toggles for the whole selection, so a group can be hidden or locked in one click.
+    const toggleLockSelected = () => {
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        const lock = !drawings.filter((item) => chosen.has(item.id)).every((item) => item.locked);
+        setDrawings((list) => list.map((item) => (chosen.has(item.id) ? { ...item, locked: lock } : item)));
+    };
+    const toggleHiddenSelected = () => {
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        const hide = !drawings.filter((item) => chosen.has(item.id)).every((item) => item.hidden);
+        setDrawings((list) => list.map((item) => (chosen.has(item.id) ? { ...item, hidden: hide } : item)));
+    };
+    const summary = (drawing: Drawing) => {
+        if (carriesText(drawing.tool)) return drawing.text ?? '';
+        const prices = drawing.points.map((point) => point.price.toFixed(2));
+        return prices.length === 1 ? prices[0] : `${prices[0]} → ${prices[prices.length - 1]}`;
+    };
+    const toolLabel = (drawing: Drawing) => tx(lang, TOOL_LABEL_KEYS[drawing.tool]);
     const insertTool = (entry: ToolEntry) => {
         setPaletteOpen(false);
         if (entry.family !== 'drawing') return;
@@ -568,6 +613,129 @@ export default function ChartPane({
                                 >
                                     {drawingsHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setListOpen((value) => !value)}
+                                    disabled={drawings.length === 0}
+                                    aria-expanded={listOpen}
+                                    aria-label={tx(lang, 'chart.list')}
+                                    title={tx(lang, 'chart.list')}
+                                    className={cn('icon-btn size-6 disabled:opacity-40', listOpen && 'is-up')}
+                                >
+                                    <List className="size-3.5" />
+                                </button>
+                                {listOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-20" onClick={() => setListOpen(false)} />
+                                        {/* A dropdown rather than a strip: a grid pane has no height to spare,
+                                            and the list is a reference, not part of the chart. */}
+                                        <div className="absolute end-0 top-full z-30 mt-1 w-64 rounded-[10px] border border-line bg-card p-1 shadow-[0_12px_32px_oklch(0_0_0/0.45)]">
+                                            <div className="flex items-center gap-2 px-2 py-1">
+                                                <span className="flex-1 text-[11px] font-semibold text-faint">
+                                                    {tx(lang, 'chart.list')} · {arDigits(drawings.length, lang)}
+                                                </span>
+                                                {selectedIds.length > 0 && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={toggleHiddenSelected}
+                                                            className="text-[10.5px] font-semibold text-faint hover:text-foreground"
+                                                        >
+                                                            {tx(lang, 'chart.hide')} · {arDigits(selectedIds.length, lang)}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={toggleLockSelected}
+                                                            className="text-[10.5px] font-semibold text-faint hover:text-foreground"
+                                                        >
+                                                            {tx(lang, 'chart.tool.lock')} · {arDigits(selectedIds.length, lang)}
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+                                                {drawings.map((drawing) => (
+                                                    <div
+                                                        key={drawing.id}
+                                                        className={cn(
+                                                            'flex items-center gap-1.5 rounded-[8px] px-1.5 py-1 text-[12px]',
+                                                            selectedIds.includes(drawing.id) && 'bg-hover',
+                                                        )}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => cycleColor(drawing.id)}
+                                                            title={tx(lang, 'chart.color')}
+                                                            aria-label={`${tx(lang, 'chart.color')}: ${drawingColor(drawing)}`}
+                                                            className="size-3.5 shrink-0 rounded-full border border-line-strong"
+                                                            style={{ backgroundColor: drawingColor(drawing) }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={(event) => {
+                                                                // Shift (or a command key) adds to the selection, the same
+                                                                // rule the canvas follows, so the two views agree.
+                                                                if (event.shiftKey || event.metaKey || event.ctrlKey) {
+                                                                    setSelectedId((current) =>
+                                                                        current.includes(drawing.id)
+                                                                            ? current.filter((id) => id !== drawing.id)
+                                                                            : [...current, drawing.id],
+                                                                    );
+                                                                } else {
+                                                                    selectOnly(drawing.id);
+                                                                }
+                                                            }}
+                                                            className="flex min-w-0 flex-1 items-center gap-1.5 text-start"
+                                                        >
+                                                            <span className="shrink-0 font-semibold">{toolLabel(drawing)}</span>
+                                                            <span className="mono num truncate text-[11px] text-faint">{summary(drawing)}</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleHidden(drawing.id)}
+                                                            aria-pressed={!!drawing.hidden}
+                                                            title={tx(lang, drawing.hidden ? 'chart.show' : 'chart.hide')}
+                                                            aria-label={tx(lang, drawing.hidden ? 'chart.show' : 'chart.hide')}
+                                                            className={cn('icon-btn size-5', drawing.hidden && 'text-warn')}
+                                                        >
+                                                            {drawing.hidden ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleLock(drawing.id)}
+                                                            aria-pressed={!!drawing.locked}
+                                                            title={tx(lang, drawing.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
+                                                            aria-label={tx(lang, drawing.locked ? 'chart.tool.unlock' : 'chart.tool.lock')}
+                                                            className={cn('icon-btn size-5', drawing.locked && 'text-warn')}
+                                                        >
+                                                            {drawing.locked ? <Lock className="size-3" /> : <Unlock className="size-3" />}
+                                                        </button>
+                                                        {carriesText(drawing.tool) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setEditRequest({ id: drawing.id, nonce: Date.now() })}
+                                                                title={tx(lang, 'chart.editText')}
+                                                                aria-label={tx(lang, 'chart.editText')}
+                                                                className="icon-btn size-5"
+                                                            >
+                                                                <Pencil className="size-3" />
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeDrawing(drawing.id)}
+                                                            title={tx(lang, 'chart.delete')}
+                                                            aria-label={tx(lang, 'chart.delete')}
+                                                            className="icon-btn is-danger size-5"
+                                                        >
+                                                            <Trash2 className="size-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                                 {paletteOpen && (
                                     <>
                                         <div className="fixed inset-0 z-20" onClick={() => setPaletteOpen(false)} />
@@ -646,6 +814,7 @@ export default function ChartPane({
                         selectedIds={selectedIds}
                         tool={tool}
                         text={noteText}
+                        editRequest={editRequest}
                         barTimes={barTimes}
                         candles={view?.candles ?? []}
                         toScreen={toScreen}
