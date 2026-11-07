@@ -245,6 +245,8 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                         </div>
                                     </div>
                                     <div className="mt-1 flex flex-col gap-0.5">
+                                        {/* A profile is drawn as bars, not lines: it has nothing to
+                                            recolour per plot, and an empty list is the honest rendering. */}
                                         {studyLines(study).map((line) => {
                                             const style = studyLineStyle(study, line);
                                             return (
@@ -319,6 +321,30 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                     {def.params.length > 0 && (
                                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                                             {def.params.map((param) => {
+                                                if (param.kind === 'text' && param.input === 'date') {
+                                                    const shown = drafts[`${index}:${param.key}`] ?? studiesText(study, param.key);
+                                                    return (
+                                                        <label key={param.key} className="flex items-center gap-1 text-[10.5px] text-faint">
+                                                            {t(param.label)}
+                                                            <input
+                                                                type="date"
+                                                                value={shown}
+                                                                onChange={(event) => {
+                                                                    setDrafts((current) => ({
+                                                                        ...current,
+                                                                        [`${index}:${param.key}`]: event.target.value,
+                                                                    }));
+                                                                    // A date is either a date or nothing: an empty box
+                                                                    // means "from the first bar", not "ignore me".
+                                                                    choose(index, param.key, event.target.value);
+                                                                }}
+                                                                aria-label={t(param.label)}
+                                                                title={param.hint ? t(param.hint) : undefined}
+                                                                className="num rounded-[6px] bg-page px-1 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                            />
+                                                        </label>
+                                                    );
+                                                }
                                                 if (param.kind === 'text') {
                                                     const value = studiesText(study, param.key);
                                                     // The box holds the draft while the study holds the last committed

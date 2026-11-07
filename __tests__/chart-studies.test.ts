@@ -10,6 +10,7 @@ import {
     studyColor,
     studyLineStyle,
     studyLines,
+    bandSegments,
     studyWantsPane,
     studyWidth,
     STUDY_COLOR_TOKENS,
@@ -23,7 +24,12 @@ import { tx } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 
 /** Studies that answer from the first bars instead of waiting for a window to fill. */
-const IMMEDIATE = new Set<StudyId>(['vwap', 'obv', 'sar', 'pivots']);
+const IMMEDIATE = new Set<StudyId>(['vwap', 'obv', 'sar', 'pivots', 'avwap']);
+
+const studiesWith = (id: StudyId, params: Record<string, number | string>) => ({
+    id,
+    params: { ...defaultStudy(id).params, ...params },
+});
 
 const candles: Candle[] = Array.from({ length: 80 }, (_, i) => ({
     time: 1_600_000_000 + i * 86_400,
@@ -40,7 +46,15 @@ describe('the registry', () => {
         for (const id of STUDY_IDS) {
             const def = STUDIES[id];
             expect(def.id).toBe(id);
-            expect(def.lines.length).toBeGreaterThan(0);
+            // A profile is drawn as bars against the pane edge, so it is the one kind with no lines.
+            if (def.profile) expect(def.lines).toEqual([]);
+            else expect(def.lines.length).toBeGreaterThan(0);
+            // A fill has to name two lines that exist, or the host paints nothing and says nothing.
+            if (def.fill) {
+                const keys = def.lines.map((line) => line.key);
+                expect(keys).toContain(def.fill.upper);
+                expect(keys).toContain(def.fill.lower);
+            }
             for (const param of def.params) {
                 if (param.kind === 'choice') {
                     expect(param.choices.length).toBeGreaterThan(1);
@@ -48,8 +62,9 @@ describe('the registry', () => {
                     continue;
                 }
                 // Only a number carries bounds; a formula's bounds are the language's grammar.
+                // A date's default may be empty: "no anchor" is a real choice, not a missing default.
                 if (param.kind === 'text') {
-                    expect(param.default.trim().length).toBeGreaterThan(0);
+                    if (param.input !== 'date') expect(param.default.trim().length).toBeGreaterThan(0);
                     continue;
                 }
                 expect(param.default).toBeGreaterThanOrEqual(param.min);
@@ -62,6 +77,7 @@ describe('the registry', () => {
     it('draws exactly the lines it declares, one value per candle', () => {
         for (const id of STUDY_IDS) {
             const def = STUDIES[id];
+            if (def.profile) continue;
             const result = def.compute(candles, defaultStudy(id).params);
             expect(Object.keys(result).sort()).toEqual(def.lines.map((line) => line.key).sort());
             for (const [key, series] of Object.entries(result)) {
@@ -75,6 +91,7 @@ describe('the registry', () => {
         const short = candles.slice(0, 3);
         for (const id of STUDY_IDS) {
             const def = STUDIES[id];
+            if (def.profile) continue;
             const result = def.compute(short, defaultStudy(id).params);
             for (const series of Object.values(result)) {
                 expect(series).toHaveLength(3);
@@ -116,6 +133,13 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('aroon'), 'en')).toBe('Aroon 14');
         expect(describeStudy(defaultStudy('trix'), 'en')).toBe('TRIX 15 · Close');
         expect(describeStudy(defaultStudy('mfi'), 'en')).toBe('Money Flow Index 14');
+        // An empty anchor is left out of the name rather than printed as a gap.
+        expect(describeStudy(defaultStudy('avwap'), 'en')).toBe('Anchored VWAP 2');
+        expect(describeStudy(studiesWith('avwap', { anchor: '2026-01-02' }), 'en')).toBe('Anchored VWAP 2026-01-02 · 2');
+        expect(describeStudy(defaultStudy('vprofile'), 'en')).toBe('Volume Profile 24 · 70 · Right');
+        expect(describeStudy({ ...defaultStudy('vprofile'), params: { rows: 40, side: 'left' } }, 'en')).toBe(
+            'Volume Profile 40 · 70 · Left',
+        );
     });
 
     it('names a choice by its label, not by a number', () => {
@@ -148,6 +172,16 @@ describe('the dictionary', () => {
                     }
                 }
                 for (const line of def.lines) expect(tx(lang, line.name)).not.toBe('');
+                for (const line of studyLines({ id, params: defaultStudy(id).params })) {
+                    expect(tx(lang, line.name)).not.toBe('');
+                }
+                if (def.profile) {
+                    // The rows, the value area and the side are the profile's only controls.
+                    expect(def.params.map((param) => param.key)).toContain(def.profile.rowsParam);
+                }
+                for (const param of def.params) {
+                    if (param.kind === 'text' && param.hint) expect(tx(lang, param.hint)).not.toBe('');
+                }
                 expect(describeStudy(defaultStudy(id), lang)).toContain(tx(lang, def.label));
                 for (const key of ['study.width', 'study.colour'] as StringKey[]) {
                     expect(tx(lang, key), `${lang} ${key}`).not.toBe('');
@@ -162,6 +196,29 @@ describe('the dictionary', () => {
                 }
             }
         }
+    });
+});
+
+describe('bandSegments', () => {
+    const bar = (i: number) => ({ time: 1_600_000_000 + i * 86_400 }) as Candle;
+    const bars = Array.from({ length: 5 }, (_, i) => bar(i));
+
+    it('keeps one run when both edges exist all the way', () => {
+        const runs = bandSegments(bars, [3, 4, 5, 6, 7], [1, 2, 3, 4, 5]);
+        expect(runs).toHaveLength(1);
+        expect(runs[0]).toHaveLength(5);
+        expect(runs[0][0]).toEqual({ time: bars[0].time, upper: 3, lower: 1 });
+    });
+
+    it('breaks the ribbon where an edge is missing instead of drawing through it', () => {
+        // Two runs of two either side of the gap; the lone bar at the end has no area, so no run.
+        const runs = bandSegments(bars, [3, 4, null, 6, 7], [1, 2, null, 4, 5]);
+        expect(runs.map((run) => run.map((point) => point.upper))).toEqual([[3, 4], [6, 7]]);
+        expect(bandSegments(bars, [3, 4, 5, null, 7], [1, 2, 3, 4, 5]).map((run) => run.length)).toEqual([3]);
+    });
+
+    it('drops a run of one point, which has no area to fill', () => {
+        expect(bandSegments(bars, [3, null, null, null, null], [1, null, null, null, null])).toEqual([]);
     });
 });
 

@@ -37,7 +37,9 @@ import { withSessionBreaks } from '@/lib/chart-sessions';
 import { centredRange, isAtLatest, latestRange, nearestBarIndex } from '@/lib/chart-goto';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import { arNumberDigits, type Lang } from '@/lib/i18n';
-import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
+import { STUDIES, STUDY_COLOR_SOURCES, bandSegments, studiesChoice, studiesParam, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
+import { BandFillPrimitive } from '@/lib/band-fill-primitive';
+import { VolumeProfilePrimitive } from '@/lib/volume-profile-primitive';
 import type { Series } from '@/lib/indicators';
 import type { Candle, CandleSet } from '@/lib/yahoo-candles';
 import type { ChartPalette } from '@/lib/chart-palette';
@@ -462,6 +464,9 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let data: CandleSet | null = options.data ?? null;
     let studies: StudyConfig[] = options.studies ?? [];
     const overlays: ISeriesApi<'Line'>[] = [];
+    // Series primitives the studies own — the Keltner ribbon and the volume profile. They ride on a
+    // series the host already has, so they are tracked separately from the series list.
+    const artPrimitives: { series: ISeriesApi<SeriesType>; primitive: BandFillPrimitive | VolumeProfilePrimitive }[] = [];
     const colorCache = new Map<ColorToken, string>();
     const resolveColor = (color: ColorToken) => {
         const cached = colorCache.get(color);
@@ -605,6 +610,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     };
 
     const clearIndicators = () => {
+        // Detach the primitives while their series is still on the chart, then let the series go.
+        for (const { series, primitive } of artPrimitives.splice(0)) series.detachPrimitive(primitive);
         for (const series of overlays.splice(0)) chart.removeSeries(series);
         for (const index of [...ownedPanes].sort((a, b) => b - a)) chart.removePane(index);
         ownedPanes = [];
@@ -623,10 +630,11 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             const def = STUDIES[study.id];
             if (!def) return;
             const computed = def.compute(candles, study.params);
-            // A study that cannot fill its window draws nothing and opens no empty pane.
+            // A study that cannot fill its window draws nothing and opens no empty pane. A profile
+            // has no lines to warm up, so it only needs the definition to ask for one.
             const specs = studyLines(study);
             const drawn = specs.filter((spec) => computed[spec.key]?.some((value) => value != null));
-            if (drawn.length === 0) return;
+            if (drawn.length === 0 && !def.profile) return;
 
             // Oscillators get their own pane under the price, in the order the trader added them.
             let pane = -1;
@@ -638,6 +646,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             // A study-level stroke applies to all its lines; the colour only where it means nothing
             // structural — `studyColor` refuses an override on a multi-line study.
             const width = studyWidth(study);
+            // The overlays by line key, so a fill can hang itself on the line it belongs to.
+            const lines = new Map<string, ISeriesApi<'Line'>>();
 
             for (const spec of drawn) {
                 const values = computed[spec.key];
@@ -676,8 +686,33 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                         .setData(points);
                 } else {
                     const series = overlay(chart, points, resolveColor(style.color), width, LINE_STYLE[style.dash]);
-                    if (series) overlays.push(series);
+                    if (series) {
+                        overlays.push(series);
+                        lines.set(spec.key, series);
+                    }
                 }
+            }
+
+            // The ribbon hangs on the upper line, which already sits in the price pane.
+            if (pane < 0 && def.fill) {
+                const upper = lines.get(def.fill.upper);
+                const segments = bandSegments(candles, computed[def.fill.upper] ?? [], computed[def.fill.lower] ?? []);
+                if (upper && segments.length > 0) {
+                    const primitive = new BandFillPrimitive(segments, resolveColor(def.fill.color), def.fill.opacity);
+                    upper.attachPrimitive(primitive);
+                    artPrimitives.push({ series: upper, primitive });
+                }
+            }
+
+            // The profile rides on the price series: it has no line to hang from, and the price scale
+            // it must line up with is the candles'.
+            if (pane < 0 && def.profile) {
+                const rows = Math.round(studiesParam(study, def.profile.rowsParam));
+                const area = def.profile.valueAreaParam ? studiesParam(study, def.profile.valueAreaParam) : 70;
+                const side = def.profile.sideParam && studiesChoice(study, def.profile.sideParam) === 'left' ? 'left' : 'right';
+                const primitive = new VolumeProfilePrimitive(candles, rows, area, side, resolveColor(def.profile.color));
+                price.attachPrimitive(primitive);
+                artPrimitives.push({ series: price, primitive });
             }
         });
     };
@@ -691,6 +726,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             rightPriceScale: { borderColor: grid },
             timeScale: { borderColor: grid },
         });
+        // The profile hangs on the price series, so it has to come off before the series does.
+        clearIndicators();
         chart.removeSeries(price);
         price = createPriceSeries();
         // The ghost is a separate series, so a theme change has to repaint it by hand.
@@ -806,6 +843,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         setChartType: (next) => {
             if (next === chartType) return;
             chartType = next;
+            // The profile hangs on the price series, so it comes off before the series does.
+            clearIndicators();
             chart.removeSeries(price);
             price = createPriceSeries();
             applyCandles();

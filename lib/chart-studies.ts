@@ -4,6 +4,8 @@
 
 import {
     adx,
+    anchorIndex,
+    anchoredVwap,
     atr,
     awesomeOscillator,
     bollinger,
@@ -87,6 +89,8 @@ export type StudyId =
     | 'aroon'
     | 'trix'
     | 'mfi'
+    | 'avwap'
+    | 'vprofile'
     | 'formula';
 
 /** Theme tokens a study may paint with; the host resolves them, the legend maps them to classes. */
@@ -129,7 +133,7 @@ export type ChoiceParam = {
     choices: { value: string; label: StringKey }[];
 };
 
-/** Free text: a formula, and nothing else so far. */
+/** Free text: a formula, or the date a study anchors at. */
 export type TextParam = {
     kind: 'text';
     key: string;
@@ -137,6 +141,11 @@ export type TextParam = {
     default: string;
     /** Shown under the box, so the writer does not have to guess the vocabulary. */
     hint?: StringKey;
+    /**
+     * How the box is read. A formula goes through the formula checker and gets the studio; a date is
+     * a plain `YYYY-MM-DD` field with the browser's own picker. Both are text on the way in.
+     */
+    input?: 'formula' | 'date';
 };
 
 export type StudyParam = NumberParam | ChoiceParam | TextParam;
@@ -174,6 +183,32 @@ export type StudyConfig = {
     lines?: Record<string, StudyLineStyle>;
 };
 
+/**
+ * A fill between two of a study's own lines. lightweight-charts' line series has no ribbon, so the
+ * host paints this with a series primitive; the definition only says which lines and how dense.
+ */
+export type StudyFill = {
+    upper: string;
+    lower: string;
+    color: ColorToken;
+    /** 0–1. The theme decides the hue, the definition decides how much of it is laid down. */
+    opacity: number;
+};
+
+/**
+ * A volume-by-price profile over the visible range, drawn against the pane's right or left edge.
+ * It has no lines of its own: the bars are the study, and the host draws them as a primitive.
+ */
+export type StudyProfile = {
+    /** The parameter that sets the row count. */
+    rowsParam: string;
+    /** The parameter that sets the value area, as a percentage. */
+    valueAreaParam?: string;
+    /** The parameter that puts the profile on the left or the right edge. */
+    sideParam?: string;
+    color: ColorToken;
+};
+
 export type StudyDef = {
     id: StudyId;
     label: StringKey;
@@ -186,8 +221,36 @@ export type StudyDef = {
      * only the shape a single-line formula has.
      */
     linesFor?: (params: StudyParams) => StudyLine[];
+    /** A shaded ribbon between two of the lines above. */
+    fill?: StudyFill;
+    /** A volume profile, for a study whose drawing is not a line at all. */
+    profile?: StudyProfile;
     compute: (candles: readonly Candle[], params: StudyParams) => Record<string, Series>;
 };
+
+/** One run of a band fill: consecutive bars where both edges exist. */
+export type BandPoint = { time: number; upper: number; lower: number };
+
+/**
+ * The runs a band fill can be painted as. A run ends where either edge is missing, so a warm-up
+ * gap breaks the ribbon instead of stretching a straight edge across bars the study never read.
+ */
+export function bandSegments(candles: readonly Candle[], upper: Series, lower: Series): BandPoint[][] {
+    const segments: BandPoint[][] = [];
+    let run: BandPoint[] = [];
+    candles.forEach((candle, index) => {
+        const top = upper[index];
+        const bottom = lower[index];
+        if (top == null || bottom == null) {
+            if (run.length > 1) segments.push(run);
+            run = [];
+            return;
+        }
+        run.push({ time: candle.time, upper: top, lower: bottom });
+    });
+    if (run.length > 1) segments.push(run);
+    return segments;
+}
 
 /** The lines a configured study draws now — dynamic where the definition says so. */
 export function studyLines(study: StudyConfig): StudyLine[] {
@@ -328,6 +391,54 @@ const DEFINITIONS: StudyDef[] = [
         params: [],
         lines: [valueLine('warn')],
         compute: (candles) => ({ value: vwap(candles) }),
+    }),
+    define({
+        id: 'avwap',
+        label: 'study.avwap',
+        group: 'overlay',
+        params: [
+            {
+                kind: 'text',
+                input: 'date',
+                key: 'anchor',
+                label: 'study.param.anchor',
+                default: '',
+                hint: 'study.param.anchorHint',
+            },
+            { key: 'multiplier', label: 'study.param.multiplier', min: 0.5, max: 5, step: 0.5, default: 2 },
+        ],
+        lines: [
+            { key: 'vwap', short: 'V', name: 'study.line.vwap', color: 'brand', kind: 'line' },
+            { key: 'upper', short: 'U', name: 'study.line.upper', color: 'faint', kind: 'line' },
+            { key: 'lower', short: 'L', name: 'study.line.lower', color: 'faint', kind: 'line' },
+        ],
+        compute: (candles, param, pick) => {
+            const bands = anchoredVwap(candles, anchorIndex(candles, pick('anchor')), param('multiplier'));
+            return { vwap: bands.vwap, upper: bands.upper, lower: bands.lower };
+        },
+    }),
+    define({
+        id: 'vprofile',
+        label: 'study.vprofile',
+        group: 'overlay',
+        params: [
+            { key: 'rows', label: 'study.param.rows', min: 8, max: 80, step: 1, default: 24 },
+            { key: 'valueArea', label: 'study.param.valueArea', min: 50, max: 95, step: 5, default: 70 },
+            {
+                kind: 'choice',
+                key: 'side',
+                label: 'study.param.side',
+                default: 'right',
+                choices: [
+                    { value: 'right', label: 'study.side.right' },
+                    { value: 'left', label: 'study.side.left' },
+                ],
+            },
+        ],
+        // No lines: the profile is bars against the pane edge, painted by the host's primitive.
+        lines: [],
+        profile: { rowsParam: 'rows', valueAreaParam: 'valueArea', sideParam: 'side', color: 'faint' },
+        compute: () => ({}),
     }),
     define({
         id: 'rsi',
@@ -514,6 +625,8 @@ const DEFINITIONS: StudyDef[] = [
             { key: 'middle', short: 'M', name: 'study.line.middle', color: 'brand', kind: 'line' },
             { key: 'lower', short: 'L', name: 'study.line.lower', color: 'faint', kind: 'line' },
         ],
+        // The ribbon is what makes a channel read as one object instead of three unrelated lines.
+        fill: { upper: 'upper', lower: 'lower', color: 'brand', opacity: 0.1 },
         compute: (candles, param, pick) =>
             keltner(candles, param('period'), param('multiplier'), priceSeries(candles, pick('source'))),
     }),
@@ -779,7 +892,7 @@ export function describeStudy(study: StudyConfig, lang: Lang): string {
             return chosen ? tx(lang, chosen.label) : '';
         }
         return arDigits(shortNumber(studiesParam(study, param.key)), lang);
-    });
+    }).filter((value) => value !== '');
     const name = tx(lang, def.label);
     return values.length === 0 ? name : `${name} ${values.join(' · ')}`;
 }

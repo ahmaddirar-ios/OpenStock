@@ -585,6 +585,14 @@ describe('the volume-based tools', () => {
         expect(volumeProfile(candles, 9000, 9500).rows).toEqual([]);
         expect(volumeProfile([], 0, 1).max).toBe(0);
     });
+
+    it('sizes the value area by the percentage a study asks for', () => {
+        const wide = volumeProfile(candles, 1000, 5000, 24, 0.95);
+        const narrow = volumeProfile(candles, 1000, 5000, 24, 0.5);
+        expect(wide.valueArea!.percent).toBeGreaterThan(narrow.valueArea!.percent);
+        // Nothing can hold more than all of it.
+        expect(volumeProfile(candles, 1000, 5000, 24, 1).valueArea!.percent).toBeLessThanOrEqual(100);
+    });
 });
 
 describe('the sticker and the pasted image', () => {

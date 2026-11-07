@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     adx,
+    anchorIndex,
+    anchoredVwap,
     atr,
     awesomeOscillator,
     chaikinMoneyFlow,
@@ -136,6 +138,70 @@ describe('vwap', () => {
 
     it('survives a zero-volume bar without dividing by zero', () => {
         expect(vwap([{ time: day, high: 5, low: 5, close: 5, volume: 0 }])[0]).toBeNull();
+    });
+});
+
+describe('anchoredVwap', () => {
+    const day = 1_600_000_000;
+
+    it('starts where the anchor says, not at the first bar', () => {
+        const bars = [
+            { time: day, high: 101, low: 99, close: 100, volume: 1_000 },
+            { time: day + 86_400, high: 11, low: 9, close: 10, volume: 100 },
+            { time: day + 2 * 86_400, high: 31, low: 29, close: 30, volume: 300 },
+        ];
+        const out = anchoredVwap(bars, 1, 2);
+        // The first bar is before the anchor: nothing to average yet.
+        expect(out.vwap[0]).toBeNull();
+        expect(out.vwap[1]).toBeCloseTo(10);
+        expect(out.vwap[2]).toBeCloseTo((10 * 100 + 30 * 300) / 400);
+    });
+
+    it('bands are the volume-weighted standard deviation around the average', () => {
+        const bars = [
+            { time: day, high: 11, low: 9, close: 10, volume: 100 },
+            { time: day + 86_400, high: 21, low: 19, close: 20, volume: 100 },
+        ];
+        const out = anchoredVwap(bars, 0, 2);
+        // Equal volume at 10 and 20: mean 15, deviation 5, so the bands sit at 25 and 5.
+        expect(out.vwap[1]).toBeCloseTo(15);
+        expect(out.upper[1]).toBeCloseTo(25);
+        expect(out.lower[1]).toBeCloseTo(5);
+    });
+
+    it('is flat at a single price, so both bands touch the average', () => {
+        const out = anchoredVwap([{ time: day, high: 10, low: 10, close: 10, volume: 50 }], 0, 2);
+        expect(out.upper[0]).toBeCloseTo(10);
+        expect(out.lower[0]).toBeCloseTo(10);
+    });
+
+    it('anchors past the end when nobody has reached it, and never yields NaN', () => {
+        const out = anchoredVwap([{ time: day, high: 5, low: 5, close: 5, volume: 0 }], 9, 2);
+        expect(out.vwap).toEqual([null]);
+        const zeroVolume = anchoredVwap([{ time: day, high: 5, low: 5, close: 5, volume: 0 }], 0, 2);
+        expect(zeroVolume.vwap[0]).toBeNull();
+    });
+});
+
+describe('anchorIndex', () => {
+    const bars = [
+        { time: Date.UTC(2026, 0, 2) / 1000 },
+        { time: Date.UTC(2026, 0, 5) / 1000 },
+        { time: Date.UTC(2026, 0, 9) / 1000 },
+    ];
+
+    it('picks the first bar at or after the day', () => {
+        expect(anchorIndex(bars, '2026-01-02')).toBe(0);
+        // A weekend or a holiday moves forward to the next bar there is.
+        expect(anchorIndex(bars, '2026-01-03')).toBe(1);
+        expect(anchorIndex(bars, '2026-01-05')).toBe(1);
+    });
+
+    it('reads empty or junk as the first bar, and a future date as past the end', () => {
+        expect(anchorIndex(bars, '')).toBe(0);
+        expect(anchorIndex(bars, '   ')).toBe(0);
+        expect(anchorIndex(bars, 'not a date')).toBe(0);
+        expect(anchorIndex(bars, '2030-01-01')).toBe(bars.length);
     });
 });
 

@@ -136,6 +136,56 @@ export function vwap(candles: readonly VolumeBar[]): Series {
     return out;
 }
 
+/**
+ * Anchored VWAP: the same volume-weighted average, but it starts where the trader says the story
+ * started — a gap, an earnings bar, a swing low — rather than at the session open. The bands are
+ * the volume-weighted standard deviation of the typical price around that average, so a touch of
+ * the upper band reads as "the crowd is long and stretched" rather than as an arbitrary offset.
+ */
+export function anchoredVwap(
+    candles: readonly VolumeBar[],
+    anchor = 0,
+    multiplier = 2,
+): { vwap: Series; upper: Series; lower: Series } {
+    const vwap: Series = candles.map(() => null);
+    const upper: Series = candles.map(() => null);
+    const lower: Series = candles.map(() => null);
+    // Running sums, so the bands cost one pass and never need the whole history twice: variance is
+    // E[p²] − E[p]² over the volume-weighted distribution.
+    let weighted = 0;
+    let squares = 0;
+    let volume = 0;
+    for (let i = Math.max(0, anchor); i < candles.length; i += 1) {
+        const candle = candles[i];
+        const typical = (candle.high + candle.low + candle.close) / 3;
+        weighted += typical * candle.volume;
+        squares += typical * typical * candle.volume;
+        volume += candle.volume;
+        if (volume <= 0) continue;
+        const mean = weighted / volume;
+        const deviation = Math.sqrt(Math.max(0, squares / volume - mean * mean));
+        vwap[i] = mean;
+        upper[i] = mean + multiplier * deviation;
+        lower[i] = mean - multiplier * deviation;
+    }
+    return { vwap, upper, lower };
+}
+
+/**
+ * Where an anchor date (`YYYY-MM-DD`) lands in a series: the first bar at or after that day. Empty
+ * or unreadable text anchors at the first bar, and a date still in the future lands past the end —
+ * a study whose anchor nobody has reached yet draws nothing rather than silently moving.
+ */
+export function anchorIndex(candles: readonly { time: number }[], iso: string): number {
+    const text = iso.trim();
+    if (!text) return 0;
+    const milliseconds = Date.parse(`${text}T00:00:00Z`);
+    if (!Number.isFinite(milliseconds)) return 0;
+    const at = Math.floor(milliseconds / 1000);
+    const found = candles.findIndex((candle) => candle.time >= at);
+    return found < 0 ? candles.length : found;
+}
+
 export type RangeBar = { high: number; low: number; close: number };
 
 /** A bar with all four prices — what a study's source selector needs. */

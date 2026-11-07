@@ -924,6 +924,7 @@ export function volumeProfile(
     fromTime: number,
     toTime: number,
     rowCount = 24,
+    valueAreaPercent = 0.7,
 ): {
     rows: ProfileRow[];
     max: number;
@@ -963,7 +964,7 @@ export function volumeProfile(
         from: Math.min(fromTime, toTime),
         to: Math.max(fromTime, toTime),
         poc,
-        valueArea: valueArea(rows, step),
+        valueArea: valueArea(rows, step, valueAreaPercent),
     };
 }
 

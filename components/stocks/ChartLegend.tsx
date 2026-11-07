@@ -117,10 +117,12 @@ export default function ChartLegend({ lang, readout, studies, className }: Props
                         const values = lines
                             .map((line) => ({ line, value: readout.indicators[`${index}:${line.key}`] }))
                             .filter((entry): entry is { line: StudyLine; value: number } => typeof entry.value === 'number');
-                        if (values.length === 0) return null;
+                        // A study with no line at all (a volume profile) still belongs in the legend by
+                        // name; one whose lines are all still warming up has nothing to say yet.
+                        if (values.length === 0 && lines.length > 0) return null;
                         return (
                             <span key={`${index}:${study.id}`} className="flex min-w-0 items-baseline gap-1">
-                                <span className={cn('min-w-0 truncate', LABEL_TONE[studyColor(study, lines[0])])}>{describeStudy(study, lang)}</span>
+                                <span className={cn('min-w-0 truncate', LABEL_TONE[lines[0] ? studyColor(study, lines[0]) : 'muted'])}>{describeStudy(study, lang)}</span>
                                 {values.map(({ line, value }) => (
                                     <span
                                         key={line.key}
