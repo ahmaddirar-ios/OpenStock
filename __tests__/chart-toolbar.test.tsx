@@ -50,12 +50,14 @@ describe('the settings gear', () => {
             scaleMode="linear"
             invert={false}
             sessionBreaks={false}
+            watermark
             paletteState={{ id: 'theme', custom: {} }}
             palette={{ up: '#4ade80', down: '#f87171', background: '#16181c', grid: '#1c2320', text: '#7d8a84' }}
             onTimeZone={() => {}}
             onScaleMode={() => {}}
             onInvert={() => {}}
             onSessionBreaks={() => {}}
+            onWatermark={() => {}}
             onPalette={() => {}}
             onGoToDate={() => {}}
             {...over}
@@ -73,6 +75,7 @@ describe('the settings gear', () => {
         expect(panel.textContent).toContain('Scale');
         expect(panel.textContent).toContain('Invert scale');
         expect(panel.textContent).toContain('Session breaks');
+        expect(panel.textContent).toContain('Watermark');
     });
 
     it('closes on Escape, because a panel that traps the keyboard is a trap', () => {
@@ -89,7 +92,8 @@ describe('the settings gear', () => {
         const onScaleMode = vi.fn();
         const onInvert = vi.fn();
         const onSessionBreaks = vi.fn();
-        render(menu({ onTimeZone, onScaleMode, onInvert, onSessionBreaks }));
+        const onWatermark = vi.fn();
+        render(menu({ onTimeZone, onScaleMode, onInvert, onSessionBreaks, onWatermark }));
         fireEvent.click(screen.getByRole('button', { name: 'Chart settings' }));
 
         fireEvent.click(screen.getByRole('button', { name: 'Logarithmic' }));
@@ -102,5 +106,7 @@ describe('the settings gear', () => {
         expect(onInvert).toHaveBeenCalledWith(true);
         fireEvent.click(screen.getByRole('checkbox', { name: 'Session breaks' }));
         expect(onSessionBreaks).toHaveBeenCalledWith(true);
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Watermark' }));
+        expect(onWatermark).toHaveBeenCalledWith(false);
     });
 });

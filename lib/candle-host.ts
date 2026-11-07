@@ -13,9 +13,11 @@ import {
     PriceScaleMode,
     TickMarkType,
     createChart,
+    createTextWatermark,
     type DeepPartial,
     type IChartApi,
     type ISeriesApi,
+    type ITextWatermarkPluginApi,
     type MouseEventParams,
     type SeriesType,
     type Time,
@@ -85,6 +87,8 @@ export type CandleHost = {
     /** Paints the chart with this palette, or follows the app theme again when null. */
     setPalette: (palette: ChartPalette | null) => void;
     setTimeVisible: (visible: boolean) => void;
+    /** The faint symbol text behind the candles; null hides it. */
+    setWatermark: (text: string | null) => void;
     /** The chart as an image, for the export button; null before the library is ready. */
     screenshot: () => HTMLCanvasElement | null;
     fit: () => void;
@@ -148,6 +152,8 @@ export type CandleHostOptions = {
     pnfReversal?: number;
     /** Whether the volume histogram opens visible. */
     volumeVisible?: boolean;
+    /** The faint symbol text behind the candles; null or absent leaves the pane clean. */
+    watermark?: string | null;
     /** The colours to open with; null (or absent) follows the app theme. */
     palette?: ChartPalette | null;
     /**
@@ -285,6 +291,31 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         },
     };
     const chart = createChart(container, chartOptions);
+
+    // A faint symbol name behind the candles, TradingView's watermark. It is a pane primitive rather
+    // than a series, so it never enters the legend, the crosshair readout or the exported numbers;
+    // the colour is derived from the live text token and follows every theme change.
+    let watermarkText = options.watermark ?? null;
+    let watermarkApi: ITextWatermarkPluginApi<Time> | null = null;
+    const applyWatermark = () => {
+        // The plugin stays attached and is hidden instead of detached: re-attaching a pane primitive
+        // after detach does not repaint reliably, and a hidden watermark costs nothing.
+        const visible = Boolean(watermarkText);
+        const lines = watermarkText
+            ? [{ text: watermarkText, color: toRgba(text, text, 0.08), fontSize: 44, fontStyle: 'bold' as const }]
+            : [];
+        if (watermarkApi) {
+            watermarkApi.applyOptions({ visible, lines });
+            return;
+        }
+        watermarkApi = createTextWatermark(chart.panes()[0], {
+            visible,
+            horzAlign: 'center',
+            vertAlign: 'center',
+            lines,
+        });
+    };
+    applyWatermark();
 
     let chartType: ChartType = options.chartType ?? 'candles';
 
@@ -756,12 +787,14 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             colorCache.clear();
             resolveColors();
             repaint();
+            applyWatermark();
         },
         setPalette: (next) => {
             palette = next;
             colorCache.clear();
             resolveColors();
             repaint();
+            applyWatermark();
         },
         setVolumeVisible: (on) => {
             volumeVisible = on;
@@ -781,6 +814,10 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             options.onPriceSeries?.(price);
         },
         setTimeVisible: (visible) => chart.timeScale().applyOptions({ timeVisible: visible }),
+        setWatermark: (next) => {
+            watermarkText = next;
+            applyWatermark();
+        },
         screenshot: () => {
             try {
                 return chart.takeScreenshot();

@@ -259,6 +259,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const imageFileRef = useRef<HTMLInputElement>(null);
 
     const [intervalId, setIntervalId] = useState<string>(openingInterval(preferredInterval));
+    // What the watermark says, in the page's language: the listing's own name and the interval.
+    const watermarkText = useMemo(
+        () => `${symbol.split('.')[0]} · ${t(INTERVAL_LABEL_KEYS[intervalId] ?? 'chart.tf.1d')}`,
+        [symbol, intervalId, t],
+    );
     // The chart type is this browser's, like the interval: read after mount, saved on change. The
     // host is built with it through a ref, so switching type never rebuilds the whole chart.
     const [chartType, setChartType] = useState<ChartType>('candles');
@@ -276,6 +281,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [sessionBreaks, setSessionBreaks] = useState(false);
     const sessionBreaksRef = useRef(false);
     sessionBreaksRef.current = sessionBreaks;
+    // The faint symbol behind the candles, on by default like TradingView's.
+    const [watermark, setWatermark] = useState(true);
+    const watermarkRef = useRef(true);
+    watermarkRef.current = watermark;
     const [invertScale, setInvertScale] = useState(false);
     const invertScaleRef = useRef(false);
     invertScaleRef.current = invertScale;
@@ -1034,6 +1043,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             timeZone: timeZoneRef.current,
             lang,
             sessionBreaks: sessionBreaksRef.current,
+            watermark: watermarkRef.current ? watermarkText : null,
             volumeVisible: volumeVisibleRef.current,
             invertScale: invertScaleRef.current,
             palette: resolvePalette(paletteStateRef.current),
@@ -1087,7 +1097,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             markersApiRef.current = null;
             host.destroy();
         };
-    }, [hasDisplay, intervalId, compareList, compareData, symbol, compareFrom, lang]);
+    }, [hasDisplay, intervalId, compareList, compareData, symbol, compareFrom, lang, watermarkText]);
 
     // Studies are redrawn in place: the bars, the zoom and the replay never move.
     useEffect(() => {
@@ -1153,6 +1163,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     useEffect(() => {
         candleHostRef.current?.setSessionBreaks(sessionBreaks);
     }, [sessionBreaks]);
+    useEffect(() => {
+        candleHostRef.current?.setWatermark(watermark ? watermarkText : null);
+    }, [watermark, watermarkText]);
 
     // Undo/redo on the drawings, the shortcut every editor shares. Typing in a field keeps its own
     // undo, so the handler steps aside there.
@@ -2456,12 +2469,14 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     scaleMode={scaleMode}
                     invert={invertScale}
                     sessionBreaks={sessionBreaks}
+                    watermark={watermark}
                     paletteState={paletteState}
                     palette={effectivePalette}
                     onTimeZone={setTimeZone}
                     onScaleMode={setScaleMode}
                     onInvert={setInvertScale}
                     onSessionBreaks={setSessionBreaks}
+                    onWatermark={setWatermark}
                     onPalette={setPaletteState}
                     onGoToDate={(time) => candleHostRef.current?.goToTime(time)}
                 />

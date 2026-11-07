@@ -30,12 +30,14 @@ export default function ChartSettingsMenu({
     scaleMode,
     invert,
     sessionBreaks,
+    watermark,
     paletteState,
     palette,
     onTimeZone,
     onScaleMode,
     onInvert,
     onSessionBreaks,
+    onWatermark,
     onPalette,
     onGoToDate,
     className,
@@ -45,6 +47,7 @@ export default function ChartSettingsMenu({
     scaleMode: ScaleMode;
     invert: boolean;
     sessionBreaks: boolean;
+    watermark: boolean;
     /** The preset the trader picked, plus any colour they overrode by hand. */
     paletteState: ChartPaletteState;
     /** The five colours actually on screen — the theme's own when no preset is set. */
@@ -53,6 +56,7 @@ export default function ChartSettingsMenu({
     onScaleMode: (mode: ScaleMode) => void;
     onInvert: (value: boolean) => void;
     onSessionBreaks: (value: boolean) => void;
+    onWatermark: (value: boolean) => void;
     onPalette: (state: ChartPaletteState) => void;
     /** Jumps the chart to the bar nearest a date the trader typed. */
     onGoToDate: (time: number) => void;
@@ -206,6 +210,18 @@ export default function ChartSettingsMenu({
                                 checked={sessionBreaks}
                                 onChange={(event) => onSessionBreaks(event.target.checked)}
                                 aria-label={tx(lang, 'chart.sessionBreaks')}
+                                className="chart-switch"
+                            />
+                        </label>
+
+                        <label className="flex items-center justify-between gap-3">
+                            <span className="text-[12px] text-foreground">{tx(lang, 'chart.watermark')}</span>
+                            <input
+                                type="checkbox"
+                                role="checkbox"
+                                checked={watermark}
+                                onChange={(event) => onWatermark(event.target.checked)}
+                                aria-label={tx(lang, 'chart.watermark')}
                                 className="chart-switch"
                             />
                         </label>
