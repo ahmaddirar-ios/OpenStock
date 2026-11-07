@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fibWedgeLines, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, gannSquareFixedCorner, GANN_SQUARE_FIXED_SIDE, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -1011,6 +1011,35 @@ export default function ChartDrawings({
             );
         }
 
+        if (kind === 'fibwedge') {
+            const [p0, p1, p2] = drawing.points;
+            if (!p2) return null;
+            const lines = fibWedgeLines(p0, p1, p2);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {lines.map(([, end], index) => {
+                        const point = toScreen(end);
+                        if (!point) return null;
+                        return (
+                            <line
+                                key={`${drawing.id}-w${index}`}
+                                x1={screen[2].x}
+                                y1={screen[2].y}
+                                x2={point.x}
+                                y2={point.y}
+                                stroke={color}
+                                strokeWidth={1}
+                                opacity={0.7}
+                            />
+                        );
+                    })}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
         if (kind === 'fibchannel') {
             const levels = fibChannelLevels(drawing.points[0], drawing.points[1], drawing.points[2]);
             return (
@@ -1283,6 +1312,25 @@ export default function ChartDrawings({
         // Gann measures the clicked trend against itself, a pitchfork measures the retracement that
         // followed it, and the regression channel is fitted to the candles on screen. The maths is in
         // lib/chart-drawings; here the lines are only placed.
+        if (kind === 'gannsquarefixed') {
+            // The side is fixed, so the square reads the same at every price; the second point only
+            // chooses which quadrant it grows into.
+            const corner = gannSquareFixedCorner(screen[0], screen[1]);
+            const side = GANN_SQUARE_FIXED_SIDE;
+            const x0 = Math.min(screen[0].x, corner.x);
+            const y0 = Math.min(screen[0].y, corner.y);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <rect x={x0} y={y0} width={side} height={side} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />
+                    <line x1={x0} y1={y0} x2={x0 + side} y2={y0 + side} stroke={color} strokeWidth={1} opacity={0.7} />
+                    <line x1={x0} y1={y0 + side} x2={x0 + side} y2={y0} stroke={color} strokeWidth={1} opacity={0.7} />
+                    <line x1={x0 + side / 2} y1={y0} x2={x0 + side / 2} y2={y0 + side} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+                    <line x1={x0} y1={y0 + side / 2} x2={x0 + side} y2={y0 + side / 2} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
         if (kind === 'gannfan' || kind === 'gannbox' || kind === 'gannsquare') {
             const [p0, p1] = drawing.points;
             if (!p1) return null;

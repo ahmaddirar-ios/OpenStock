@@ -37,6 +37,7 @@ export type ShapeKind =
     | 'fibtime'
     | 'fibarc'
     | 'fibspeed'
+    | 'fibwedge'
     | 'ellipse'
     | 'circle'
     | 'tri'
@@ -56,6 +57,7 @@ export type ShapeKind =
     | 'gannfan'
     | 'gannbox'
     | 'gannsquare'
+    | 'gannsquarefixed'
     | 'pitchfork'
     | 'schiffpitchfork'
     | 'modpitchfork'
@@ -86,7 +88,7 @@ export type ShapeTool =
     // forecasts: positions, ranges and a projected move
     | 'longpos' | 'shortpos' | 'pricerange' | 'daterange' | 'dprange' | 'projection'
     // the Fibonacci family
-    | 'fibext' | 'fibtrendext' | 'fibfan' | 'fibchannel' | 'fibtime' | 'fibarc' | 'fibspeed'
+    | 'fibext' | 'fibtrendext' | 'fibfan' | 'fibchannel' | 'fibtime' | 'fibarc' | 'fibspeed' | 'fibwedge'
     // geometric shapes (a polyline is open-ended: it takes clicks until it is finished)
     | 'ellipse' | 'circle' | 'tri' | 'rotrect' | 'polyline' | 'arc' | 'curve' | 'dcurve'
     // Fibonacci spiral: a logarithmic curve through the golden ratio from a centre
@@ -98,7 +100,7 @@ export type ShapeTool =
     // a table: a two-click box whose cells the trader fills in, for a plan or a set of levels
     | 'table'
     // Gann, pitchforks and the measured channels
-    | 'gannfan' | 'gannbox' | 'gannsquare' | 'pitchfork' | 'schiffpitchfork' | 'modpitchfork' | 'insidepitchfork'
+    | 'gannfan' | 'gannbox' | 'gannsquare' | 'gannsquarefixed' | 'pitchfork' | 'schiffpitchfork' | 'modpitchfork' | 'insidepitchfork'
     | 'regression' | 'flattop' | 'disjoint'
     // the exotics: a sticker, a pasted image, and the three tools that read the candles themselves
     | 'icon' | 'image' | 'bars' | 'avwap' | 'vprofile'
@@ -327,6 +329,9 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'fibspeed', group: 'fib', kind: 'fibspeed', clicks: 2, defaultColor: 'violet' },
     // The spiral: a centre, then a point that sets the first radius and the starting angle.
     { tool: 'fibspiral', group: 'fib', kind: 'fibspiral', clicks: 2, defaultColor: 'gold' },
+    // The wedge: a base line, then an apex. The ratios fan out from the apex to the base, so the
+    // lines converge instead of running parallel the way the channel's do.
+    { tool: 'fibwedge', group: 'fib', kind: 'fibwedge', clicks: 3, defaultColor: 'gold' },
 
     // Geometric shapes. A polyline is open-ended (`clicks: 0`): it keeps taking points until the
     // trader double-clicks to finish it.
@@ -364,6 +369,9 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'gannfan', group: 'gann', kind: 'gannfan', clicks: 2, defaultColor: 'violet' },
     { tool: 'gannbox', group: 'gann', kind: 'gannbox', clicks: 2, defaultColor: 'violet' },
     { tool: 'gannsquare', group: 'gann', kind: 'gannsquare', clicks: 2, defaultColor: 'violet' },
+    // The fixed square keeps one side length whatever the drag: the second point only picks the
+    // quadrant, so the same square can be stamped at several prices without re-measuring it.
+    { tool: 'gannsquarefixed', group: 'gann', kind: 'gannsquarefixed', clicks: 2, defaultColor: 'violet' },
     { tool: 'pitchfork', group: 'gann', kind: 'pitchfork', clicks: 3, defaultColor: 'gold' },
     { tool: 'schiffpitchfork', group: 'gann', kind: 'schiffpitchfork', clicks: 3, defaultColor: 'gold' },
     { tool: 'modpitchfork', group: 'gann', kind: 'modpitchfork', clicks: 3, defaultColor: 'gold' },
@@ -643,6 +651,17 @@ export function gannBoxGuides(a: DrawPoint, b: DrawPoint): {
  *  is the only place that knows the scale, so only the rule for the corner lives here. */
 export function gannSquareCorner(a: ScreenPoint, b: ScreenPoint): ScreenPoint {
     const side = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    const signX = b.x >= a.x ? 1 : -1;
+    const signY = b.y >= a.y ? 1 : -1;
+    return { x: a.x + side * signX, y: a.y + side * signY };
+}
+
+/** The fixed square's side, in pixels. It never follows the drag, so the same square can be stamped
+ *  at several prices and read as one measure. */
+export const GANN_SQUARE_FIXED_SIDE = 180;
+
+/** The fixed Gann square: the second point only picks the quadrant, never the size. */
+export function gannSquareFixedCorner(a: ScreenPoint, b: ScreenPoint, side = GANN_SQUARE_FIXED_SIDE): ScreenPoint {
     const signX = b.x >= a.x ? 1 : -1;
     const signY = b.y >= a.y ? 1 : -1;
     return { x: a.x + side * signX, y: a.y + side * signY };
@@ -971,6 +990,15 @@ export function fibChannelLevels(a: DrawPoint, b: DrawPoint, c: DrawPoint, ratio
         price: from.price + (to.price - from.price) * ratio,
     });
     return ratios.map((ratio) => [between(a, c, ratio), between(b, c, ratio)]);
+}
+
+/** The wedge's lines: a base line (a→b) and an apex (c). Each ratio is a line from the apex to the
+ *  matching point on the base, so the fan converges on the apex rather than running parallel. */
+export function fibWedgeLines(a: DrawPoint, b: DrawPoint, c: DrawPoint, ratios: readonly number[] = FIB_RATIOS): [DrawPoint, DrawPoint][] {
+    return ratios.map((ratio) => [
+        c,
+        { time: a.time + (b.time - a.time) * ratio, price: a.price + (b.price - a.price) * ratio },
+    ]);
 }
 
 /** The Fibonacci sequence, which is what a time zone steps forward by. */
@@ -1428,6 +1456,23 @@ function drawingSegments(kind: ShapeKind, points: ScreenPoint[]): Seg[] {
         case 'fibfan': {
             if (!a || !b) return segs;
             for (const ratio of FIB_RATIOS) add(a, { x: b.x, y: a.y + (b.y - a.y) * ratio });
+            return segs;
+        }
+        case 'fibwedge': {
+            if (!a || !b || !c) return segs;
+            add(a, b);
+            for (const ratio of FIB_RATIOS) {
+                add(c, { x: a.x + (b.x - a.x) * ratio, y: a.y + (b.y - a.y) * ratio });
+            }
+            return segs;
+        }
+        case 'gannsquarefixed': {
+            if (!a || !b) return segs;
+            const corner = gannSquareFixedCorner(a, b);
+            const corners: ScreenPoint[] = [a, { x: corner.x, y: a.y }, corner, { x: a.x, y: corner.y }];
+            chain(corners, true);
+            add(a, corner);
+            add(corners[1], corners[3]);
             return segs;
         }
         case 'flattop': {

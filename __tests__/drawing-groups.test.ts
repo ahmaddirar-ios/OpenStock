@@ -35,6 +35,7 @@ describe('drawing rail groups', () => {
             'gannfan',
             'gannbox',
             'gannsquare',
+            'gannsquarefixed',
             'pitchfork',
             'schiffpitchfork',
             'modpitchfork',
@@ -86,6 +87,7 @@ describe('drawing rail groups', () => {
             'fibarc',
             'fibspeed',
             'fibspiral',
+            'fibwedge',
         ]);
     });
 

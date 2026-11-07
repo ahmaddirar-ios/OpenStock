@@ -1,4 +1,4 @@
-// One catalog for every tool the chart offers: the 77 drawings, the 27 studies, the 11 chart types
+// One catalog for every tool the chart offers: the 79 drawings, the 27 studies, the 11 chart types
 // and the 15 formula functions. It exists so that four things can never disagree about a tool again
 // — the rail, the menus, the search palette, and the guide that will be written from it.
 //
@@ -110,11 +110,13 @@ const DRAWING_KEYWORDS: Partial<Record<ShapeTool | 'select' | 'measure', readonl
     fibtime: ['time zones', 'zones', 'زمن فيبو', 'مناطق زمنية'],
     fibarc: ['arc', 'قوس فيبو', 'قوس'],
     fibspeed: ['speed', 'resistance fan', 'سرعات', 'مروحة سرعة'],
+    fibwedge: ['wedge', 'converging fan', 'وتد فيبو', 'مروحة متقاربة'],
     // gann and families
     gann: ['gann', 'جان'],
     gannfan: ['gann fan', 'مروحة جان'],
     gannbox: ['gann box', 'مربع جان'],
     gannsquare: ['square of nine', 'مربع التسعة'],
+    gannsquarefixed: ['fixed square', 'مربع غان ثابت', 'مربع ثابت'],
     pitchfork: ['fork', 'median', 'شوكة', 'اندروز', 'وسيط'],
     schiffpitchfork: ['schiff', 'شوكة شيف'],
     modpitchfork: ['modified', 'شوكة معدّلة'],

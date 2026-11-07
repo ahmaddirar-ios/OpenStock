@@ -20,7 +20,10 @@ import {
     distanceToSegment,
     drawingColor,
     fibLevels,
+    fibWedgeLines,
     gannGuides,
+    gannSquareFixedCorner,
+    GANN_SQUARE_FIXED_SIDE,
     handleIndex,
     hitTest,
     isColorKey,
@@ -95,6 +98,7 @@ describe('the tool registry', () => {
             'info',
         ]);
         expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fib');
+        expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fibwedge');
         // The note, the annotation family, and the sticker and image that behave like them.
         expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual([
             'text',
@@ -115,6 +119,7 @@ describe('the tool registry', () => {
             'gannfan',
             'gannbox',
             'gannsquare',
+            'gannsquarefixed',
             'pitchfork',
             'schiffpitchfork',
             'modpitchfork',
@@ -187,6 +192,35 @@ describe('gannGuides', () => {
             { time: 1, price: 200 },
         ]);
         expect(midPrice).toBe(150);
+    });
+});
+
+describe('fibWedgeLines', () => {
+    it('runs every ratio from the apex to its point on the base line', () => {
+        const lines = fibWedgeLines({ time: 0, price: 100 }, { time: 10, price: 200 }, { time: 20, price: 0 });
+        expect(lines).toHaveLength(FIB_RATIOS.length);
+        // The first line ends at the near end of the base; the ratio-1 line lands on the far end.
+        expect(lines[0][0]).toEqual({ time: 20, price: 0 });
+        expect(lines[0][1]).toEqual({ time: 0, price: 100 });
+        const atOne = lines[FIB_RATIOS.indexOf(1)][1];
+        expect(atOne).toEqual({ time: 10, price: 200 });
+        // Ratios past 1 reach beyond the far end of the base.
+        expect(lines[lines.length - 1][1].time).toBeGreaterThan(10);
+        // Every line starts at the same apex, which is what makes it converge.
+        for (const [from] of lines) expect(from).toEqual({ time: 20, price: 0 });
+    });
+});
+
+describe('gannSquareFixedCorner', () => {
+    it('keeps one side whatever the drag, and only follows the quadrant', () => {
+        const a = { x: 100, y: 100 };
+        const near = gannSquareFixedCorner(a, { x: 110, y: 110 });
+        const far = gannSquareFixedCorner(a, { x: 500, y: 500 });
+        expect(near).toEqual(far);
+        expect(far).toEqual({ x: 100 + GANN_SQUARE_FIXED_SIDE, y: 100 + GANN_SQUARE_FIXED_SIDE });
+        // A drag up and to the left grows the square that way instead.
+        const back = gannSquareFixedCorner(a, { x: 20, y: 20 });
+        expect(back).toEqual({ x: 100 - GANN_SQUARE_FIXED_SIDE, y: 100 - GANN_SQUARE_FIXED_SIDE });
     });
 });
 
