@@ -2403,6 +2403,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     onInvert={setInvertScale}
                     onSessionBreaks={setSessionBreaks}
                     onPalette={setPaletteState}
+                    onGoToDate={(time) => candleHostRef.current?.goToTime(time)}
                 />
                 <span className="tool-divider" aria-hidden />
                 <button

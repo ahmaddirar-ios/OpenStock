@@ -32,6 +32,7 @@ import { lineBreak } from '@/lib/chart-linebreak';
 import { LineBreakPaneView, type LineBreakDatum } from '@/lib/linebreak-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
+import { centredRange, nearestBarIndex } from '@/lib/chart-goto';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import { arNumberDigits, type Lang } from '@/lib/i18n';
 import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
@@ -87,6 +88,8 @@ export type CandleHost = {
     /** The chart as an image, for the export button; null before the library is ready. */
     screenshot: () => HTMLCanvasElement | null;
     fit: () => void;
+    /** Jumps the view to the bar nearest this time, keeping the current zoom width. */
+    goToTime: (time: number) => void;
     /**
      * The bar under the crosshair — or the last bar when the cursor is away — with the value of
      * every indicator drawn at it. Null before any candles exist.
@@ -807,6 +810,14 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                 return;
             }
             chart.timeScale().setVisibleLogicalRange({ from: -1, to: count + 1 });
+        },
+        goToTime: (time) => {
+            const list = seriesBars();
+            const index = nearestBarIndex(list.map((bar) => bar.time), time);
+            if (index < 0) return;
+            const current = chart.timeScale().getVisibleLogicalRange();
+            const span = current ? Math.max(10, current.to - current.from) : Math.min(list.length, 120);
+            chart.timeScale().setVisibleLogicalRange(centredRange(index, list.length, span));
         },
         destroy: () => {
             readoutListeners.clear();

@@ -37,6 +37,7 @@ export default function ChartSettingsMenu({
     onInvert,
     onSessionBreaks,
     onPalette,
+    onGoToDate,
     className,
 }: {
     lang: Lang;
@@ -53,9 +54,12 @@ export default function ChartSettingsMenu({
     onInvert: (value: boolean) => void;
     onSessionBreaks: (value: boolean) => void;
     onPalette: (state: ChartPaletteState) => void;
+    /** Jumps the chart to the bar nearest a date the trader typed. */
+    onGoToDate: (time: number) => void;
     className?: string;
 }) {
     const [open, setOpen] = useState(false);
+    const [goDate, setGoDate] = useState('');
     const buttonRef = useRef<HTMLButtonElement>(null);
 
     // Escape shuts it, and the focus goes back where it came from: a panel the keyboard cannot leave
@@ -72,6 +76,15 @@ export default function ChartSettingsMenu({
     }, [open]);
 
     const label = tx(lang, 'chart.settings');
+
+    // A date input gives a local calendar day; noon UTC lands inside that day for every zone, so a
+    // daily bar is never missed by a few hours.
+    const goToDate = () => {
+        const [year, month, day] = goDate.split('-').map(Number);
+        if (!year || !month || !day) return;
+        onGoToDate(Date.UTC(year, month - 1, day, 12) / 1000);
+        setOpen(false);
+    };
 
     // Editing a colour while on "follow theme" pins the five colours on screen and switches to
     // custom, so the change is visible instead of being swallowed by the theme.
@@ -131,6 +144,30 @@ export default function ChartSettingsMenu({
                                 ))}
                             </select>
                         </label>
+
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[11px] font-medium text-faint">{tx(lang, 'chart.goTo')}</span>
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    type="date"
+                                    value={goDate}
+                                    onChange={(event) => setGoDate(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') goToDate();
+                                    }}
+                                    aria-label={tx(lang, 'chart.goToDate')}
+                                    className="h-8 min-w-0 flex-1 rounded-[8px] bg-page px-2 text-[12px] text-foreground shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={goToDate}
+                                    disabled={!goDate}
+                                    className="pill h-8 px-2.5 text-[12px] disabled:opacity-40"
+                                >
+                                    {tx(lang, 'chart.goToGo')}
+                                </button>
+                            </div>
+                        </div>
 
                         <div className="flex flex-col gap-1.5">
                             <span className="text-[11px] font-medium text-faint">{tx(lang, 'chart.scale')}</span>

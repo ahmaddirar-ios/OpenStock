@@ -57,6 +57,7 @@ describe('the settings gear', () => {
             onInvert={() => {}}
             onSessionBreaks={() => {}}
             onPalette={() => {}}
+            onGoToDate={() => {}}
             {...over}
         />
     );
