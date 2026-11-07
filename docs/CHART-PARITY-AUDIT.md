@@ -65,7 +65,10 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
     between drawings, replacing rather than merging. Right-clicking inside a box now opens the object
     menu on the box. Subtend (a second line drawn from the same origin at an angle) is not a tool
     yet — a trader gets there with the trend line and the angle readout.
-11. **🟡 Print/PDF of the chart** (image export exists; print layout does not).
+11. **✅ Print / PDF.** Shipped: a print button captures the chart exactly as it looks — canvas, drawings,
+    studies — and lays it on a one-page sheet with symbol, interval, last, the session move, the span
+    covered and the studies on it. The browser's print dialog serves paper and "Save as PDF" alike; the
+    tab is briefly renamed to rovex-SYMBOL-INTERVAL-DATE so the saved file has a sane name.
 12. **🟡 No keyboard-driven trading** in replay (buy/sell by hotkey), no bracket orders (replay has
     bracket intents, not entry+stop+target as one order).
 
