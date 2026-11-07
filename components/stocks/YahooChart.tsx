@@ -38,6 +38,7 @@ import {
     Lock,
     Paintbrush,
     PaintBucket,
+    Printer,
     Unlock,
     Maximize2,
     Minimize2,
@@ -53,7 +54,9 @@ import {
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
+import ChartPrintSheet from '@/components/stocks/ChartPrintSheet';
 import { applyCopiedStyle, copyStyleOf, type CopiedStyle } from '@/lib/drawing-style-copy';
+import { printChange, printDocumentTitle } from '@/lib/chart-print';
 import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
 import { EDIT_SHORTCUTS, MEASURE_KEY, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
 import {
@@ -237,6 +240,8 @@ type Props = {
 export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, fill = false, quote: quoteHeader }: Props) {
     const showQuote = quoteHeader ?? fill;
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
+    // Printing briefly retitles the document so the browser offers a sensible PDF name.
+    const originalTitle = useRef<string>('');
 
     const hostRef = useRef<HTMLDivElement>(null);
     // The chart's outermost element: its nearest hatch shell takes the palette too, so the frame
@@ -603,6 +608,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [objectMenu, setObjectMenu] = useState<{ id: string; x: number; y: number } | null>(null);
     // A copied look, held for the session: paste it onto any drawing the trader picks next.
     const [styleClipboard, setStyleClipboard] = useState<CopiedStyle | null>(null);
+    // The chart caught as an image, while the print sheet is open. Printing waits for it, so the page
+    // never goes to the printer with a blank hole where the chart was.
+    const [printSheet, setPrintSheet] = useState<{ dataUrl: string; width: number; height: number } | null>(null);
     // The count the automatic numbering targets: whatever degree/kind was last picked by hand.
     const [countChoice, setCountChoice] = useState<{ degree: CountDegree; kind: CountKind }>({
         degree: 'minor',
@@ -1697,16 +1705,20 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         });
     };
 
-    /** The chart plus the drawings layer, stamped with the symbol and interval, as a PNG. */
-    const exportImage = useCallback(async () => {
+    /**
+     * The chart's pixels as one image: the canvas tile, the drawings layer painted on top, and
+     * optionally the symbol line burned in. The PNG download and the printed sheet both start here,
+     * so what a trader prints is exactly what they would have saved.
+     */
+    const compositeChart = useCallback(async (caption: boolean): Promise<{ dataUrl: string; width: number; height: number } | null> => {
         const host = candleHostRef.current;
         const shot = host?.screenshot();
-        if (!host || !shot) return;
+        if (!host || !shot) return null;
         const out = document.createElement('canvas');
         out.width = shot.width;
         out.height = shot.height;
         const ctx = out.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) return null;
         // A palette paints the tile, so the PNG gets the same tile instead of a transparent hole.
         if (resolvedPalette) {
             ctx.fillStyle = resolvedPalette.background;
@@ -1735,16 +1747,74 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             });
         }
 
-        const scale = shot.width / Math.max(1, hostRef.current?.clientWidth ?? shot.width);
-        ctx.font = `600 ${Math.round(13 * scale)}px ui-sans-serif, system-ui, sans-serif`;
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
-        ctx.fillText(`${symbol} · ${intervalId} · Rovex`, 12 * scale, 20 * scale);
+        if (caption) {
+            const scale = shot.width / Math.max(1, hostRef.current?.clientWidth ?? shot.width);
+            ctx.font = `600 ${Math.round(13 * scale)}px ui-sans-serif, system-ui, sans-serif`;
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
+            ctx.fillText(`${symbol} · ${intervalId} · Rovex`, 12 * scale, 20 * scale);
+        }
 
+        return { dataUrl: out.toDataURL('image/png'), width: out.width, height: out.height };
+    }, [symbol, intervalId, resolvedPalette]);
+
+    /** Capture the chart, show the sheet, then open the browser's print dialog over it. */
+    const openPrintSheet = useCallback(async () => {
+        const image = await compositeChart(false);
+        if (!image) return;
+        setPrintSheet(image);
+    }, [compositeChart]);
+    /** Put the sheet away and give the tab back its own name. */
+    const closePrintSheet = useCallback(() => {
+        if (originalTitle.current) document.title = originalTitle.current;
+        setPrintSheet(null);
+    }, []);
+    useEffect(() => {
+        if (!printSheet) return;
+        // One frame for the sheet to paint; the fonts and the image are already local.
+        originalTitle.current = document.title;
+        const timer = window.setTimeout(() => {
+            document.title = printDocumentTitle({ symbol, interval: intervalId, printedAt: new Date() });
+            window.print();
+        }, 150);
+        // The dialog closing is the end of the visit, whether the trader printed or cancelled.
+        window.addEventListener('afterprint', closePrintSheet);
+        return () => {
+            window.clearTimeout(timer);
+            window.removeEventListener('afterprint', closePrintSheet);
+        };
+    }, [printSheet, symbol, intervalId, closePrintSheet]);
+
+    /** The facts the printed sheet states, read once from what the chart is already showing. */
+    const printMeta = useMemo(() => {
+        const bars = displayData?.candles ?? [];
+        return {
+            symbol,
+            interval: intervalId,
+            last: bars.at(-1)?.close,
+            // The sheet prints the move as a percent; the quote carries the same percent here.
+            changePercent: quote?.change ?? null,
+            from: bars[0]?.time,
+            to: bars.at(-1)?.time,
+            // Named the way a reader says it — "Stochastic RSI 14" — not the legend's whole parameter
+            // readout, which fills a printed line with numbers nobody needs on paper.
+            studies: studies.map((study) => {
+                const name = t(`study.${study.id}` as StringKey);
+                const period = Number(study.params?.length);
+                return Number.isFinite(period) && period > 0 ? `${name} ${period}` : name;
+            }),
+            currency: data?.currency ?? 'USD',
+        };
+    }, [displayData, symbol, data, intervalId, quote, studies, lang]);
+
+    /** The chart, stamped with symbol and interval, as a PNG file. */
+    const exportImage = useCallback(async () => {
+        const image = await compositeChart(true);
+        if (!image) return;
         const link = document.createElement('a');
         link.download = `openstock-${symbol.replace(/[^A-Za-z0-9]/g, '')}-${intervalId}.png`;
-        link.href = out.toDataURL('image/png');
+        link.href = image.dataUrl;
         link.click();
-    }, [symbol, intervalId, resolvedPalette]);
+    }, [compositeChart, symbol, intervalId]);
 
     const addCompare = () => {
         const candidate = compareYahooSymbol(compareInput);
@@ -2674,6 +2744,15 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 </button>
                 <button
                     type="button"
+                    onClick={() => void openPrintSheet()}
+                    className="icon-btn"
+                    aria-label={t('chart.print')}
+                    title={t('chart.print')}
+                >
+                    <Printer />
+                </button>
+                <button
+                    type="button"
                     onClick={() => setExpanded((value) => !value)}
                     className="icon-btn"
                     aria-label={t(expanded ? 'chart.exitFullscreen' : 'chart.fullscreen')}
@@ -3555,6 +3634,20 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         {t('chart.tool.delete')}
                     </button>
                 </div>
+            )}
+
+            {/* One sheet for paper and for PDF: the print dialog is the same dialog either way. */}
+            {printSheet && (
+                <ChartPrintSheet
+                    image={printSheet}
+                    meta={{
+                        ...printMeta,
+                        last: quote?.price ?? printMeta.last,
+                        changePercent: quote?.change ?? printMeta.changePercent,
+                    }}
+                    lang={lang}
+                    onClose={closePrintSheet}
+                />
             )}
 
             {shortcutsOpen && (

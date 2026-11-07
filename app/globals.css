@@ -2157,3 +2157,75 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 @media (max-width: 1023px) {
     .overview-grid > .hatch:first-child { min-height: max(480px, 62vh); }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Printing the chart. The sheet is already a white page on screen (see ChartPrintSheet), so print
+   only has to take off the app's chrome, the sheet's own buttons, and "fixed" positioning: a fixed
+   box is clipped to one page, and a chart taller than that would lose its lower pane.
+   --------------------------------------------------------------------------------------------- */
+@media print {
+    /* The page margin is the sheet's own padding, not @page's: a browser that ignores @page margins
+       would otherwise print the chart against the paper's edge. */
+    @page {
+        size: A4 landscape;
+        margin: 0;
+    }
+
+    html,
+    body {
+        background: #ffffff !important;
+        color: #111827 !important;
+    }
+
+    /* The sheet moves into the page flow, so it can run onto a second page when it must. */
+    [data-print-sheet] {
+        position: static !important;
+        inset: auto !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        height: 210mm !important;
+        padding: 10mm !important;
+        gap: 0 !important;
+        display: block !important;
+    }
+
+    [data-print-hide] {
+        display: none !important;
+    }
+
+    /* One page, always: the header and the footnote keep their height and the chart takes what is
+       left, letterboxed rather than cropped. A phone's tall chart would otherwise run to three
+       pages, and a print that spills is a print nobody keeps. */
+    [data-print-paper] {
+        max-width: none !important;
+        height: 190mm !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Anything that is not the sheet stays off the paper: the app shell, toolbars, toasts. */
+    body > *:not([data-print-sheet]) {
+        display: none !important;
+    }
+
+    /* The chart must keep its dark tile on paper, and never break across a page. */
+    [data-print-paper] img {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        object-fit: contain !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
