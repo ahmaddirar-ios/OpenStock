@@ -59,7 +59,12 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 
 9. **❌ No REST API for bars and indicators** for users' own scripts (TradingView does not have one
    either; this is a *lead*, not a gap — worth keeping in mind).
-10. **❌ Extend/subtend line tools, callouts with arrows, and "copy style" across drawings.**
+10. **✅ Extend, callout arrows, copy style.** Shipped: a trend line takes Extend left / Extend right
+    (screen arithmetic, so it reaches the panel edge past the last bar); a callout aims at its anchor
+    with an arrowhead; Copy style / Paste style carry colour, weight, dash, fill and type styling
+    between drawings, replacing rather than merging. Right-clicking inside a box now opens the object
+    menu on the box. Subtend (a second line drawn from the same origin at an angle) is not a tool
+    yet — a trader gets there with the trend line and the angle readout.
 11. **🟡 Print/PDF of the chart** (image export exists; print layout does not).
 12. **🟡 No keyboard-driven trading** in replay (buy/sell by hotkey), no bracket orders (replay has
     bracket intents, not entry+stop+target as one order).
