@@ -152,13 +152,16 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                             {drawing && (
                                 <div className="flex flex-col gap-2">
                                     <span className="form-label">{tx(lang, 'alertModal.target')}</span>
-                                    <span className="flex h-12 items-center gap-2 rounded-[11px] border border-line bg-page px-3">
-                                        <span className="mono text-faint">{currency}</span>
+                                    {/* formatPrice already carries the currency, so a chip beside it
+                                        would print "SAR 245.77 SAR". */}
+                                    <span className="flex h-12 items-center rounded-[11px] border border-line bg-page px-3">
                                         <span className="num text-lg font-semibold text-foreground">
-                                            {lineNow == null ? tx(lang, 'alertModal.noPrice') : formatPrice(lineNow, currency)}
+                                            {lineNow == null ? tx(lang, 'alertModal.noPrice') : formatPrice(lineNow, currency, lang)}
                                         </span>
                                     </span>
-                                    <span className="text-[12.5px] text-faint">{tx(lang, 'alertModal.drawingDesc')}</span>
+                                    <span className="text-[12.5px] text-faint">
+                                        {tx(lang, drawnCondition === 'DRAWING_TOUCH' ? 'alertModal.drawingTouchDesc' : 'alertModal.drawingDesc')}
+                                    </span>
                                     {drawnCondition === 'DRAWING_TOUCH' && (
                                         <label className="flex flex-col gap-2 pt-1">
                                             <span className="form-label">{tx(lang, 'alertModal.band')}</span>
