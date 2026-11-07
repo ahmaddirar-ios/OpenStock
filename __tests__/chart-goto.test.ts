@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centredRange, nearestBarIndex } from '@/lib/chart-goto';
+import { centredRange, isAtLatest, latestRange, nearestBarIndex } from '@/lib/chart-goto';
 
 describe('nearestBarIndex', () => {
     it('finds the bar closest to the target, on either side', () => {
@@ -40,5 +40,41 @@ describe('centredRange', () => {
 
     it('handles an empty series without dividing by zero', () => {
         expect(centredRange(0, 0, 20)).toEqual({ from: -1, to: 1 });
+    });
+});
+
+describe('isAtLatest', () => {
+    it('is true when the right edge reaches the newest bar', () => {
+        expect(isAtLatest({ from: 80, to: 100 }, 100)).toBe(true);
+        expect(isAtLatest({ from: 80, to: 99 }, 100)).toBe(true);
+    });
+
+    it('is false once the trader pans or zooms away from the newest bar', () => {
+        expect(isAtLatest({ from: 20, to: 60 }, 100)).toBe(false);
+        expect(isAtLatest({ from: 0, to: 50 }, 100)).toBe(false);
+    });
+
+    it('treats a missing range or an empty series as already at the latest bar', () => {
+        expect(isAtLatest(null, 100)).toBe(true);
+        expect(isAtLatest({ from: 0, to: 10 }, 0)).toBe(true);
+    });
+});
+
+describe('latestRange', () => {
+    it('keeps the current width and ends at the newest bar', () => {
+        expect(latestRange({ from: 20, to: 60 }, 100)).toEqual({ from: 60, to: 100 });
+    });
+
+    it('never opens a window narrower than ten bars', () => {
+        expect(latestRange({ from: 90, to: 92 }, 100)).toEqual({ from: 90, to: 100 });
+    });
+
+    it('opens a default window when there is no range yet', () => {
+        expect(latestRange(null, 100)).toEqual({ from: 0, to: 100 });
+        expect(latestRange(null, 500)).toEqual({ from: 380, to: 500 });
+    });
+
+    it('handles an empty series without a negative width', () => {
+        expect(latestRange({ from: 0, to: 10 }, 0)).toEqual({ from: -1, to: 1 });
     });
 });

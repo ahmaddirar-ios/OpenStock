@@ -32,7 +32,7 @@ import { lineBreak } from '@/lib/chart-linebreak';
 import { LineBreakPaneView, type LineBreakDatum } from '@/lib/linebreak-series';
 import { tickLabel, timeLabel, type TickKind, type TimeZoneId } from '@/lib/chart-time';
 import { withSessionBreaks } from '@/lib/chart-sessions';
-import { centredRange, nearestBarIndex } from '@/lib/chart-goto';
+import { centredRange, isAtLatest, latestRange, nearestBarIndex } from '@/lib/chart-goto';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import { arNumberDigits, type Lang } from '@/lib/i18n';
 import { STUDIES, STUDY_COLOR_SOURCES, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
@@ -90,6 +90,10 @@ export type CandleHost = {
     fit: () => void;
     /** Jumps the view to the bar nearest this time, keeping the current zoom width. */
     goToTime: (time: number) => void;
+    /** Whether the view already shows the newest bar (the "back to latest" pill hides then). */
+    isAtLatest: () => boolean;
+    /** Slides the view to the newest bar without changing the zoom width. */
+    toLatest: () => void;
     /**
      * The bar under the crosshair — or the last bar when the cursor is away — with the value of
      * every indicator drawn at it. Null before any candles exist.
@@ -818,6 +822,15 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             const current = chart.timeScale().getVisibleLogicalRange();
             const span = current ? Math.max(10, current.to - current.from) : Math.min(list.length, 120);
             chart.timeScale().setVisibleLogicalRange(centredRange(index, list.length, span));
+        },
+        isAtLatest: () => {
+            const count = seriesBars().length;
+            return isAtLatest(chart.timeScale().getVisibleLogicalRange(), count);
+        },
+        toLatest: () => {
+            const count = seriesBars().length;
+            if (count === 0) return;
+            chart.timeScale().setVisibleLogicalRange(latestRange(chart.timeScale().getVisibleLogicalRange(), count));
         },
         destroy: () => {
             readoutListeners.clear();

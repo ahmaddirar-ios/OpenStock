@@ -22,6 +22,7 @@ import {
     BringToFront,
     Camera,
     ChevronDown,
+    ChevronsRight,
     ClipboardPaste,
     Copy,
     CopyPlus,
@@ -591,6 +592,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [transfer, setTransfer] = useState<'ok' | 'bad' | 'copied' | 'blocked' | null>(null);
     // Bumped whenever the chart pans or zooms, so the drawings are re-projected onto the new scale.
     const [, setFrame] = useState(0);
+    // True once the trader has panned or zoomed away from the newest bar; shows the "back to latest" pill.
+    const [scrolledBack, setScrolledBack] = useState(false);
     // Compare overlays: the symbols, their candles, and the little add control.
     const [compareList, setCompareList] = useState<string[]>([]);
     const [compareData, setCompareData] = useState<Record<string, CandleSet | null>>({});
@@ -743,6 +746,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         }
         setData(result);
         setStatus('ready');
+        setScrolledBack(false);
     }, [symbol, intervalId]);
 
     useEffect(() => {
@@ -1026,7 +1030,13 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 );
             },
             extend,
-            onRangeChange: () => setFrame((frame) => frame + 1),
+            onRangeChange: () => {
+                setFrame((frame) => frame + 1);
+                // The host is still null while the chart is being built; the first fit lands at the
+                // newest bar, so only a real pan or zoom away should raise the pill.
+                const host = candleHostRef.current;
+                if (host) setScrolledBack(!host.isAtLatest());
+            },
         });
 
         // Replay opens on the recent end of a ten-year series, not compressed into a thousand bars.
@@ -1973,6 +1983,23 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         </a>
                     </div>
                 </div>
+            )}
+
+            {/* Only after the trader has panned or zoomed away from the newest bar: one tap slides
+                the view back without touching the zoom width. Hidden in replay, where the cursor
+                owns the right edge. */}
+            {status === 'ready' && !replay && scrolledBack && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        candleHostRef.current?.toLatest();
+                        setScrolledBack(false);
+                    }}
+                    className="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-card px-2.5 py-1 text-[11.5px] font-semibold text-foreground shadow-[0_0_0_1px_var(--line),0_8px_24px_oklch(0_0_0/0.35)] transition-colors hover:bg-hover"
+                >
+                    <ChevronsRight className="size-3.5" aria-hidden="true" />
+                    {t('chart.toLatest')}
+                </button>
             )}
         </div>
     );

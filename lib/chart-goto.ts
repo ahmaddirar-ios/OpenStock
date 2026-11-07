@@ -17,6 +17,19 @@ export function nearestBarIndex(times: readonly number[], target: number): numbe
     return best;
 }
 
+/** Whether the visible range already reaches the newest bar (within a bar or two). */
+export function isAtLatest(range: { from: number; to: number } | null, count: number): boolean {
+    if (!range || count <= 0) return true;
+    return range.to >= count - 2;
+}
+
+/** The range that keeps the current width but ends at the newest bar. */
+export function latestRange(range: { from: number; to: number } | null, count: number): { from: number; to: number } {
+    if (count <= 0) return { from: -1, to: 1 };
+    const span = range ? Math.max(10, range.to - range.from) : Math.min(count, 120);
+    return { from: Math.max(-1, count - span), to: count };
+}
+
 /**
  * A window of `span` bars centred on `index`, clamped so it never runs past the series. The chart
  * accepts a logical range from -1 (one empty slot before the first bar) to `count` (one after the
