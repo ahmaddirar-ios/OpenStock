@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { RotateCcw, Settings2, X } from 'lucide-react';
+import { Download, RotateCcw, Settings2, X } from 'lucide-react';
 import { tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { TIME_ZONES, type TimeZoneId } from '@/lib/chart-time';
@@ -31,6 +31,7 @@ export default function ChartSettingsMenu({
     invert,
     sessionBreaks,
     watermark,
+    onExportData,
     paletteState,
     palette,
     onTimeZone,
@@ -48,6 +49,8 @@ export default function ChartSettingsMenu({
     invert: boolean;
     sessionBreaks: boolean;
     watermark: boolean;
+    /** Downloads the bars on screen as CSV. */
+    onExportData: () => void;
     /** The preset the trader picked, plus any colour they overrode by hand. */
     paletteState: ChartPaletteState;
     /** The five colours actually on screen — the theme's own when no preset is set. */
@@ -225,6 +228,15 @@ export default function ChartSettingsMenu({
                                 className="chart-switch"
                             />
                         </label>
+
+                        <button
+                            type="button"
+                            onClick={onExportData}
+                            className="flex items-center gap-2 rounded-[8px] px-2 py-1.5 text-start text-[12px] text-foreground transition-colors hover:bg-hover"
+                        >
+                            <Download className="size-3.5 text-faint" aria-hidden="true" />
+                            {tx(lang, 'chart.exportData')}
+                        </button>
 
                         <div className="h-px bg-line" aria-hidden />
 

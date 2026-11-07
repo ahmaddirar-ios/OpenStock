@@ -113,6 +113,7 @@ import {
 import DrawingRail from '@/components/stocks/DrawingRail';
 import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/drawing-templates';
 import { addChartTemplate, chartTemplateCounts, instantiateChartTemplate, loadChartTemplates, removeChartTemplate, saveChartTemplates, type ChartTemplate } from '@/lib/chart-templates';
+import { candlesToCsv, csvFileName } from '@/lib/chart-export';
 import { decodeChartShare, sharePath } from '@/lib/chart-share';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
@@ -1901,6 +1902,18 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         setTransfer('ok');
     };
 
+    // The bars actually on screen (replay included), as a spreadsheet can read them.
+    const exportData = useCallback(() => {
+        const bars = displayRef.current?.candles ?? [];
+        if (bars.length === 0) return;
+        const url = URL.createObjectURL(new Blob([candlesToCsv(bars)], { type: 'text/csv;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = csvFileName(symbol, intervalId);
+        link.click();
+        URL.revokeObjectURL(url);
+    }, [symbol, intervalId]);
+
     const exportFile = () => {
         const payload = JSON.stringify(buildTransferPayload(symbol, drawings), null, 2);
         const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
@@ -2477,6 +2490,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     onInvert={setInvertScale}
                     onSessionBreaks={setSessionBreaks}
                     onWatermark={setWatermark}
+                    onExportData={exportData}
                     onPalette={setPaletteState}
                     onGoToDate={(time) => candleHostRef.current?.goToTime(time)}
                 />

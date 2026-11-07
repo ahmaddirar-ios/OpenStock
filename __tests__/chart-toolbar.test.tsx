@@ -58,6 +58,7 @@ describe('the settings gear', () => {
             onInvert={() => {}}
             onSessionBreaks={() => {}}
             onWatermark={() => {}}
+            onExportData={() => {}}
             onPalette={() => {}}
             onGoToDate={() => {}}
             {...over}
@@ -76,6 +77,7 @@ describe('the settings gear', () => {
         expect(panel.textContent).toContain('Invert scale');
         expect(panel.textContent).toContain('Session breaks');
         expect(panel.textContent).toContain('Watermark');
+        expect(panel.textContent).toContain('Export chart data (CSV)');
     });
 
     it('closes on Escape, because a panel that traps the keyboard is a trap', () => {
@@ -93,7 +95,8 @@ describe('the settings gear', () => {
         const onInvert = vi.fn();
         const onSessionBreaks = vi.fn();
         const onWatermark = vi.fn();
-        render(menu({ onTimeZone, onScaleMode, onInvert, onSessionBreaks, onWatermark }));
+        const onExportData = vi.fn();
+        render(menu({ onTimeZone, onScaleMode, onInvert, onSessionBreaks, onWatermark, onExportData }));
         fireEvent.click(screen.getByRole('button', { name: 'Chart settings' }));
 
         fireEvent.click(screen.getByRole('button', { name: 'Logarithmic' }));
@@ -108,5 +111,8 @@ describe('the settings gear', () => {
         expect(onSessionBreaks).toHaveBeenCalledWith(true);
         fireEvent.click(screen.getByRole('checkbox', { name: 'Watermark' }));
         expect(onWatermark).toHaveBeenCalledWith(false);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Export chart data (CSV)' }));
+        expect(onExportData).toHaveBeenCalledTimes(1);
     });
 });
