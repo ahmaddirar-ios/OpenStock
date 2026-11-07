@@ -29,7 +29,7 @@ const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [
     const { container } = render(
         <ChartDrawings
             drawings={[drawing]}
-            selectedId={null}
+            selectedIds={[]}
             tool={null}
             text={extra.text ?? ""}
             barTimes={barTimes}
@@ -86,7 +86,7 @@ const renderDrawing = (options: { tool: ShapeTool | 'select'; points?: DrawPoint
     const { container } = render(
         <ChartDrawings
             drawings={options.points ? [{ id: 'd1', tool: options.tool as ShapeTool, points: options.points }] : []}
-            selectedId={null}
+            selectedIds={[]}
             tool={options.tool}
             text={options.text ?? ""}
             barTimes={[]}
@@ -653,7 +653,7 @@ describe('the pile the drawings are painted in', () => {
         const { container } = render(
             <ChartDrawings
                 drawings={drawings}
-                selectedId={null}
+                selectedIds={[]}
                 tool={null}
                 text=""
                 barTimes={[]}

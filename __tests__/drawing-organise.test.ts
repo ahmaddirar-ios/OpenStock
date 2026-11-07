@@ -3,7 +3,8 @@
 // tool starts with. Both are rules the trader sets once and expects to keep, so both live in lib and
 // are proved here rather than in the component.
 import { describe, expect, it } from 'vitest';
-import { layerDrawings, type Drawing } from '@/lib/chart-drawings';import {
+import { layerDrawings, layerDrawingsMany, type Drawing } from '@/lib/chart-drawings';
+import {
     DRAWING_STYLES_KEY,
     loadDrawingStyles,
     parseDrawingStyles,
@@ -46,6 +47,21 @@ describe('the stacking order of the drawings', () => {
         expect(layerDrawings(drawings, 'c', 'front')).toBe(drawings);
         expect(layerDrawings(drawings, 'a', 'back')).toBe(drawings);
         expect(layerDrawings(drawings, 'missing', 'front')).toBe(drawings);
+    });
+
+    it('lifts a whole selection to the front, keeping its own order', () => {
+        // a and c are picked; they rise together, in the order they already had, above b.
+        expect(ids(layerDrawingsMany(list(['a', 'b', 'c', 'd']), ['a', 'c'], 'front'))).toEqual(['b', 'd', 'a', 'c']);
+    });
+
+    it('drops a whole selection to the back, keeping its own order', () => {
+        expect(ids(layerDrawingsMany(list(['a', 'b', 'c', 'd']), ['b', 'd'], 'back'))).toEqual(['b', 'd', 'a', 'c']);
+    });
+
+    it('does nothing for an empty or unknown selection', () => {
+        const drawings = list(['a', 'b']);
+        expect(layerDrawingsMany(drawings, [], 'front')).toBe(drawings);
+        expect(layerDrawingsMany(drawings, ['missing'], 'back')).toBe(drawings);
     });
 });
 

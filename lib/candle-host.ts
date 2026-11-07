@@ -770,6 +770,7 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             hoverListeners.clear();
             chart.unsubscribeCrosshairMove(handleCrosshair);
             if (options.onRangeChange) chart.timeScale().unsubscribeVisibleLogicalRangeChange(options.onRangeChange);
+            resizeObserver?.disconnect();
             chart.remove();
         },
     };
@@ -786,6 +787,15 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         // v5 returns void from subscribe*, so the handler is kept on the options and unsubscribed by destroy.
         chart.timeScale().subscribeVisibleLogicalRangeChange(options.onRangeChange);
     }
+
+    // A resize moves every price and time coordinate without changing the visible range, so the
+    // range subscription alone would leave an overlay (the drawings layer) painted at the old
+    // geometry — and a click would miss the shape it can see. Watching the box repaints it.
+    const resizeObserver =
+        options.onRangeChange && typeof ResizeObserver !== 'undefined'
+            ? new ResizeObserver(() => options.onRangeChange?.())
+            : null;
+    resizeObserver?.observe(container);
 
     return host;
 }

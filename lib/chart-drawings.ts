@@ -466,6 +466,20 @@ export function layerDrawings(list: Drawing[], id: string, move: LayerMove): Dra
     return move === 'front' ? [...list.filter((d) => d.id !== id), drawing] : [drawing, ...list.filter((d) => d.id !== id)];
 }
 
+/**
+ * The same move for several drawings at once, keeping their order among themselves: "bring to
+ * front" lifts the whole selection to the top in the order it already had, and "send to back"
+ * drops it underneath. A selection that is already at the edge is left alone.
+ */
+export function layerDrawingsMany(list: Drawing[], ids: readonly string[], move: LayerMove): Drawing[] {
+    const chosen = new Set(ids);
+    if (chosen.size === 0) return list;
+    const picked = list.filter((d) => chosen.has(d.id));
+    if (picked.length === 0) return list;
+    const rest = list.filter((d) => !chosen.has(d.id));
+    return move === 'front' ? [...rest, ...picked] : [...picked, ...rest];
+}
+
 export const newDrawingId = (): string => Math.random().toString(36).slice(2, 10);
 
 /** The two rails of a parallel channel: the base through the first two points, and the copy of it

@@ -99,7 +99,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -394,7 +394,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     /** Opens a symbol's stored set: it is the starting point, not an edit, so undo cannot erase it. */
     const resetDrawings = useCallback((list: Drawing[]) => {
         setTimeline(createHistory(list));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
 
     // The account's copy of this symbol's setup — the drawings and the studies — so a chart follows the
@@ -464,42 +464,48 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     }, []);
     const undo = useCallback(() => {
         setTimeline((history) => undoHistory(history));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
     const redo = useCallback(() => {
         setTimeline((history) => redoHistory(history));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    // Several drawings can be selected at once: shift-click adds to the set, and the whole set moves,
+    // restyles and deletes together. `selectedId` is the one a control that takes a single drawing
+    // acts on — a handle, a colour chip, an edit — namely the last one picked.
+    const [selectedIds, setSelectedId] = useState<string[]>([]);
+    const selectedId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
+    const selectOnly = useCallback((id: string | null) => setSelectedId(id ? [id] : []), []);
 
     // A clipboard for drawings, in memory: a copy is a sketch until it is pasted.
-    const clipboard = useRef<Drawing | null>(null);
+    const clipboard = useRef<Drawing[]>([]);
     const copySelected = useCallback(() => {
-        const drawing = drawings.find((d) => d.id === selectedId);
-        if (drawing) clipboard.current = drawing;
-    }, [drawings, selectedId]);
-    const offsetCopy = (drawing: Drawing) =>
-        cloneDrawing(drawing, newDrawingId(), { price: Math.max(0.001, Math.abs(drawing.points[0]?.price ?? 0) * 0.005) });
+        const chosen = drawings.filter((d) => selectedIds.includes(d.id));
+        if (chosen.length > 0) clipboard.current = chosen;
+    }, [drawings, selectedIds]);
+    const offsetCopyList = (list: Drawing[]) =>
+        list.map((drawing) =>
+            cloneDrawing(drawing, newDrawingId(), { price: Math.max(0.001, Math.abs(drawing.points[0]?.price ?? 0) * 0.005) }),
+        );
     const pasteClipboard = useCallback(() => {
         const source = clipboard.current;
-        if (!source) return;
-        const copy = cloneDrawing(source, newDrawingId(), {
-            price: Math.max(0.001, Math.abs(source.points[0]?.price ?? 0) * 0.005),
-        });
-        setDrawings((list) => [...list, copy]);
-        setSelectedId(copy.id);
+        if (source.length === 0) return;
+        const copies = offsetCopyList(source);
+        setDrawings((list) => [...list, ...copies]);
+        setSelectedId(copies.map((copy) => copy.id));
     }, [setDrawings]);
     const duplicateSelected = useCallback(() => {
-        const drawing = drawings.find((d) => d.id === selectedId);
-        if (!drawing) return;
-        const copy = offsetCopy(drawing);
-        setDrawings((list) => [...list, copy]);
-        setSelectedId(copy.id);
-    }, [drawings, selectedId, setDrawings]);
+        const chosen = drawings.filter((d) => selectedIds.includes(d.id));
+        if (chosen.length === 0) return;
+        const copies = offsetCopyList(chosen);
+        setDrawings((list) => [...list, ...copies]);
+        setSelectedId(copies.map((copy) => copy.id));
+    }, [drawings, selectedIds, setDrawings]);
     const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'color' | 'textColor' | 'customColor' | 'customFill' | 'customTextColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
-        if (!selectedId) return;
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
         setDrawings((list) => list.map((d) => {
-            if (d.id !== selectedId) return d;
+            if (!chosen.has(d.id)) return d;
             const next = { ...d, ...patch };
             // A cleared field must leave the drawing, not sit in it as undefined.
             for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
@@ -540,8 +546,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
     // A template paints the selected drawing, or arms the current tool for the next one.
     const applyTemplate = (style: ReturnType<typeof styleOfDrawing>) => {
-        if (selectedId) {
-            setDrawings((list) => list.map((drawing) => (drawing.id === selectedId ? { ...drawing, ...stylePatch(style) } : drawing)));
+        if (selectedIds.length > 0) {
+            const chosen = new Set(selectedIds);
+            setDrawings((list) => list.map((drawing) => (chosen.has(drawing.id) ? { ...drawing, ...stylePatch(style) } : drawing)));
             return;
         }
         const armed = tool && tool !== 'select' && tool !== 'measure' ? tool : undefined;
@@ -1301,7 +1308,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
     const startTool = (next: ActiveTool | null, labels: string[] | null = null) => {
         setMenu(null);
-        setSelectedId(null);
+        setSelectedId([]);
         setPendingLabels(labels);
         setTool((current) => (current === next && !labels ? null : next));
     };
@@ -1330,7 +1337,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             return;
         }
         commit(drawing);
-        setSelectedId(drawing.id);
+        setSelectedId([drawing.id]);
         setTool(null);
         setPendingLabels(null);
         setAutoNotice(null);
@@ -1464,19 +1471,30 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     );
     // The anchor is taken once per gesture: a body drag is one edit, and translating from the
     // anchor (not from the last position) keeps it exact however fast the pointer moves.
-    const bodyAnchor = useRef<{ id: string; points: DrawPoint[] } | null>(null);
-    const beginBodyDrag = (id: string) => {
-        const drawing = drawings.find((d) => d.id === id);
-        if (!drawing) return;
+    const bodyAnchor = useRef<Map<string, DrawPoint[]> | null>(null);
+    // A group drag keeps one anchor per drawing, so every shape moves by the same delta from where
+    // it was when the drag began — not from wherever it has been pushed to in the meantime.
+    const beginBodyDrag = (ids: string[]) => {
+        const anchors = new Map(
+            drawings
+                .filter((d) => ids.includes(d.id))
+                .map((d) => [d.id, d.points.map((point) => ({ ...point }))] as const),
+        );
+        if (anchors.size === 0) return;
         beginGesture();
-        bodyAnchor.current = { id, points: drawing.points.map((point) => ({ ...point })) };
+        bodyAnchor.current = anchors;
     };
-    const moveBody = (id: string, delta: { time: number; price: number }) => {
-        const anchor = bodyAnchor.current;
-        if (!anchor || anchor.id !== id) return;
+    const moveBody = (ids: string[], delta: { time: number; price: number }) => {
+        const anchors = bodyAnchor.current;
+        if (!anchors || anchors.size === 0) return;
+        const moving = new Set(ids);
         setTimeline((history) => ({
             ...history,
-            present: history.present.map((d) => (d.id === id ? { ...translateDrawing({ ...d, points: anchor.points }, delta) } : d)),
+            present: history.present.map((d) => {
+                if (!moving.has(d.id)) return d;
+                const points = anchors.get(d.id);
+                return points ? translateDrawing({ ...d, points }, delta) : d;
+            }),
         }));
     };
     const moveHandle = (id: string, index: number, point: DrawPoint) =>
@@ -1495,20 +1513,39 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     /** Hidden drawings keep their place in the list and in storage; they are simply not painted. */
     const toggleHidden = (id: string) =>
         setDrawings((list) => list.map((d) => (d.id === id ? { ...d, hidden: !d.hidden } : d)));
+    /** The same two toggles for the whole selection: one click locks or hides everything picked. */
+    const toggleLockSelected = () => {
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        const lock = !drawings.filter((d) => chosen.has(d.id)).every((d) => d.locked);
+        setDrawings((list) => list.map((d) => (chosen.has(d.id) ? { ...d, locked: lock } : d)));
+    };
+    const toggleHiddenSelected = () => {
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        const hide = !drawings.filter((d) => chosen.has(d.id)).every((d) => d.hidden);
+        setDrawings((list) => list.map((d) => (chosen.has(d.id) ? { ...d, hidden: hide } : d)));
+    };
     const allLocked = drawings.length > 0 && drawings.every((drawing) => drawing.locked);
     const toggleLockAll = () => setDrawings((list) => list.map((drawing) => ({ ...drawing, locked: !allLocked })));
     /** Which end of the pile the selected drawing sits on. The list's order is the stacking order. */
     const layerSelected = (move: LayerMove) => {
-        if (!selectedId) return;
-        setDrawings((list) => layerDrawings(list, selectedId, move));
+        if (selectedIds.length === 0) return;
+        setDrawings((list) => (selectedIds.length === 1 ? layerDrawings(list, selectedIds[0], move) : layerDrawingsMany(list, selectedIds, move)));
     };
     const removeDrawing = (id: string) => {
         setDrawings((list) => list.filter((d) => d.id !== id));
-        setSelectedId((current) => (current === id ? null : current));
+        setSelectedId((current) => current.filter((selected) => selected !== id));
+    };
+    const removeSelected = () => {
+        if (selectedIds.length === 0) return;
+        const gone = new Set(selectedIds);
+        setDrawings((list) => list.filter((d) => !gone.has(d.id)));
+        setSelectedId([]);
     };
     const clearAll = () => {
         setDrawings([]);
-        setSelectedId(null);
+        setSelectedId([]);
         // Straight to the account, not on the debounce: an empty local set merged with the old account
         // copy would restore every drawing on the next visit.
         pendingSetup.current = null;
@@ -1857,12 +1894,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     magnetStrength={magnet}
                     onMagnet={() => setMagnet((current) => nextMagnetStrength(current))}
                     locked={!!selectedDrawing?.locked}
-                    canLock={!!selectedId}
-                    onToggleLock={() => selectedId && toggleLock(selectedId)}
+                    canLock={selectedIds.length > 0}
+                    onToggleLock={toggleLockSelected}
                     hidden={drawingsHidden}
                     onHideAll={() => setDrawingsHidden((value) => !value)}
-                    canDelete={!!selectedId}
-                    onDelete={() => selectedId && removeDrawing(selectedId)}
+                    canDelete={selectedIds.length > 0}
+                    onDelete={removeSelected}
                     canUndo={canUndo(timeline)}
                     canRedo={canRedo(timeline)}
                     onUndo={undo}
@@ -1877,7 +1914,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             {status === 'ready' && !replay && !drawingsHidden && (
                 <ChartDrawings
                     drawings={visibleDrawings}
-                    selectedId={selectedId}
+                    selectedIds={selectedIds}
                     tool={tool}
                     text={noteText}
                     labels={pendingLabels}
@@ -3087,10 +3124,33 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     </button>
                     {listOpen && (
                 <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto px-1 pb-1">
+                    {drawings.length > 1 && (
+                        <div className="flex items-center gap-2 px-2 pb-0.5">
+                            <p className="flex-1 text-[10.5px] text-faint">{t('chart.multiHint')}</p>
+                            {selectedIds.length > 0 && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={toggleHiddenSelected}
+                                        className="text-[10.5px] font-semibold text-faint hover:text-foreground"
+                                    >
+                                        {t('chart.hide')} · {arDigits(selectedIds.length, lang)}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={toggleLockSelected}
+                                        className="text-[10.5px] font-semibold text-faint hover:text-foreground"
+                                    >
+                                        {t('chart.tool.lock')} · {arDigits(selectedIds.length, lang)}
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )}
                     {drawings.map((drawing) => (
                         <div
                             key={drawing.id}
-                            className={cn('flex items-center gap-2 rounded-[8px] px-2 py-1 text-[12.5px]', drawing.id === selectedId && 'bg-hover')}
+                            className={cn('flex items-center gap-2 rounded-[8px] px-2 py-1 text-[12.5px]', selectedIds.includes(drawing.id) && 'bg-hover')}
                         >
                             <button
                                 type="button"
@@ -3100,7 +3160,23 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                                 className="size-4 shrink-0 rounded-full border border-line-strong"
                                 style={{ backgroundColor: drawingColor(drawing) }}
                             />
-                            <button type="button" onClick={() => setSelectedId(drawing.id)} className="flex flex-1 items-center gap-2 text-start">
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    // Shift (or a command key) adds to the selection, the same rule the
+                                    // chart itself follows, so the list and the canvas agree.
+                                    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+                                        setSelectedId((current) =>
+                                            current.includes(drawing.id)
+                                                ? current.filter((id) => id !== drawing.id)
+                                                : [...current, drawing.id],
+                                        );
+                                    } else {
+                                        selectOnly(drawing.id);
+                                    }
+                                }}
+                                className="flex flex-1 items-center gap-2 text-start"
+                            >
                                 <span className="font-semibold">{toolLabel(drawing)}</span>
                                 <span className="mono num truncate text-[11.5px] text-faint">{summary(drawing)}</span>
                             </button>

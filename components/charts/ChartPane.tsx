@@ -133,13 +133,16 @@ export default function ChartPane({
     // the other way round. The history is per pane: undo in one pane must not rewind another.
     const [timeline, setTimeline] = useState<History<Drawing[]>>(() => createHistory<Drawing[]>([]));
     const drawings = timeline.present;
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [selectedIds, setSelectedId] = useState<string[]>([]);
     const [tool, setTool] = useState<ActiveTool | null>(null);
     const [noteText, setNoteText] = useState('');
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [drawingsHidden, setDrawingsHidden] = useState(false);
+    // A resize moves the chart's coordinates without changing its visible range; this counter is
+    // what repaints the drawings layer so a shape stays under the pointer after the pane resizes.
+    const [, setFrame] = useState(0);
     const gestureStart = useRef<Drawing[] | null>(null);
-    const bodyAnchor = useRef<{ id: string; points: DrawPoint[] } | null>(null);
+    const bodyAnchor = useRef<Map<string, DrawPoint[]> | null>(null);
 
     const setDrawings = useCallback((updater: Drawing[] | ((list: Drawing[]) => Drawing[])) => {
         setTimeline((history) => applyHistory(history, typeof updater === 'function' ? updater(history.present) : updater));
@@ -148,7 +151,7 @@ export default function ChartPane({
     // A symbol change is a different chart: its own shapes, its own history, nothing selected.
     useEffect(() => {
         setTimeline(createHistory(symbol ? loadDrawings(symbol) : []));
-        setSelectedId(null);
+        setSelectedId([]);
         setTool(null);
         setNoteText('');
     }, [symbol]);
@@ -182,26 +185,33 @@ export default function ChartPane({
     }, []);
     const undo = useCallback(() => {
         setTimeline((history) => undoHistory(history));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
     const redo = useCallback(() => {
         setTimeline((history) => redoHistory(history));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
-    const beginBodyDrag = (id: string) => {
-        const drawing = drawings.find((item) => item.id === id);
-        if (!drawing) return;
+    const beginBodyDrag = (ids: string[]) => {
+        const anchors = new Map(
+            drawings
+                .filter((item) => ids.includes(item.id))
+                .map((item) => [item.id, item.points.map((point) => ({ ...point }))] as const),
+        );
+        if (anchors.size === 0) return;
         beginGesture();
-        bodyAnchor.current = { id, points: drawing.points.map((point) => ({ ...point })) };
+        bodyAnchor.current = anchors;
     };
-    const moveBody = (id: string, delta: { time: number; price: number }) => {
-        const anchor = bodyAnchor.current;
-        if (!anchor || anchor.id !== id) return;
+    const moveBody = (ids: string[], delta: { time: number; price: number }) => {
+        const anchors = bodyAnchor.current;
+        if (!anchors || anchors.size === 0) return;
+        const moving = new Set(ids);
         setTimeline((history) => ({
             ...history,
-            present: history.present.map((item) =>
-                item.id === id ? translateDrawing({ ...item, points: anchor.points }, delta) : item,
-            ),
+            present: history.present.map((item) => {
+                if (!moving.has(item.id)) return item;
+                const points = anchors.get(item.id);
+                return points ? translateDrawing({ ...item, points }, delta) : item;
+            }),
         }));
     };
     const moveHandle = (id: string, index: number, point: DrawPoint) =>
@@ -211,9 +221,10 @@ export default function ChartPane({
         }));
     const editText = (id: string, text: string) => setDrawings((list) => list.map((item) => (item.id === id ? withText(item, text) : item)));
     const deleteSelected = () => {
-        if (!selectedId) return;
-        setDrawings((list) => list.filter((item) => item.id !== selectedId));
-        setSelectedId(null);
+        if (selectedIds.length === 0) return;
+        const gone = new Set(selectedIds);
+        setDrawings((list) => list.filter((item) => !gone.has(item.id)));
+        setSelectedId([]);
     };
     const insertTool = (entry: ToolEntry) => {
         setPaletteOpen(false);
@@ -234,7 +245,11 @@ export default function ChartPane({
 
         // The grid draws whatever type the chart is set to: the /charts panes used to always be
         // candles, which made the same symbol look different on the two pages.
-        const host = createCandleHost(el, { timeVisible: false, chartType: readChartType(window.localStorage) });
+        const host = createCandleHost(el, {
+            timeVisible: false,
+            chartType: readChartType(window.localStorage),
+            onRangeChange: () => setFrame((frame) => frame + 1),
+        });
         hostRef.current = host;
 
         const handleCrosshair = (param: MouseEventParams) => {
@@ -536,7 +551,7 @@ export default function ChartPane({
                                 <button
                                     type="button"
                                     onClick={deleteSelected}
-                                    disabled={!selectedId}
+                                    disabled={selectedIds.length === 0}
                                     aria-label={tx(lang, 'chart.delete')}
                                     title={tx(lang, 'chart.delete')}
                                     className="icon-btn size-6 disabled:opacity-40"
@@ -628,7 +643,7 @@ export default function ChartPane({
                 {symbol && status === 'ready' && !replay && !drawingsHidden && (
                     <ChartDrawings
                         drawings={visibleDrawings}
-                        selectedId={selectedId}
+                        selectedIds={selectedIds}
                         tool={tool}
                         text={noteText}
                         barTimes={barTimes}

@@ -8,7 +8,8 @@ export type ActiveTool = ShapeTool | 'select' | 'measure';
 
 type Props = {
     drawings: Drawing[];
-    selectedId: string | null;
+    /** Every selected drawing. Shift-click adds to the set, so several can move or delete together. */
+    selectedIds: string[];
     tool: ActiveTool | null;
     /** Filled in when the note tool places a label. */
     text: string;
@@ -25,12 +26,12 @@ type Props = {
     /** The inverse, so a pointer position can be stored as a chart point. */
     fromScreen: (x: number, y: number) => DrawPoint | null;
     onCommit: (drawing: Drawing) => void;
-    onSelect: (id: string | null) => void;
+    onSelect: (ids: string[]) => void;
     onMoveHandle: (id: string, index: number, point: DrawPoint) => void;
     /** The whole drawing moved: the parent translates it from the anchor it kept for this gesture. */
-    onMoveBody: (id: string, delta: { time: number; price: number }) => void;
-    /** Called once when a body drag starts, so the parent can snapshot the drawing for one undo step. */
-    onMoveBodyStart: (id: string) => void;
+    onMoveBody: (ids: string[], delta: { time: number; price: number }) => void;
+    /** Called once when a body drag starts, so the parent can snapshot the drawings for one undo step. */
+    onMoveBodyStart: (ids: string[]) => void;
     /** A note's new wording, saved from the editor on the chart. */
     onEditText: (id: string, text: string) => void;
     /** Called once a drawing is finished, so the toolbar can drop the tool. */
@@ -56,7 +57,7 @@ const HIGHLIGHTER_WIDTH = 12;
 // zooming the chart underneath keep working exactly as they do without drawings.
 export default function ChartDrawings({
     drawings,
-    selectedId,
+    selectedIds,
     tool,
     text,
     labels,
@@ -84,7 +85,7 @@ export default function ChartDrawings({
     const [dragging, setDragging] = useState<{ id: string; index: number } | null>(null);
     // Grabbing the shape itself: the anchor is the chart point the gesture started on, so every move
     // is a delta from where the line was, not from where it has already been pushed.
-    const bodyDrag = useRef<{ id: string; anchor: DrawPoint } | null>(null);
+    const bodyDrag = useRef<{ ids: string[]; anchor: DrawPoint } | null>(null);
     // The measure box lives only while the measure tool is on: it is a reading, not a drawing.
     const [measure, setMeasure] = useState<{ from: DrawPoint; to: DrawPoint } | null>(null);
     const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
@@ -123,6 +124,7 @@ export default function ChartDrawings({
 
     const screenOf = (drawing: Drawing): ScreenPoint[] => drawing.points.map((point) => toScreen(point) ?? { x: NaN, y: NaN });
     const kindOf = (drawing: Drawing): ShapeKind => toolDef(drawing.tool).kind;
+    const selectedSet = new Set(selectedIds);
     const usable = (points: ScreenPoint[]) => (points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) ? points : []);
 
     const cursorOf = (event: React.PointerEvent): ScreenPoint => {
@@ -151,27 +153,49 @@ export default function ChartDrawings({
         const drawable = drawings.map((_, i) => usable(drawn[i]));
 
         if (tool === 'select') {
-            const selectedIndex = drawings.findIndex((drawing) => drawing.id === selectedId);
-            if (selectedIndex !== -1 && !drawings[selectedIndex].locked) {
-                const grabbed = handleIndex(drawn[selectedIndex], cursor, GRAB);
+            // A handle of any selected drawing wins: grabbing one point of a group edits that point.
+            for (const drawing of drawings) {
+                if (!selectedSet.has(drawing.id) || drawing.locked) continue;
+                const grabbed = handleIndex(drawn[drawings.indexOf(drawing)], cursor, GRAB);
                 if (grabbed !== null) {
                     onGestureStart();
-                    setDragging({ id: drawings[selectedIndex].id, index: grabbed });
+                    setDragging({ id: drawing.id, index: grabbed });
                     return;
                 }
-                // Not a handle but on the line: drag the whole shape.
-                const onBody = hitTest([drawings[selectedIndex]], [drawn[selectedIndex]], cursor, GRAB, () => kindOf(drawings[selectedIndex]));
+            }
+            // Not a handle but on the body of a selected drawing: drag the whole selection together.
+            const selectedDrawings = drawings.filter((drawing) => selectedSet.has(drawing.id) && !drawing.locked);
+            if (selectedDrawings.length > 0) {
+                const onBody = hitTest(
+                    selectedDrawings,
+                    selectedDrawings.map((drawing) => usable(screenOf(drawing))),
+                    cursor,
+                    GRAB,
+                    (drawing) => kindOf(drawing),
+                );
                 if (onBody) {
                     const anchor = fromScreen(cursor.x, cursor.y);
                     if (anchor) {
-                        onMoveBodyStart(drawings[selectedIndex].id);
-                        bodyDrag.current = { id: drawings[selectedIndex].id, anchor };
+                        const ids = selectedDrawings.map((drawing) => drawing.id);
+                        onMoveBodyStart(ids);
+                        bodyDrag.current = { ids, anchor };
                         return;
                     }
                 }
             }
             setEditing(null);
-            onSelect(hitTest(drawings, drawable, cursor, GRAB)?.id ?? null);
+            const hit = hitTest(drawings, drawable, cursor, GRAB);
+            // Shift (or a command key) adds to the selection instead of replacing it.
+            const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+            if (!hit) {
+                if (!additive) onSelect([]);
+                return;
+            }
+            if (additive) {
+                onSelect(selectedSet.has(hit.id) ? selectedIds.filter((id) => id !== hit.id) : [...selectedIds, hit.id]);
+            } else {
+                onSelect([hit.id]);
+            }
             return;
         }
 
@@ -247,8 +271,8 @@ export default function ChartDrawings({
         if (bodyDrag.current) {
             const current = fromScreen(cursor.x, cursor.y);
             if (current) {
-                const { id, anchor } = bodyDrag.current;
-                onMoveBody(id, { time: current.time - anchor.time, price: current.price - anchor.price });
+                const { ids, anchor } = bodyDrag.current;
+                onMoveBody(ids, { time: current.time - anchor.time, price: current.price - anchor.price });
             }
             return;
         }
@@ -306,7 +330,7 @@ export default function ChartDrawings({
         setPreview(null);
         setDragging(null);
         setEditing(null);
-        onSelect(null);
+        onSelect([]);
     };
 
     const saveEdit = () => {
@@ -391,7 +415,7 @@ export default function ChartDrawings({
         // Words can wear their own colour: a note in white over a busy candle is a choice, not a bug.
         const ink = textColorOf(drawing);
         const fill = paint.opacity > 0 ? `color-mix(in oklab, ${paint.color} ${paint.opacity}%, transparent)` : 'none';
-        const selected = drawing.id === selectedId;
+        const selected = selectedSet.has(drawing.id);
         const locked = drawing.locked === true;
         // The trader's stroke, with the selection adding a little weight for feedback.
         const width = strokeWidthOf(drawing) + (selected ? 0.8 : 0);
