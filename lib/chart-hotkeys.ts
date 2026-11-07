@@ -24,6 +24,9 @@ export const TOOL_SHORTCUTS: readonly ToolShortcut[] = [
     { key: 'p', tool: 'pricetime' },
 ];
 
+/** The ruler is a gesture, not a shape, so it has its own key rather than a `ShapeTool` entry. */
+export const MEASURE_KEY = 'm';
+
 const BY_KEY = new Map(TOOL_SHORTCUTS.map((shortcut) => [shortcut.key, shortcut.tool]));
 
 /** The tool a bare letter arms, or null when the letter belongs to something else. */

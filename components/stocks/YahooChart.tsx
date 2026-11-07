@@ -52,7 +52,7 @@ import {
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
-import { EDIT_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
+import { EDIT_SHORTCUTS, MEASURE_KEY, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
 import {
     readTimeZone,
     writeTimeZone,
@@ -1217,6 +1217,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             if (event.key === '?') {
                 event.preventDefault();
                 setShortcutsOpen((open) => !open);
+                return;
+            }
+            if (event.key.toLowerCase() === MEASURE_KEY) {
+                event.preventDefault();
+                setTool((current) => (current === 'measure' ? null : 'measure'));
                 return;
             }
             const next = toolForKey(event.key);
@@ -3406,6 +3411,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                                             <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>
                                         </li>
                                     ))}
+                                    <li className="flex items-center justify-between gap-3 text-[13px]">
+                                        <span className="text-muted-foreground">{t('chart.tool.measure')}</span>
+                                        <kbd className="kbd">{MEASURE_KEY.toUpperCase()}</kbd>
+                                    </li>
                                 </ul>
                             </div>
                             <div>

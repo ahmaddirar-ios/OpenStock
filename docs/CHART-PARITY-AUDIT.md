@@ -18,6 +18,7 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 | Alerts | ✅ price/RSS/ATR/52w/formula/strategy conditions, 5 rules per alert, drawing-anchored alerts, on-visit checker + Inngest cron, 200-event log |
 | Screener | ✅ market/sector/index filters, search, CSV export |
 | Chart page | ✅ 10 intervals incl. 2h/4h aggregation, session breaks, log/%/indexed scale, invert, 4 time zones, palettes (presets + hand overrides), chart templates, image export, share link, fullscreen, compare (3 symbols, % share-axis), replay with paper fills + ghost bars, go to date, back to latest, watermark, CSV export, bar countdown, 1-min background refresh |
+| Ruler | ✅ drag-to-measure with Δprice, Δ%, bars, elapsed time and volume, prices at both ends, clamped readout, `M` shortcut |
 | Charts grid | ✅ 4 layouts, shared interval/indicators/crosshair, drawings per pane, drawings list |
 
 ## Gaps that matter, in the order I would close them
@@ -28,9 +29,9 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
    plays a sound. We already have a cron and a log table, so this is a notification surface, not a
    new backend: in-app toast/beep while a Rovex tab is open, web push for when it is not (needs a
    service worker + VAPID keys), and an email digest as the fallback. *Recommended next.*
-2. **❌ No measure/ruler on the chart.** Drawing a box reads price and time, but there is no
-   drag-to-measure that shows Δprice, Δ%, bars, and elapsed time while the mouse moves. Pure overlay,
-   reuses `measureSpan`.
+2. **✅ Measure/ruler.** Shipped: drag from one point to another and the box reads Δprice, Δ%,
+   bars, elapsed time and volume, with the price at each end and a readout that stays inside the
+   plot. `M` arms it; the help panel lists it.
 3. **🟡 No right-click menu.** Every TradingView object has one (delete, clone, alert, style, lock,
    visibility). Ours is a selection toolbar — fine, but a context menu on right-click is the muscle
    memory most traders bring with them.
@@ -60,7 +61,7 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 ## Suggested order
 
 1 → 2 → 5 → 6 → 7 (indicators: Anchored VWAP bands, Stoch RSI, DMI±, Awesome Osc, Volume Profile study)
-→ 3 → 10 → 11 → 12.
+→ 3 → 10 → 11 → 12. (1 and 2 are done.)
 
 The first two are small and land in a day each; 5 and 6 are one shared piece of work (a strategies
 page that owns the lab's saved/optimised runs); 7 is a steady drip of one indicator at a time.

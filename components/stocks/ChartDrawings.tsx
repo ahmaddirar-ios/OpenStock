@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fibWedgeLines, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, gannSquareFixedCorner, GANN_SQUARE_FIXED_SIDE, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { measureDetail, measureHeadline, measureReadout } from '@/lib/chart-measure';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
@@ -110,6 +111,8 @@ export default function ChartDrawings({
         setPreview(null);
         setDragging(null);
         setEditing(null);
+        // A reading belongs to the gesture that made it, not to the tool.
+        setMeasure(null);
     }, [tool]);
 
     // Drawings stay on screen when no tool is armed; only the pointer capture is switched off, so the
@@ -339,21 +342,31 @@ export default function ChartDrawings({
         setEditing(null);
     };
 
-    // The measure box: a rectangle between the two points with what it measures beside it.
+    // The ruler: a box between the two points, the price at each end, and a chip that reads the move
+    // in price, percent, bars, time and volume. It is a reading, not a drawing, so it lives only
+    // while the measure tool is armed.
+    const measureRead = measure ? measureReadout(measure.from, measure.to, barSeconds, candles) : null;
+    const measureTone = measureRead && measureRead.price < 0 ? '#EF5350' : '#26A69A';
     const measureBox = (() => {
-        if (!measure) return null;
+        if (!measure || !measureRead) return null;
         const a = toScreen(measure.from);
         const b = toScreen(measure.to);
         if (!a || !b) return null;
-        const price = measure.to.price - measure.from.price;
-        const percent = measure.from.price === 0 ? 0 : (price / measure.from.price) * 100;
-        const seconds = Math.abs(measure.to.time - measure.from.time);
-        const days = seconds / 86400;
-        const span = days >= 1 ? `${days.toFixed(1)}D` : `${(seconds / 3600).toFixed(1)}H`;
-        const tone = price >= 0 ? '#26A69A' : '#EF5350';
-        const label = `${price >= 0 ? '+' : '−'}${Math.abs(price).toFixed(2)} (${percent >= 0 ? '+' : '−'}${Math.abs(percent).toFixed(2)}%) · ${span}`;
         const x = Math.min(a.x, b.x);
         const y = Math.min(a.y, b.y);
+        const endLabel = (spot: ScreenPoint, price: number, key: string) => (
+            <text
+                key={key}
+                x={spot.x + 6}
+                y={spot.y - 6}
+                fontSize={11}
+                className="mono"
+                fill={measureTone}
+                style={{ paintOrder: 'stroke', stroke: 'var(--page)', strokeWidth: 3 }}
+            >
+                {price.toFixed(2)}
+            </text>
+        );
         return (
             <g key="measure">
                 <rect
@@ -361,22 +374,45 @@ export default function ChartDrawings({
                     y={y}
                     width={Math.abs(b.x - a.x)}
                     height={Math.abs(b.y - a.y)}
-                    fill={`color-mix(in oklab, ${tone} 16%, transparent)`}
-                    stroke={tone}
+                    fill={`color-mix(in oklab, ${measureTone} 16%, transparent)`}
+                    stroke={measureTone}
                     strokeWidth={1.4}
                 />
-                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={tone} strokeWidth={1.2} strokeDasharray="4 3" />
-                <text
-                    x={b.x + 8}
-                    y={b.y - 8}
-                    fontSize={12}
-                    className="mono"
-                    fill={tone}
-                    style={{ paintOrder: 'stroke', stroke: 'black', strokeWidth: 3 }}
-                >
-                    {label}
-                </text>
+                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={measureTone} strokeWidth={1.2} strokeDasharray="4 3" />
+                {endLabel(a, measure.from.price, 'measure-from')}
+                {endLabel(b, measure.to.price, 'measure-to')}
             </g>
+        );
+    })();
+
+    // The chip is HTML rather than SVG text so it can be clamped inside the plot: a reading that
+    // runs off the edge of the chart is a reading the trader cannot finish.
+    const measureChip = (() => {
+        if (!measure || !measureRead) return null;
+        const b = toScreen(measure.to);
+        if (!b) return null;
+        const headline = measureHeadline(measureRead);
+        const detail = measureDetail(measureRead, label('chart.range.bars'), label('chart.measure.vol'));
+        const rect = svgRef.current?.getBoundingClientRect();
+        const width = rect?.width ?? 0;
+        const height = rect?.height ?? 0;
+        // 11px monospace is about 6.6px a character; the padding and border add the rest.
+        const chipWidth = Math.max(headline.length, detail.length) * 6.6 + 22;
+        const chipHeight = 44;
+        const left = Math.min(Math.max(4, b.x + 12), Math.max(4, width - chipWidth - 4));
+        const top = Math.min(Math.max(4, b.y - chipHeight - 12), Math.max(4, height - chipHeight - 4));
+        return (
+            <div
+                key="measure-chip"
+                dir="ltr"
+                className="pointer-events-none absolute z-20 flex flex-col gap-0.5 rounded-[8px] border bg-page/95 px-2 py-1 shadow-[0_6px_18px_rgba(0,0,0,0.28)]"
+                style={{ left, top, borderColor: measureTone }}
+            >
+                <span className="mono text-[11.5px] font-semibold leading-tight" style={{ color: measureTone }}>
+                    {headline}
+                </span>
+                <span className="mono text-[10.5px] leading-tight text-faint">{detail}</span>
+            </div>
         );
     })();
 
@@ -1722,6 +1758,8 @@ export default function ChartDrawings({
                     return spot ? dot(spot.x, spot.y, `draft-${i}`, 'var(--brand)', 0.8) : null;
                 })}
             </svg>
+
+            {tool === 'measure' && measureChip}
 
             {editing && editorAt && (() => {
                 // A table is edited as a grid, so it gets a multiline box and one line per row; every

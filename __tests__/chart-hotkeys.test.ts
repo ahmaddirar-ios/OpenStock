@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
+import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, MEASURE_KEY, toolForKey } from '@/lib/chart-hotkeys';
 
 describe('chart hotkeys', () => {
     it('arms a tool from a bare letter, in either case', () => {
@@ -17,6 +17,12 @@ describe('chart hotkeys', () => {
 
     it('uses one letter per shortcut', () => {
         for (const shortcut of TOOL_SHORTCUTS) expect(shortcut.key).toMatch(/^[a-z]$/);
+    });
+
+    it('gives the ruler a bare letter of its own', () => {
+        expect(MEASURE_KEY).toMatch(/^[a-z]$/);
+        expect(toolForKey(MEASURE_KEY)).toBeNull();
+        expect(TOOL_SHORTCUTS.some((shortcut) => shortcut.key === MEASURE_KEY)).toBe(false);
     });
 
     it('keeps the editing list free of tool letters', () => {
