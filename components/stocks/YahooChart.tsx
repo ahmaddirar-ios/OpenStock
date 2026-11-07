@@ -251,6 +251,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const candleHostRef = useRef<CandleHost | null>(null);
     const displayRef = useRef<CandleSet | null>(null);
     const replayRef = useRef(false);
+    // Set when a background refresh lands while the trader is sitting at the newest bar: the view
+    // should follow the new bar instead of quietly sliding the newest one off the right edge.
+    const followLatestRef = useRef(false);
     const replayPanelRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const imageFileRef = useRef<HTMLInputElement>(null);
@@ -736,21 +739,43 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         return () => { cancelled = true; };
     }, [compareList, intervalId, replay]);
 
-    const load = useCallback(async () => {
-        setStatus('loading');
+    // `silent` is the background refresh: it never flashes the loading overlay, never clears the
+    // chart on a failed fetch, and never moves the view or the "back to latest" pill.
+    const load = useCallback(async (options?: { silent?: boolean }) => {
+        const silent = options?.silent === true;
+        if (!silent) setStatus('loading');
         const result = await getYahooCandles(symbol, intervalId);
         if (!result || result.candles.length === 0) {
+            if (silent) return;
             setData(null);
             setStatus('error');
             return;
         }
+        if (silent) followLatestRef.current = candleHostRef.current?.isAtLatest() ?? true;
         setData(result);
         setStatus('ready');
-        setScrolledBack(false);
+        if (!silent) setScrolledBack(false);
     }, [symbol, intervalId]);
 
     useEffect(() => {
         void load();
+    }, [load]);
+
+    // The feed is delayed, but a chart left open should still pick up the next bar without a reload.
+    // One request a minute matches the server's own one-minute cache; a hidden tab costs nothing and
+    // catches up the moment it is shown again. Replay owns its own history, so it is left alone.
+    useEffect(() => {
+        const refresh = () => {
+            if (replayRef.current) return;
+            if (document.visibilityState !== 'visible') return;
+            void load({ silent: true });
+        };
+        const timer = window.setInterval(refresh, 60_000);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener('visibilitychange', refresh);
+        };
     }, [load]);
 
     // Entering replay swaps the light chart payload for the lab's deep history (10y daily, 10y weekly,
@@ -1187,7 +1212,15 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
-        if (displayData) candleHostRef.current?.setData(displayData);
+        if (!displayData) return;
+        const host = candleHostRef.current;
+        if (!host) return;
+        host.setData(displayData);
+        // A background refresh that arrived while the trader was at the newest bar keeps them there.
+        if (followLatestRef.current) {
+            followLatestRef.current = false;
+            host.toLatest();
+        }
     }, [displayData]);
 
     // The ghost feed follows the cursor: a step forward shortens it, a step back lengthens it.
