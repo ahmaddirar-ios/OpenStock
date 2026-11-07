@@ -100,7 +100,7 @@ import {
 } from '@/lib/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, hitTest, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
 import {
     loadDrawingStyles,
@@ -596,6 +596,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [menu, setMenu] = useState<MenuId | null>(null);
     // The phone fold: one row of controls until the trader asks for the rest of the toolbar.
     const [toolbarMore, setToolbarMore] = useState(false);
+    // The right-click object menu: where it is anchored, and which drawing it acts on.
+    const [objectMenu, setObjectMenu] = useState<{ id: string; x: number; y: number } | null>(null);
     // The count the automatic numbering targets: whatever degree/kind was last picked by hand.
     const [countChoice, setCountChoice] = useState<{ degree: CountDegree; kind: CountKind }>({
         degree: 'minor',
@@ -1625,6 +1627,32 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         setDrawings((list) => list.filter((d) => !gone.has(d.id)));
         setSelectedId([]);
     };
+    const openObjectMenu = useCallback((hit: { id: string; x: number; y: number } | null) => {
+        setObjectMenu(hit);
+    }, []);
+    const objectTarget = objectMenu ? drawings.find((drawing) => drawing.id === objectMenu.id) ?? null : null;
+    const closeObjectMenu = () => setObjectMenu(null);
+    // A menu is a moment, not a mode: a click anywhere else, a scroll or Escape dismisses it.
+    useEffect(() => {
+        if (!objectMenu) return;
+        const onDown = (event: MouseEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (target && target.closest('[data-object-menu]')) return;
+            setObjectMenu(null);
+        };
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setObjectMenu(null);
+        };
+        document.addEventListener('mousedown', onDown, true);
+        document.addEventListener('keydown', onKey);
+        window.addEventListener('scroll', closeObjectMenu, true);
+        return () => {
+            document.removeEventListener('mousedown', onDown, true);
+            document.removeEventListener('keydown', onKey);
+            window.removeEventListener('scroll', closeObjectMenu, true);
+        };
+    }, [objectMenu]);
+
     const clearAll = () => {
         setDrawings([]);
         setSelectedId([]);
@@ -1964,12 +1992,30 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
 
 
+    // A right-click on a drawing opens its object menu even with no tool armed: the drawings layer
+    // is inert until a tool is picked, so the hit test runs here, in the same chart coordinates.
+    const onChartContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (replay) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const cursor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        const points = visibleDrawings.map((drawing) => {
+            const screen = drawing.points.map((point) => toScreen(point) ?? { x: NaN, y: NaN });
+            return screen.every((spot) => Number.isFinite(spot.x) && Number.isFinite(spot.y)) ? screen : [];
+        });
+        const hit = hitTest(visibleDrawings, points, cursor, 9);
+        if (!hit) return;
+        event.preventDefault();
+        setSelectedId([hit.id]);
+        setObjectMenu({ id: hit.id, x: event.clientX, y: event.clientY });
+    };
+
     const body = (
         // dir=ltr on the plotting area too: the labels drawn on the canvas overlay are SVG text
         // (Fibonacci ratios, notes), and in an RTL page "0.786" would otherwise reorder to "786.0".
         <div
             className={cn('relative', expanded ? 'size-full' : fill ? 'min-h-[300px] flex-1' : 'h-[420px]')}
             dir="ltr"
+            onContextMenu={onChartContextMenu}
         >
             {/* The host element is the one lightweight-charts listens on; the data attribute keeps
                 a browser check pointed at the chart rather than at the widget's inner canvases. */}
@@ -2029,6 +2075,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     fromScreen={fromScreen}
                     onCommit={commit}
                     onSelect={setSelectedId}
+                    onContextMenu={openObjectMenu}
                     onMoveHandle={moveHandle}
                     onMoveBody={moveBody}
                     onMoveBodyStart={beginBodyDrag}
@@ -3386,6 +3433,58 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
             {/* The whole keyboard on one card: the tool letters and the editing chords, from the same
                 tables the handlers read, so the help can never drift from what the keys do. */}
+            {objectMenu && objectTarget && (
+                <div
+                    data-object-menu
+                    role="menu"
+                    aria-label={t('chart.drawings')}
+                    dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                    className="fixed z-[70] flex w-44 flex-col rounded-[10px] bg-card p-1 text-[12.5px] shadow-[0_14px_40px_rgba(0,0,0,0.45)] ring-1 ring-line"
+                    style={{
+                        left: Math.min(objectMenu.x, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerWidth) - 184)),
+                        top: Math.min(objectMenu.y, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerHeight) - 260)),
+                    }}
+                >
+                    {[
+                        { key: 'layer-front', label: t('chart.layer.front'), run: () => layerSelected('front') },
+                        { key: 'layer-back', label: t('chart.layer.back'), run: () => layerSelected('back') },
+                        { key: 'duplicate', label: t('chart.tool.duplicate'), run: duplicateSelected },
+                        { key: 'copy', label: t('chart.tool.copy'), run: copySelected },
+                        {
+                            key: 'lock',
+                            label: t(objectTarget.locked ? 'chart.tool.unlock' : 'chart.tool.lock'),
+                            run: toggleLockSelected,
+                        },
+                        { key: 'hide', label: t('chart.hide'), run: toggleHiddenSelected },
+                    ].map((item) => (
+                        <button
+                            key={item.key}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                                item.run();
+                                closeObjectMenu();
+                            }}
+                            className="flex h-8 items-center rounded-[6px] px-2 text-start text-muted-foreground transition-colors hover:bg-hover/60 hover:text-foreground"
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                    <div className="my-1 h-px bg-line" aria-hidden="true" />
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                            removeSelected();
+                            closeObjectMenu();
+                        }}
+                        className="flex h-8 items-center rounded-[6px] px-2 text-start text-down transition-colors hover:bg-down/12"
+                    >
+                        {t('chart.tool.delete')}
+                    </button>
+                </div>
+            )}
+
             {shortcutsOpen && (
                 <div
                     className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4"

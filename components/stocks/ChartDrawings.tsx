@@ -43,6 +43,8 @@ type Props = {
     onGestureEnd: () => void;
     /** Magnet rounding for a freshly placed or dragged point (identity when the magnet is off). */
     snapPoint?: (point: DrawPoint) => DrawPoint;
+    /** A right-click: the drawing under the pointer (already selected), or null on empty chart space. */
+    onContextMenu?: (hit: { id: string; x: number; y: number } | null) => void;
     label: (key: StringKey) => string;
 };
 
@@ -75,6 +77,7 @@ export default function ChartDrawings({
     onGestureStart,
     onGestureEnd,
     snapPoint,
+    onContextMenu,
     onEditText,
     onToolConsumed,
     label,
@@ -133,6 +136,24 @@ export default function ChartDrawings({
     const cursorOf = (event: React.PointerEvent): ScreenPoint => {
         const rect = svgRef.current?.getBoundingClientRect();
         return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
+    };
+
+    // A right-click on a drawing opens the object menu; on empty space it clears the selection. The
+    // browser menu is suppressed only while the layer is interactive, so a right-click with no tool
+    // armed still behaves like a normal page.
+    const onContextMenuEvent = (event: React.MouseEvent) => {
+        if (!interactive) return;
+        event.preventDefault();
+        const rect = svgRef.current?.getBoundingClientRect();
+        const cursor = { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
+        const hit = hitTest(drawings, drawings.map((drawing) => usable(screenOf(drawing))), cursor, GRAB);
+        if (hit) {
+            onSelect([hit.id]);
+            onContextMenu?.({ id: hit.id, x: event.clientX, y: event.clientY });
+        } else {
+            onSelect([]);
+            onContextMenu?.(null);
+        }
     };
 
     const onPointerDown = (event: React.PointerEvent) => {
@@ -1736,6 +1757,7 @@ export default function ChartDrawings({
                 className="absolute inset-0 z-10 size-full"
                 style={{ pointerEvents: interactive ? 'auto' : 'none', cursor: interactive ? 'crosshair' : 'default' }}
                 onPointerDown={onPointerDown}
+                onContextMenu={onContextMenuEvent}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onDoubleClick={onDoubleClick}
