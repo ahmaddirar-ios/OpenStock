@@ -60,7 +60,8 @@ export default function AlertNotifier({ lang }: { lang: Lang }) {
     const recent = useRef<Record<string, number>>({});
     const busy = useRef(false);
     const audio = useRef<HTMLAudioElement | null>(null);
-    // The alerts page runs its own, more talkative check; a second one there would say it twice.
+    // On the alerts page the page itself raises the banner and the log entry; the loop still
+    // prices the rules there, but stays quiet so one firing is not announced twice.
     const own = pathname === '/alerts';
 
     useEffect(() => {
@@ -77,7 +78,6 @@ export default function AlertNotifier({ lang }: { lang: Lang }) {
     }, []);
 
     useEffect(() => {
-        if (own) return;
         const chime = () => {
             if (!prefs.current.sound) return;
             try {
@@ -94,19 +94,23 @@ export default function AlertNotifier({ lang }: { lang: Lang }) {
             try {
                 const result = await checkAlerts();
                 if (result.fired.length > 0) {
-                    const now = Date.now() / 1000;
-                    const { fresh } = freshFirings(result.fired, recent.current, now);
-                    for (const hit of fresh) recent.current[`${hit.id}:${hit.condition}`] = now;
-                    if (fresh.length > 0 && prefs.current.toast) {
-                        if (fresh.length === 1) {
-                            toast.success(firingMessage(fresh[0], lang), { description: firingDetail(fresh[0], lang) });
-                        } else {
-                            toast.success(firingBatch(fresh.length, lang), {
-                                description: fresh.slice(0, 3).map((hit) => firingMessage(hit, lang)).join(' · '),
-                            });
+                    // The page has its own banner and log for a firing it caused; the toast belongs
+                    // to the rest of the app, where a firing would otherwise go unseen.
+                    if (!own) {
+                        const now = Date.now() / 1000;
+                        const { fresh } = freshFirings(result.fired, recent.current, now);
+                        for (const hit of fresh) recent.current[`${hit.id}:${hit.condition}`] = now;
+                        if (fresh.length > 0 && prefs.current.toast) {
+                            if (fresh.length === 1) {
+                                toast.success(firingMessage(fresh[0], lang), { description: firingDetail(fresh[0], lang) });
+                            } else {
+                                toast.success(firingBatch(fresh.length, lang), {
+                                    description: fresh.slice(0, 3).map((hit) => firingMessage(hit, lang)).join(' · '),
+                                });
+                            }
                         }
+                        if (fresh.length > 0) chime();
                     }
-                    if (fresh.length > 0) chime();
                     // The badges and the alert list are server-rendered: ask for them again.
                     router.refresh();
                 }
