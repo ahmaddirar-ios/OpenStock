@@ -33,9 +33,11 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 2. **✅ Measure/ruler.** Shipped: drag from one point to another and the box reads Δprice, Δ%,
    bars, elapsed time and volume, with the price at each end and a readout that stays inside the
    plot. `M` arms it; the help panel lists it.
-3. **🟡 No right-click menu.** Every TradingView object has one (delete, clone, alert, style, lock,
-   visibility). Ours is a selection toolbar — fine, but a context menu on right-click is the muscle
-   memory most traders bring with them.
+3. **✅ Right-click menu.** Shipped: a right-click on any drawing opens bring-to-front, send-to-back,
+   duplicate, copy, lock, hide, delete. It works with no tool armed, clamps inside the viewport, and
+   dismisses on an outside click, a scroll or Escape. The selection toolbar stays for styling.
+   TradingView's per-object *alert* and style flyout are still missing from the menu (alerts are
+   symbol-level today).
 4. **❌ No hotkey reference for the drawing rail** beyond `?`; no way to search a *setting* (only the
    tool palette searches).
 
