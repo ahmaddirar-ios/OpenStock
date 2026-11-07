@@ -28,6 +28,7 @@ import {
     trix,
     pivots,
     priceSeries,
+    rollingCorrelation,
     rsi,
     sma,
     stochastic,
@@ -42,6 +43,7 @@ import {
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import type { Candle } from '@/lib/yahoo-candles';
 import { evaluateFormula, formulaPlotCount } from '@/lib/formula';
+import { alignCloses, carryCloses } from '@/lib/symbol-series';
 
 /** Whether this study wants a pane of its own: by definition, or because its maker said so. */
 export function studyWantsPane(id: StudyId, params: StudyParams | undefined): boolean {
@@ -89,6 +91,8 @@ export type StudyId =
     | 'aroon'
     | 'trix'
     | 'mfi'
+    | 'correlation'
+    | 'spread'
     | 'avwap'
     | 'vprofile'
     | 'formula';
@@ -133,7 +137,7 @@ export type ChoiceParam = {
     choices: { value: string; label: StringKey }[];
 };
 
-/** Free text: a formula, or the date a study anchors at. */
+/** Free text: a formula, the date a study anchors at, or the symbol it compares to. */
 export type TextParam = {
     kind: 'text';
     key: string;
@@ -143,9 +147,10 @@ export type TextParam = {
     hint?: StringKey;
     /**
      * How the box is read. A formula goes through the formula checker and gets the studio; a date is
-     * a plain `YYYY-MM-DD` field with the browser's own picker. Both are text on the way in.
+     * a plain `YYYY-MM-DD` field with the browser's own picker; a symbol is a ticker the host loads
+     * another instrument for. All three are text on the way in.
      */
-    input?: 'formula' | 'date';
+    input?: 'formula' | 'date' | 'symbol';
 };
 
 export type StudyParam = NumberParam | ChoiceParam | TextParam;
@@ -225,8 +230,32 @@ export type StudyDef = {
     fill?: StudyFill;
     /** A volume profile, for a study whose drawing is not a line at all. */
     profile?: StudyProfile;
-    compute: (candles: readonly Candle[], params: StudyParams) => Record<string, Series>;
+    /** How the pane labels its numbers; absent means the chart's own decimal format. */
+    format?: 'percent';
+    compute: (candles: readonly Candle[], params: StudyParams, context?: StudyContext) => Record<string, Series>;
 };
+
+/**
+ * What a study can read besides its own candles. Only a study that names another symbol in its
+ * parameters sees this; for everyone else the chart is still a pure function of one series.
+ */
+export type StudyContext = {
+    /** The bars of another symbol at the chart's interval, or null while they load or are unknown. */
+    candlesFor: (symbol: string) => readonly Candle[] | null;
+};
+
+/** The symbols a configured study asks the host to load, uppercased and de-duplicated. */
+export function studySymbols(study: StudyConfig): string[] {
+    const def = STUDIES[study.id];
+    if (!def) return [];
+    const out: string[] = [];
+    for (const param of def.params) {
+        if (param.kind !== 'text' || param.input !== 'symbol') continue;
+        const value = studiesText(study, param.key).trim().toUpperCase();
+        if (value) out.push(value);
+    }
+    return out;
+}
 
 /** One run of a band fill: consecutive bars where both edges exist. */
 export type BandPoint = { time: number; upper: number; lower: number };
@@ -318,12 +347,13 @@ type Def = Omit<StudyDef, 'compute'> & {
         candles: readonly Candle[],
         param: (key: string) => number,
         pick: (key: string) => string,
+        context?: StudyContext,
     ) => Record<string, Series>;
 };
 
 const define = (def: Def): StudyDef => ({
     ...def,
-    compute: (candles, params) =>
+    compute: (candles, params, context) =>
         def.compute(
             candles,
             (key) => {
@@ -347,6 +377,7 @@ const define = (def: Def): StudyDef => ({
                     ? value
                     : spec.default;
             },
+            context,
         ),
 });
 
@@ -715,6 +746,62 @@ const DEFINITIONS: StudyDef[] = [
         params: [period(2, 200, 14)],
         lines: [valueLine('brand')],
         compute: (candles, param) => ({ value: mfi(candles, param('period')) }),
+    }),
+    define({
+        id: 'correlation',
+        label: 'study.correlation',
+        group: 'oscillator',
+        params: [
+            period(2, 500, 60),
+            {
+                kind: 'text',
+                input: 'symbol',
+                key: 'symbol',
+                label: 'study.param.symbol',
+                default: '',
+                hint: 'study.param.symbolHint',
+            },
+        ],
+        lines: [valueLine('brand')],
+        // How the charted symbol has moved against another one, on a scale that needs no second
+        // axis: +1 is the same move, 0 is no relationship, -1 is the mirror.
+        compute: (candles, param, pick, context) => {
+            const other = context?.candlesFor(pick('symbol')) ?? null;
+            const closes = candles.map((candle) => candle.close);
+            if (!other) return { value: candles.map(() => null) };
+            return { value: rollingCorrelation(closes, alignCloses(candles, other), param('period')) };
+        },
+    }),
+    define({
+        id: 'spread',
+        label: 'study.spread',
+        group: 'oscillator',
+        params: [
+            {
+                kind: 'text',
+                input: 'symbol',
+                key: 'symbol',
+                label: 'study.param.symbol',
+                default: '',
+                hint: 'study.param.symbolHintSpread',
+            },
+        ],
+        lines: [valueLine('warn')],
+        format: 'percent',
+        // The gap to the other symbol as a share of that symbol, so two stocks of different price
+        // levels sit on one readable axis: +2 means the charted symbol is two percent above it.
+        // A level needs no contemporaneous bar, so the partner is the other symbol's latest close.
+        compute: (candles, _param, pick, context) => {
+            const other = context?.candlesFor(pick('symbol')) ?? null;
+            if (!other) return { value: candles.map(() => null) };
+            const partner = carryCloses(candles, other);
+            return {
+                value: candles.map((candle, index) => {
+                    const value = partner[index];
+                    return value == null || value === 0 ? null : ((candle.close - value) / value) * 100;
+                }),
+            };
+        },
     }),
     define({
         id: 'pivots',

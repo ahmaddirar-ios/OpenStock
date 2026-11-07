@@ -891,3 +891,59 @@ export function mfi(candles: readonly { high: number; low: number; close: number
     }
     return out;
 }
+
+/**
+ * Pearson's r for one window of paired values, or null where a window has no spread to speak of:
+ * a flat line has no correlation with anything, and calling that zero would be a claim.
+ */
+export function pearson(xs: readonly number[], ys: readonly number[]): number | null {
+    const count = Math.min(xs.length, ys.length);
+    if (count < 2) return null;
+    let sumX = 0;
+    let sumY = 0;
+    for (let i = 0; i < count; i += 1) {
+        sumX += xs[i];
+        sumY += ys[i];
+    }
+    const meanX = sumX / count;
+    const meanY = sumY / count;
+    let covariance = 0;
+    let varianceX = 0;
+    let varianceY = 0;
+    for (let i = 0; i < count; i += 1) {
+        const dx = xs[i] - meanX;
+        const dy = ys[i] - meanY;
+        covariance += dx * dy;
+        varianceX += dx * dx;
+        varianceY += dy * dy;
+    }
+    if (varianceX === 0 || varianceY === 0) return null;
+    return covariance / Math.sqrt(varianceX * varianceY);
+}
+
+/**
+ * Rolling correlation between a series and another one paired bar by bar. Only bars that have a
+ * partner take part: two markets keep different holidays, and demanding a full window would answer
+ * nothing at all for most of the calendar. The window still has to be mostly paired — at least half
+ * of it — or the number would describe a handful of sessions wearing the period's label.
+ */
+export function rollingCorrelation(values: readonly number[], other: readonly (number | null)[], period = 60): Series {
+    const out: Series = values.map(() => null);
+    if (period < 2) return out;
+    const floor = Math.max(2, Math.ceil(period / 2));
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let i = period - 1; i < values.length; i += 1) {
+        xs.length = 0;
+        ys.length = 0;
+        for (let j = i - period + 1; j <= i; j += 1) {
+            const partner = other[j];
+            const value = values[j];
+            if (partner == null || !Number.isFinite(partner) || !Number.isFinite(value)) continue;
+            xs.push(value);
+            ys.push(partner);
+        }
+        if (xs.length >= floor) out[i] = pearson(xs, ys);
+    }
+    return out;
+}

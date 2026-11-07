@@ -101,6 +101,16 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
         onChange(studies.map((study, i) => (i === index ? { ...study, params: { ...study.params, [key]: next } } : study)));
     };
 
+    /**
+     * A symbol is not a formula: it is committed as typed, without the checker's vocabulary, and
+     * uppercased because that is how the feed spells a ticker. Committed on blur rather than on
+     * every keystroke, so half a ticker never becomes a request.
+     */
+    const setSymbol = (index: number, key: string, raw: string) => {
+        const next = raw.replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 24);
+        onChange(studies.map((study, i) => (i === index ? { ...study, params: { ...study.params, [key]: next } } : study)));
+    };
+
     /** Applies a whole expression at once, as clicking a saved formula does. */
     const applyText = (index: number, key: string, expression: string) => {
         setDrafts((current) => {
@@ -341,6 +351,38 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                                 aria-label={t(param.label)}
                                                                 title={param.hint ? t(param.hint) : undefined}
                                                                 className="num rounded-[6px] bg-page px-1 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                            />
+                                                        </label>
+                                                    );
+                                                }
+                                                if (param.kind === 'text' && param.input === 'symbol') {
+                                                    const value = studiesText(study, param.key);
+                                                    const shown = drafts[`${index}:${param.key}`] ?? value;
+                                                    return (
+                                                        <label key={param.key} className="flex items-center gap-1 text-[10.5px] text-faint">
+                                                            {t(param.label)}
+                                                            <input
+                                                                type="text"
+                                                                dir="ltr"
+                                                                value={shown}
+                                                                onChange={(event) =>
+                                                                    setDrafts((current) => ({
+                                                                        ...current,
+                                                                        [`${index}:${param.key}`]: event.target.value,
+                                                                    }))
+                                                                }
+                                                                // A ticker is committed on blur, uppercased, because
+                                                                // that is how the feed spells it.
+                                                                onBlur={(event) => {
+                                                                    setSymbol(index, param.key, event.target.value);
+                                                                    settle(index, param.key);
+                                                                }}
+                                                                onKeyDown={(event) => {
+                                                                    if (event.key === 'Enter') event.currentTarget.blur();
+                                                                }}
+                                                                aria-label={t(param.label)}
+                                                                title={param.hint ? t(param.hint) : undefined}
+                                                                className="mono w-24 rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] uppercase text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                                             />
                                                         </label>
                                                     );

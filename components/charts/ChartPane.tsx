@@ -27,7 +27,7 @@ import { createCandleHost, type CandleHost } from '@/lib/candle-host';
 import { readChartType } from '@/lib/chart-view';
 import type { StudyConfig } from '@/lib/chart-studies';
 import { sessionChange, universeName } from '@/lib/chart-grid';
-import { getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
+import { getCompareCandles, getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
 import type { Candle, CandleSet } from '@/lib/yahoo-candles';
 import Price from '@/components/Price';
 import PaneSearch from '@/components/charts/PaneSearch';
@@ -293,6 +293,10 @@ export default function ChartPane({
         const host = createCandleHost(el, {
             timeVisible: false,
             chartType: readChartType(window.localStorage),
+            // A study that names a symbol draws only when the pane can fetch it; the grid uses the
+            // same action and cache as the symbol page rather than a second data path. The interval
+            // arrives through setInterval below, because this host outlives it.
+            loadSymbol: getCompareCandles,
             onRangeChange: () => setFrame((frame) => frame + 1),
         });
         hostRef.current = host;
@@ -453,6 +457,7 @@ export default function ChartPane({
 
     useEffect(() => {
         hostRef.current?.setTimeVisible(isTimeVisible(intervalId));
+        hostRef.current?.setInterval(intervalId);
     }, [intervalId]);
 
     // A new symbol or interval arrives framed to its own bars; the trader's zoom is kept otherwise.

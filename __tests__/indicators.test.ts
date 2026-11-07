@@ -18,6 +18,7 @@ import {
     obv,
     parabolicSar,
     pivots,
+    rollingCorrelation,
     priceSeries,
     momentum,
     roc,
@@ -722,5 +723,35 @@ describe('periodPivots', () => {
 
     it('has nothing to say about an empty series', () => {
         expect(periodPivots([], 'week').pivot).toEqual([]);
+    });
+});
+
+describe('rollingCorrelation', () => {
+    const series = (value: (index: number) => number) => Array.from({ length: 30 }, (_, index) => value(index));
+
+    it('answers +1 when the two move together and -1 when they mirror', () => {
+        const base = series((index) => Math.sin(index) * 10 + 50);
+        expect(rollingCorrelation(base, base, 10).at(-1)).toBeCloseTo(1, 6);
+        expect(rollingCorrelation(base, base.map((value) => 100 - value), 10).at(-1)).toBeCloseTo(-1, 6);
+    });
+
+    it('reads the window over the bars that have a partner, not only a full one', () => {
+        // Two markets with different holidays: every fifth bar here has no partner in the other.
+        const base = series((index) => index * 2);
+        const partner = base.map((value, index) => (index % 5 === 0 ? null : value * 3 + 7));
+        const result = rollingCorrelation(base, partner, 10);
+        // The window still holds at least half its bars paired, and the line is real.
+        expect(result.at(-1)).toBeCloseTo(1, 6);
+    });
+
+    it('draws nothing where too few bars in the window have a partner', () => {
+        const base = series((index) => index);
+        const partner = base.map((value, index) => (index % 3 === 0 ? value : null));
+        expect(rollingCorrelation(base, partner, 12).every((value) => value == null)).toBe(true);
+    });
+
+    it('has no window before the first one closes', () => {
+        const base = series((index) => index);
+        expect(rollingCorrelation(base, base, 10).slice(0, 9).every((value) => value == null)).toBe(true);
     });
 });

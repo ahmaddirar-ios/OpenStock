@@ -10,6 +10,7 @@ import {
     studyColor,
     studyLineStyle,
     studyLines,
+    studySymbols,
     bandSegments,
     studyWantsPane,
     studyWidth,
@@ -62,9 +63,12 @@ describe('the registry', () => {
                     continue;
                 }
                 // Only a number carries bounds; a formula's bounds are the language's grammar.
-                // A date's default may be empty: "no anchor" is a real choice, not a missing default.
+                // A date or a symbol may default to empty: "no anchor", "compare to nothing", are
+                // real choices rather than missing defaults.
                 if (param.kind === 'text') {
-                    if (param.input !== 'date') expect(param.default.trim().length).toBeGreaterThan(0);
+                    if (param.input !== 'date' && param.input !== 'symbol') {
+                        expect(param.default.trim().length).toBeGreaterThan(0);
+                    }
                     continue;
                 }
                 expect(param.default).toBeGreaterThanOrEqual(param.min);
@@ -447,5 +451,51 @@ describe('the formula study draws what its text plots', () => {
         const plots = STUDIES.formula.compute(candles, formula('plot(sma(close, 20))').params);
         expect(plots.p1[0]).toBeNull();
         expect(typeof plots.p1[30]).toBe('number');
+    });
+});
+
+describe('comparing a study to another symbol', () => {
+    const partner = (close: (candle: Candle, index: number) => number) => ({
+        candles: candles.map((candle, index) => ({ ...candle, close: close(candle, index) })),
+    });
+    const only = (symbol: string, set: { candles: Candle[] }) => ({
+        candlesFor: (asked: string) => (asked.trim().toUpperCase() === symbol ? set.candles : null),
+    });
+
+    it('answers +1 for the same move and -1 for its mirror', () => {
+        const params = studiesWith('correlation', { period: 20, symbol: 'AAPL' }).params;
+        const same = STUDIES.correlation.compute(candles, params, only('AAPL', partner((candle) => candle.close)));
+        expect(same.value.at(-1)).toBeCloseTo(1, 6);
+
+        const mirrored = STUDIES.correlation.compute(
+            candles,
+            params,
+            only('AAPL', partner((candle) => 1_000 - candle.close)),
+        );
+        expect(mirrored.value.at(-1)).toBeCloseTo(-1, 6);
+    });
+
+    it('draws nothing rather than a guess before the other symbol arrives', () => {
+        const params = studiesWith('correlation', { period: 20, symbol: 'AAPL' }).params;
+        const cold = STUDIES.correlation.compute(candles, params);
+        expect(cold.value.every((value) => value == null)).toBe(true);
+
+        const missing = STUDIES.correlation.compute(candles, params, { candlesFor: () => null });
+        expect(missing.value.every((value) => value == null)).toBe(true);
+    });
+
+    it('reads the spread as a share of the other symbol, in percent', () => {
+        const params = studiesWith('spread', { symbol: 'AAPL' }).params;
+        const result = STUDIES.spread.compute(candles, params, only('AAPL', partner((candle) => candle.close * 1.1)));
+        expect(result.value[0]).toBeCloseTo(((11 - 12.1) / 12.1) * 100, 6);
+        expect(result.value).toHaveLength(candles.length);
+    });
+
+    it('asks the host for the ticker it was given, uppercased once', () => {
+        const study = studiesWith('correlation', { period: 20, symbol: 'aapl' });
+        expect(studySymbols(study)).toEqual(['AAPL']);
+        expect(describeStudy(study, 'en')).toBe('Correlation 20 · aapl');
+        expect(studySymbols(studiesWith('correlation', { symbol: '  ' }))).toEqual([]);
+        expect(studySymbols(defaultStudy('correlation'))).toEqual([]);
     });
 });

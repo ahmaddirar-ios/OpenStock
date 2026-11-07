@@ -1077,6 +1077,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             lineBreakCount: lineBreakCountRef.current,
             pnfBox: pnfBoxRef.current,
             pnfReversal: pnfReversalRef.current,
+            interval: intervalId,
+            // A study that names a symbol (correlation, spread) loads it through the same action the
+            // compare pane uses: one fetch path, one cache, no new endpoint.
+            loadSymbol: getCompareCandles,
             onPriceSeries: (series) => {
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.

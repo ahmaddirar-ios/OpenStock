@@ -37,7 +37,7 @@ import { withSessionBreaks } from '@/lib/chart-sessions';
 import { centredRange, isAtLatest, latestRange, nearestBarIndex } from '@/lib/chart-goto';
 import { readoutAt, type BarReadout, type ReadoutSeries } from '@/lib/chart-readout';
 import { arNumberDigits, type Lang } from '@/lib/i18n';
-import { STUDIES, STUDY_COLOR_SOURCES, bandSegments, studiesChoice, studiesParam, studyLineStyle, studyLines, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
+import { STUDIES, STUDY_COLOR_SOURCES, bandSegments, studiesChoice, studiesParam, studyLineStyle, studyLines, studySymbols, studyWantsPane, studyWidth, type ColorToken, type StudyConfig, type StudyLineDash, type StudyWidth } from '@/lib/chart-studies';
 import { BandFillPrimitive } from '@/lib/band-fill-primitive';
 import { VolumeProfilePrimitive } from '@/lib/volume-profile-primitive';
 import type { Series } from '@/lib/indicators';
@@ -86,6 +86,11 @@ export type CandleHost = {
     setVolumeVisible: (on: boolean) => void;
     /** The page's theme changed: re-read every token and repaint what depends on them. */
     setTheme: () => void;
+    /**
+     * The interval the bars belong to. Only a study that names another symbol reads it, and the
+     * grid keeps one host across interval changes, so it moves through here rather than options.
+     */
+    setInterval: (interval: string) => void;
     /** Paints the chart with this palette, or follows the app theme again when null. */
     setPalette: (palette: ChartPalette | null) => void;
     setTimeVisible: (visible: boolean) => void;
@@ -156,6 +161,13 @@ export type CandleHostOptions = {
     volumeVisible?: boolean;
     /** The faint symbol text behind the candles; null or absent leaves the pane clean. */
     watermark?: string | null;
+    /** The interval the bars belong to; only studies that name another symbol read it. */
+    interval?: string;
+    /**
+     * Loads another symbol's bars at this interval, for a study that names a symbol — `getCompareCandles`
+     * on both pages. Omit it and such a study draws nothing rather than a line from stale data.
+     */
+    loadSymbol?: (symbol: string, interval: string) => Promise<CandleSet | null>;
     /** The colours to open with; null (or absent) follows the app theme. */
     palette?: ChartPalette | null;
     /**
@@ -265,6 +277,9 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     const lang: Lang = options.lang ?? 'en';
     // The canvas prints what the formatter returns; Arabic-Indic digits need no bidi isolates there.
     const formatPrice = (value: number) => arNumberDigits(value.toFixed(2), lang);
+    // A study that measures in percent says so on its own axis; the chart-wide formatter would
+    // otherwise print the number bare, and -38.28 could be read as a price.
+    const formatPercent = (value: number) => `${arNumberDigits(value.toFixed(2), lang)}%`;
 
     const chartOptions: DeepPartial<TimeChartOptions> = {
         autoSize: true,
@@ -463,6 +478,38 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
     let volumeVisible = options.volumeVisible ?? true;
     let data: CandleSet | null = options.data ?? null;
     let studies: StudyConfig[] = options.studies ?? [];
+    // The interval the bars belong to, and where another symbol's bars come from. A study that
+    // names a symbol asks for them once; while they travel the study draws nothing, which is the
+    // same answer a study gives when its own window is not full yet.
+    let interval = options.interval ?? '';
+    const studySeries = new Map<string, { candles: readonly Candle[]; at: number }>();
+    const studyRequests = new Set<string>();
+    const studyKey = (symbol: string) => `${interval}|${symbol.trim().toUpperCase()}`;
+    let torn = false;
+    const studyContext = {
+        candlesFor: (symbol: string) => studySeries.get(studyKey(symbol))?.candles ?? null,
+    };
+    const ensureStudySeries = async (symbol: string) => {
+        if (!options.loadSymbol || !symbol.trim() || !interval) return;
+        const key = studyKey(symbol);
+        // A minute of freshness: the page refreshes its own bars on the same rhythm, and a study
+        // that refetched on every tick would be a request per second for a line that barely moves.
+        const cached = studySeries.get(key);
+        if (cached && Date.now() - cached.at < 60_000) return;
+        if (studyRequests.has(key)) return;
+        studyRequests.add(key);
+        try {
+            const set = await options.loadSymbol(symbol.trim().toUpperCase(), interval);
+            if (torn || !set || set.candles.length === 0) return;
+            studySeries.set(key, { candles: set.candles, at: Date.now() });
+            buildStudies();
+            emitReadout();
+        } catch {
+            // A ticker that does not resolve is the trader's typo, not a broken chart.
+        } finally {
+            studyRequests.delete(key);
+        }
+    };
     const overlays: ISeriesApi<'Line'>[] = [];
     // Series primitives the studies own — the Keltner ribbon and the volume profile. They ride on a
     // series the host already has, so they are tracked separately from the series list.
@@ -623,13 +670,19 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
         const candles = bars();
         if (candles.length === 0) return;
 
+        // A study that names a symbol asks for its bars here; they arrive once and rebuild this
+        // list, so the compute below stays synchronous and the chart never waits on the network.
+        for (const study of studies) {
+            for (const symbol of studySymbols(study)) void ensureStudySeries(symbol);
+        }
+
         const oscillators = studies.filter((study) => studyWantsPane(study.id, study.params)).length;
         const stretch = oscillators > 1 ? 0.2 : 0.28;
 
         studies.forEach((study, index) => {
             const def = STUDIES[study.id];
             if (!def) return;
-            const computed = def.compute(candles, study.params);
+            const computed = def.compute(candles, study.params, studyContext);
             // A study that cannot fill its window draws nothing and opens no empty pane. A profile
             // has no lines to warm up, so it only needs the definition to ask for one.
             const specs = studyLines(study);
@@ -680,6 +733,11 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
                                 lineStyle: LINE_STYLE[style.dash],
                                 priceLineVisible: false,
                                 lastValueVisible: false,
+                                // A spread is already a percentage: label the axis in the unit the
+                                // study thinks in, not as a bare number the eye has to translate.
+                                ...(def.format === 'percent'
+                                    ? { priceFormat: { type: 'custom' as const, formatter: formatPercent } }
+                                    : {}),
                             },
                             pane,
                         )
@@ -826,6 +884,15 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             repaint();
             applyWatermark();
         },
+        setInterval: (next) => {
+            if (next === interval) return;
+            interval = next;
+            // Bars of the old interval belong to another question: drop them and let the studies
+            // that need them ask again. The cache is keyed by interval, so nothing is mislabelled.
+            studySeries.clear();
+            buildStudies();
+            emitReadout();
+        },
         setPalette: (next) => {
             palette = next;
             colorCache.clear();
@@ -909,6 +976,8 @@ export function createCandleHost(container: HTMLElement, options: CandleHostOpti
             chart.timeScale().setVisibleLogicalRange(latestRange(chart.timeScale().getVisibleLogicalRange(), count));
         },
         destroy: () => {
+            torn = true;
+            studyRequests.clear();
             readoutListeners.clear();
             hoverListeners.clear();
             chart.unsubscribeCrosshairMove(handleCrosshair);
