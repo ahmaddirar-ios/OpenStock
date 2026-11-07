@@ -12,7 +12,7 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 | --- | --- |
 | Chart types | ✅ candles, hollow, Heikin Ashi, bars, line, area, baseline, Renko, Kagi, Line Break, P&F (+ box/reversal inputs) |
 | Drawings | ✅ 79 tools across 9 groups (lines, Fib, Gann, patterns, Elliott, forecast, shapes, annotation, brush), multi-select, lock/hide, per-drawing visibility by interval, per-drawing alert, per-drawing font override, templates of a stroke |
-| Indicators | ✅ 26 studies + 1 custom formula study (SMA…Aroon, Ichimoku, SuperTrend, Donchian, Keltner, SAR, pivots, MFI…), in-pane oscillators, per-study style/width/source |
+| Indicators | ✅ 29 studies + 1 custom formula study (SMA…Aroon, Ichimoku, SuperTrend, Donchian, Keltner, SAR, pivots by bar/week/month, MFI, Stoch RSI, Awesome Oscillator, Chaikin MF…), in-pane oscillators, per-study style/width/source |
 | Formula language | ✅ Pine-lite: saved formulas, visual builder that round-trips the string, formula *as a study* |
 | Strategy lab | ✅ 6 published rules + custom strategies (6 rule kinds, custom params, optimizer up to 2000 combos), next-open fills, costs, 12 metrics, benchmark, trade CSV |
 | Alerts | ✅ price/RSS/ATR/52w/formula/strategy conditions, 5 rules per alert, drawing-anchored alerts, on-visit checker + Inngest cron, 200-event log, in-app toast + chime on every page, Web Push |
@@ -47,9 +47,10 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 6. **✅ Optimizer surface.** Every combination the search ran is laid out as a two-parameter grid,
    coloured by the objective, with axis pickers and a legend; a cell click loads that combination.
    The ranked table stays, because a table is still the fastest way to read one number.
-7. **🟡 Indicator set is good, not complete.** Missing the ones Saudi/US desks actually ask for:
-   Keltner channel fill width, Awesome Oscillator, Chaikin MF, DMI±, Stochastic RSI, Pivot Points
-   (weekly/monthly), Volume Profile as a *study* (we have it as a drawing), VWAP anchored bands.
+7. **🟡 Indicator set is good, not complete.** Shipped: Stochastic RSI, Awesome Oscillator, Chaikin
+   Money Flow, and Pivot Points with a bar/week/month timeframe. DMI± already ships inside the ADX
+   study. Still missing: Keltner channel fill width, Volume Profile as a *study* (it exists as a
+   drawing), and VWAP anchored bands as a study (also a drawing today).
 8. **🟡 No "compare to" for indicators** (correlation / spread panes).
 
 ### Tier 3 — infrastructure TradingView has and we do not

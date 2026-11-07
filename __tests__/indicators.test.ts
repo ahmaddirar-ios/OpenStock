@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
     adx,
     atr,
+    awesomeOscillator,
+    chaikinMoneyFlow,
+    periodPivots,
+    stochRsi,
     bollinger,
     cci,
     donchian,
@@ -542,5 +546,115 @@ describe('mfi', () => {
         const out = mfi(bars, 1);
         expect(out[1]).toBeCloseTo(100);
         expect(out[2]).toBeCloseTo(0);
+    });
+});
+
+describe('stochRsi', () => {
+    it('reads 100 when the RSI is at the top of its own range and 0 at the bottom', () => {
+        // A steady rise keeps the RSI pinned at 100, so its range is flat and the reading is 50.
+        const rising = Array.from({ length: 40 }, (_, i) => 100 + i);
+        const flat = stochRsi(rising, 14, 14, 1, 1);
+        expect(flat.k[39]).toBe(50);
+
+        // A series that rises then falls gives the RSI a real range to sit inside.
+        const swing = [...Array.from({ length: 30 }, (_, i) => 100 + i), ...Array.from({ length: 10 }, (_, i) => 130 - i * 2)];
+        const out = stochRsi(swing, 14, 14, 1, 1);
+        const last = out.k[out.k.length - 1];
+        expect(last).not.toBeNull();
+        expect(last as number).toBeGreaterThanOrEqual(0);
+        expect(last as number).toBeLessThanOrEqual(100);
+    });
+
+    it('stays null until the RSI and the stochastic window are both full', () => {
+        const values = Array.from({ length: 40 }, (_, i) => 100 + Math.sin(i));
+        const out = stochRsi(values, 14, 14, 1, 1);
+        expect(out.k[13]).toBeNull();
+        expect(out.k[26]).toBeNull();
+        expect(out.k[27]).not.toBeNull();
+    });
+});
+
+describe('awesomeOscillator', () => {
+    it('is the fast median SMA minus the slow one', () => {
+        const bars = Array.from({ length: 40 }, (_, i) => ({ high: 12 + i, low: 8 + i, close: 10 + i }));
+        const out = awesomeOscillator(bars, 5, 34);
+        expect(out[32]).toBeNull();
+        expect(out[33]).not.toBeNull();
+        // A flat market has the same median average at every length, so the oscillator is zero.
+        const flat = Array.from({ length: 40 }, () => ({ high: 11, low: 9, close: 10 }));
+        expect(awesomeOscillator(flat, 5, 34)[39]).toBeCloseTo(0);
+    });
+
+    it('turns positive when the recent median rises above the long one', () => {
+        const bars = [
+            ...Array.from({ length: 34 }, () => ({ high: 11, low: 9, close: 10 })),
+            ...Array.from({ length: 5 }, () => ({ high: 21, low: 19, close: 20 })),
+        ];
+        expect(awesomeOscillator(bars, 5, 34)[38]).toBeGreaterThan(0);
+    });
+});
+
+describe('chaikinMoneyFlow', () => {
+    it('is +1 when every bar closes at its high and −1 when every bar closes at its low', () => {
+        const up = Array.from({ length: 5 }, () => ({ high: 10, low: 8, close: 10, volume: 100 }));
+        const down = Array.from({ length: 5 }, () => ({ high: 10, low: 8, close: 8, volume: 100 }));
+        expect(chaikinMoneyFlow(up, 3)[4]).toBeCloseTo(1);
+        expect(chaikinMoneyFlow(down, 3)[4]).toBeCloseTo(-1);
+    });
+
+    it('is zero for a bar with no range and for a window with no volume', () => {
+        const flat = Array.from({ length: 4 }, () => ({ high: 10, low: 10, close: 10, volume: 100 }));
+        expect(chaikinMoneyFlow(flat, 2)[3]).toBe(0);
+        const empty = Array.from({ length: 4 }, () => ({ high: 10, low: 8, close: 9, volume: 0 }));
+        expect(chaikinMoneyFlow(empty, 2)[3]).toBe(0);
+    });
+
+    it('waits for a full window', () => {
+        const bars = Array.from({ length: 4 }, () => ({ high: 10, low: 8, close: 9, volume: 100 }));
+        expect(chaikinMoneyFlow(bars, 3)[1]).toBeNull();
+        expect(chaikinMoneyFlow(bars, 3)[2]).not.toBeNull();
+    });
+});
+
+describe('periodPivots', () => {
+    const day = 86_400;
+    // Monday 5 January 2026, so the ISO week boundaries fall where the test expects them.
+    const monday = Date.UTC(2026, 0, 5) / 1000;
+    // Two full weeks, then a third that is still open.
+    const bars = [
+        ...Array.from({ length: 5 }, (_, i) => ({ time: monday + i * day, high: 12, low: 8, close: 10 })),
+        ...Array.from({ length: 5 }, (_, i) => ({ time: monday + (7 + i) * day, high: 22, low: 18, close: 20 })),
+        ...Array.from({ length: 3 }, (_, i) => ({ time: monday + (14 + i) * day, high: 32, low: 28, close: 30 })),
+    ];
+
+    it('holds the previous week’s levels across the current week', () => {
+        const out = periodPivots(bars, 'week');
+        // The first week has no completed week behind it.
+        expect(out.pivot[0]).toBeNull();
+        // The second week reads the first week: (12 + 8 + 10) / 3.
+        expect(out.pivot[5]).toBeCloseTo(10);
+        expect(out.r1[5]).toBeCloseTo(12);
+        expect(out.s1[5]).toBeCloseTo(8);
+        // The third week reads the second: (22 + 18 + 20) / 3.
+        expect(out.pivot[10]).toBeCloseTo(20);
+        expect(out.r2[10]).toBeCloseTo(24);
+        expect(out.s2[10]).toBeCloseTo(16);
+    });
+
+    it('uses the calendar month when asked', () => {
+        const monthly = [
+            { time: Date.UTC(2026, 0, 5) / 1000, high: 12, low: 8, close: 10 },
+            { time: Date.UTC(2026, 0, 20) / 1000, high: 14, low: 6, close: 12 },
+            { time: Date.UTC(2026, 1, 3) / 1000, high: 20, low: 16, close: 18 },
+        ];
+        const out = periodPivots(monthly, 'month');
+        expect(out.pivot[0]).toBeNull();
+        // February reads January's aggregate: high 14, low 6, close 12.
+        expect(out.pivot[2]).toBeCloseTo((14 + 6 + 12) / 3);
+        expect(out.r1[2]).toBeCloseTo(2 * ((14 + 6 + 12) / 3) - 6);
+    });
+
+    it('has nothing to say about an empty series', () => {
+        expect(periodPivots([], 'week').pivot).toEqual([]);
     });
 });

@@ -5,8 +5,10 @@
 import {
     adx,
     atr,
+    awesomeOscillator,
     bollinger,
     cci,
+    chaikinMoneyFlow,
     donchian,
     ema,
     hma,
@@ -17,8 +19,10 @@ import {
     momentum,
     obv,
     parabolicSar,
+    periodPivots,
     roc,
     aroon,
+    stochRsi,
     trix,
     pivots,
     priceSeries,
@@ -30,6 +34,7 @@ import {
     vwma,
     williamsR,
     wma,
+    type PivotPeriod,
     type Series,
 } from '@/lib/indicators';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
@@ -61,6 +66,9 @@ export type StudyId =
     | 'macd'
     | 'atr'
     | 'stoch'
+    | 'stochrsi'
+    | 'ao'
+    | 'cmf'
     | 'adx'
     | 'wr'
     | 'cci'
@@ -371,6 +379,49 @@ const DEFINITIONS: StudyDef[] = [
         compute: (candles, param) => stochastic(candles, param('kPeriod'), param('smooth'), param('dPeriod')),
     }),
     define({
+        id: 'stochrsi',
+        label: 'study.stochrsi',
+        group: 'oscillator',
+        params: [
+            { key: 'rsiPeriod', label: 'study.param.rsiPeriod', min: 2, max: 100, step: 1, default: 14 },
+            { key: 'stochPeriod', label: 'study.param.stochPeriod', min: 2, max: 100, step: 1, default: 14 },
+            { key: 'kSmooth', label: 'study.param.kSmooth', min: 1, max: 50, step: 1, default: 3 },
+            { key: 'dSmooth', label: 'study.param.dSmooth', min: 1, max: 50, step: 1, default: 3 },
+            source(),
+        ],
+        lines: [
+            { key: 'k', short: 'K', name: 'study.line.k', color: 'brand', kind: 'line' },
+            { key: 'd', short: 'D', name: 'study.line.d', color: 'warn', kind: 'line' },
+        ],
+        compute: (candles, param, pick) =>
+            stochRsi(
+                priceSeries(candles, pick('source')),
+                param('rsiPeriod'),
+                param('stochPeriod'),
+                param('kSmooth'),
+                param('dSmooth'),
+            ),
+    }),
+    define({
+        id: 'ao',
+        label: 'study.ao',
+        group: 'oscillator',
+        params: [
+            { key: 'fast', label: 'study.param.fast', min: 1, max: 100, step: 1, default: 5 },
+            { key: 'slow', label: 'study.param.slow', min: 2, max: 200, step: 1, default: 34 },
+        ],
+        lines: [{ key: 'ao', short: 'AO', name: 'study.line.ao', color: 'brand', kind: 'histogram' }],
+        compute: (candles, param) => ({ ao: awesomeOscillator(candles, param('fast'), param('slow')) }),
+    }),
+    define({
+        id: 'cmf',
+        label: 'study.cmf',
+        group: 'oscillator',
+        params: [period(2, 200, 20)],
+        lines: [valueLine('warn')],
+        compute: (candles, param) => ({ value: chaikinMoneyFlow(candles, param('period')) }),
+    }),
+    define({
         id: 'adx',
         label: 'study.adx',
         group: 'oscillator',
@@ -556,7 +607,19 @@ const DEFINITIONS: StudyDef[] = [
         id: 'pivots',
         label: 'study.pivots',
         group: 'overlay',
-        params: [],
+        params: [
+            {
+                kind: 'choice',
+                key: 'timeframe',
+                label: 'study.param.pivotTimeframe',
+                default: 'bar',
+                choices: [
+                    { value: 'bar', label: 'study.pivot.bar' },
+                    { value: 'week', label: 'study.pivot.week' },
+                    { value: 'month', label: 'study.pivot.month' },
+                ],
+            },
+        ],
         lines: [
             { key: 'pivot', short: 'P', name: 'study.line.pivot', color: 'brand', kind: 'line' },
             { key: 'r1', short: 'R1', name: 'study.line.r1', color: 'down', kind: 'line' },
@@ -566,7 +629,12 @@ const DEFINITIONS: StudyDef[] = [
             { key: 's2', short: 'S2', name: 'study.line.s2', color: 'up', kind: 'line' },
             { key: 's3', short: 'S3', name: 'study.line.s3', color: 'up', kind: 'line' },
         ],
-        compute: (candles) => pivots(candles),
+        compute: (candles, _param, pick) => {
+            const timeframe = pick('timeframe');
+            return timeframe === 'week' || timeframe === 'month'
+                ? periodPivots(candles, timeframe as PivotPeriod)
+                : pivots(candles);
+        },
     }),
     define({
         id: 'formula',

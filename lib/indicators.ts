@@ -246,6 +246,38 @@ export function stochastic(candles: readonly RangeBar[], kPeriod = 14, smooth = 
     return { k, d };
 }
 
+export type StochRsi = { k: Series; d: Series };
+
+/**
+ * Stochastic RSI: where the RSI itself sits inside its own recent range, 0–100. It answers a
+ * different question from the RSI — not "how overbought is the price" but "how extreme is this RSI
+ * reading compared with its own last `stochPeriod` readings" — so it turns far more often.
+ */
+export function stochRsi(values: number[], rsiPeriod = 14, stochPeriod = 14, kSmooth = 3, dSmooth = 3): StochRsi {
+    const base = rsi(values, rsiPeriod);
+    const raw: Series = base.map(() => null);
+    for (let i = stochPeriod - 1; i < base.length; i += 1) {
+        let high = -Infinity;
+        let low = Infinity;
+        let complete = true;
+        for (let j = i - stochPeriod + 1; j <= i; j += 1) {
+            const value = base[j];
+            if (value == null) {
+                complete = false;
+                break;
+            }
+            if (value > high) high = value;
+            if (value < low) low = value;
+        }
+        if (!complete) continue;
+        const current = base[i] as number;
+        raw[i] = high === low ? 50 : (100 * (current - low)) / (high - low);
+    }
+    const k = smoothSeries(raw, kSmooth);
+    const d = smoothSeries(k, dSmooth);
+    return { k, d };
+}
+
 /**
  * Williams %R: the same position as stochastic %K, read the other way round and inverted, so a fresh
  * high is 0 and a fresh low is −100.
@@ -547,6 +579,109 @@ export function pivots(candles: readonly RangeBar[]): Pivots {
         r3: build((p, h, l) => h + 2 * (p - l)),
         s3: build((p, h, l) => l - 2 * (h - p)),
     };
+}
+
+/**
+ * Awesome Oscillator: the fast SMA of the median price minus the slow one. Bill Williams' reading of
+ * momentum — it is a histogram around zero, so the sign is the trend and the height is its strength.
+ */
+export function awesomeOscillator(candles: readonly RangeBar[], fast = 5, slow = 34): Series {
+    const median = candles.map((bar) => (bar.high + bar.low) / 2);
+    const fastLine = sma(median, fast);
+    const slowLine = sma(median, slow);
+    return median.map((_, i) => {
+        const a = fastLine[i];
+        const b = slowLine[i];
+        return a == null || b == null ? null : a - b;
+    });
+}
+
+/**
+ * Chaikin Money Flow: the volume-weighted accumulation/distribution over `period` bars, as a ratio
+ * between −1 and 1. A bar closing at its high contributes its whole volume, one closing at its low
+ * subtracts it, and a bar with no range contributes nothing.
+ */
+export function chaikinMoneyFlow(
+    candles: readonly { high: number; low: number; close: number; volume: number }[],
+    period = 20,
+): Series {
+    const out: Series = candles.map(() => null);
+    const flow = candles.map((bar) => {
+        const range = bar.high - bar.low;
+        if (range === 0) return 0;
+        const multiplier = ((bar.close - bar.low) - (bar.high - bar.close)) / range;
+        return multiplier * bar.volume;
+    });
+    for (let i = period - 1; i < candles.length; i += 1) {
+        let sumFlow = 0;
+        let sumVolume = 0;
+        for (let j = i - period + 1; j <= i; j += 1) {
+            sumFlow += flow[j];
+            sumVolume += candles[j].volume;
+        }
+        out[i] = sumVolume === 0 ? 0 : sumFlow / sumVolume;
+    }
+    return out;
+}
+
+export type PivotPeriod = 'week' | 'month';
+
+/** The calendar bucket a bar belongs to, in UTC so a chart's time zone cannot move a week boundary. */
+const periodKey = (time: number, period: PivotPeriod): string => {
+    const date = new Date(time * 1000);
+    if (period === 'month') return `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
+    // ISO week: the Thursday of the week decides which year it belongs to.
+    const thursday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const day = thursday.getUTCDay() || 7;
+    thursday.setUTCDate(thursday.getUTCDate() + 4 - day);
+    const yearStart = Date.UTC(thursday.getUTCFullYear(), 0, 1);
+    const week = Math.ceil(((thursday.getTime() - yearStart) / 86_400_000 + 1) / 7);
+    return `${thursday.getUTCFullYear()}-W${week}`;
+};
+
+/**
+ * Floor pivots from the **previous completed week or month**, held flat across the current one. The
+ * bar-level `pivots` reads yesterday's range; this reads the range a swing trader actually watches,
+ * and it stays honest on any interval because it aggregates the bars it is given.
+ */
+export function periodPivots(candles: readonly (RangeBar & { time: number })[], period: PivotPeriod = 'week'): Pivots {
+    const empty = (): Series => candles.map(() => null);
+    const out: Pivots = { pivot: empty(), r1: empty(), r2: empty(), r3: empty(), s1: empty(), s2: empty(), s3: empty() };
+    if (candles.length === 0) return out;
+
+    type Agg = { key: string; high: number; low: number; close: number };
+    const aggs: Agg[] = [];
+    let current: Agg | null = null;
+    for (const candle of candles) {
+        const key = periodKey(candle.time, period);
+        if (!current || current.key !== key) {
+            if (current) aggs.push(current);
+            current = { key, high: candle.high, low: candle.low, close: candle.close };
+        } else {
+            current.high = Math.max(current.high, candle.high);
+            current.low = Math.min(current.low, candle.low);
+            current.close = candle.close;
+        }
+    }
+    if (current) aggs.push(current);
+
+    // The keys are monotonic, so one pointer walks the completed periods alongside the bars.
+    let index = -1;
+    for (let i = 0; i < candles.length; i += 1) {
+        const key = periodKey(candles[i].time, period);
+        while (index + 1 < aggs.length && aggs[index + 1].key !== key) index += 1;
+        const previous = index >= 0 ? aggs[index] : null;
+        if (!previous) continue;
+        const p = (previous.high + previous.low + previous.close) / 3;
+        out.pivot[i] = p;
+        out.r1[i] = 2 * p - previous.low;
+        out.s1[i] = 2 * p - previous.high;
+        out.r2[i] = p + (previous.high - previous.low);
+        out.s2[i] = p - (previous.high - previous.low);
+        out.r3[i] = previous.high + 2 * (p - previous.low);
+        out.s3[i] = previous.low - 2 * (previous.high - p);
+    }
+    return out;
 }
 
 /** Weighted moving average: the newest bar carries the heaviest weight (1 … period). */

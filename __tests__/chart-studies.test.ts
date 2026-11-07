@@ -104,7 +104,10 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('donchian'), 'en')).toBe('Donchian Channel 20');
         expect(describeStudy(defaultStudy('keltner'), 'en')).toBe('Keltner Channel 20 · 2 · Close');
         expect(describeStudy(defaultStudy('sar'), 'en')).toBe('Parabolic SAR 0.02 · 0.2');
-        expect(describeStudy(defaultStudy('pivots'), 'en')).toBe('Pivot Points');
+        expect(describeStudy(defaultStudy('pivots'), 'en')).toBe('Pivot Points Previous bar');
+        expect(describeStudy(defaultStudy('stochrsi'), 'en')).toBe('Stochastic RSI 14 · 14 · 3 · 3 · Close');
+        expect(describeStudy(defaultStudy('ao'), 'en')).toBe('Awesome Oscillator 5 · 34');
+        expect(describeStudy(defaultStudy('cmf'), 'en')).toBe('Chaikin Money Flow 20');
         expect(describeStudy(defaultStudy('wma'), 'en')).toBe('WMA 20 · Close');
         expect(describeStudy(defaultStudy('hma'), 'en')).toBe('HMA 9 · Close');
         expect(describeStudy(defaultStudy('vwma'), 'en')).toBe('VWMA 20 · Close');
