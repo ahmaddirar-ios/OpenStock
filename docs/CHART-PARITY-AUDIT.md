@@ -15,20 +15,21 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 | Indicators | ✅ 26 studies + 1 custom formula study (SMA…Aroon, Ichimoku, SuperTrend, Donchian, Keltner, SAR, pivots, MFI…), in-pane oscillators, per-study style/width/source |
 | Formula language | ✅ Pine-lite: saved formulas, visual builder that round-trips the string, formula *as a study* |
 | Strategy lab | ✅ 6 published rules + custom strategies (6 rule kinds, custom params, optimizer up to 2000 combos), next-open fills, costs, 12 metrics, benchmark, trade CSV |
-| Alerts | ✅ price/RSS/ATR/52w/formula/strategy conditions, 5 rules per alert, drawing-anchored alerts, on-visit checker + Inngest cron, 200-event log |
+| Alerts | ✅ price/RSS/ATR/52w/formula/strategy conditions, 5 rules per alert, drawing-anchored alerts, on-visit checker + Inngest cron, 200-event log, in-app toast + chime on every page, Web Push |
 | Screener | ✅ market/sector/index filters, search, CSV export |
 | Chart page | ✅ 10 intervals incl. 2h/4h aggregation, session breaks, log/%/indexed scale, invert, 4 time zones, palettes (presets + hand overrides), chart templates, image export, share link, fullscreen, compare (3 symbols, % share-axis), replay with paper fills + ghost bars, go to date, back to latest, watermark, CSV export, bar countdown, 1-min background refresh |
 | Ruler | ✅ drag-to-measure with Δprice, Δ%, bars, elapsed time and volume, prices at both ends, clamped readout, `M` shortcut |
+| Strategy library | ✅ `/strategies` lists the published rules and the trader's own shelf, opening a saved one straight in the studio |
+| Optimizer surface | ✅ two parameters on the axes, objective as colour, click a cell to load it; the ranked table stays beside it |
 | Charts grid | ✅ 4 layouts, shared interval/indicators/crosshair, drawings per pane, drawings list |
 
 ## Gaps that matter, in the order I would close them
 
 ### Tier 1 — a trader notices these in the first week
 
-1. **❌ Alerts do not reach the phone.** The log is a page you visit; TradingView pops a toast and
-   plays a sound. We already have a cron and a log table, so this is a notification surface, not a
-   new backend: in-app toast/beep while a Rovex tab is open, web push for when it is not (needs a
-   service worker + VAPID keys), and an email digest as the fallback. *Recommended next.*
+1. **✅ Alerts reach the trader.** A firing raises a toast with the rule that tripped and a short
+   chime on any page, checked once a minute while a tab is open; Web Push covers the closed tab and
+   the Inngest cron keeps the log. The alerts page carries the toast and chime switches.
 2. **✅ Measure/ruler.** Shipped: drag from one point to another and the box reads Δprice, Δ%,
    bars, elapsed time and volume, with the price at each end and a readout that stays inside the
    plot. `M` arms it; the help panel lists it.
@@ -40,10 +41,12 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 
 ### Tier 2 — depth on what exists
 
-5. **❌ Strategy library has no page of its own.** Saved/optimised strategies live inside the chart
-   menu; TradingView's strategy tabs are first-class pages with a comparison table.
-6. **🟡 Optimizer is a list, not a picture.** TradingView shows the parameter surface and lets you
-   click a cell back into the lab; ours ranks rows.
+5. **✅ Strategy library page.** `/strategies` carries the six published rules, the studio entry
+   point and the trader's own shelf (browser + account, merged the same way the studio merges them);
+   a saved strategy opens straight into the studio.
+6. **✅ Optimizer surface.** Every combination the search ran is laid out as a two-parameter grid,
+   coloured by the objective, with axis pickers and a legend; a cell click loads that combination.
+   The ranked table stays, because a table is still the fastest way to read one number.
 7. **🟡 Indicator set is good, not complete.** Missing the ones Saudi/US desks actually ask for:
    Keltner channel fill width, Awesome Oscillator, Chaikin MF, DMI±, Stochastic RSI, Pivot Points
    (weekly/monthly), Volume Profile as a *study* (we have it as a drawing), VWAP anchored bands.

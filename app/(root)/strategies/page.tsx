@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Wand2 } from 'lucide-react';
 import StrategyIndex from '@/components/strategies/StrategyIndex';
+import SavedStrategies from '@/components/strategies/SavedStrategies';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';
 
@@ -31,6 +32,8 @@ export default async function StrategiesPage() {
                 </span>
                 <span className="text-[11.5px] text-brand">{tx(lang, 'cs.ctaOpen')} →</span>
             </Link>
+
+            <SavedStrategies lang={lang} />
 
             <StrategyIndex lang={lang} />
         </>

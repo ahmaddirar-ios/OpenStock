@@ -43,6 +43,7 @@ import KpiGrid from '@/components/strategies/KpiGrid';
 import ResultCharts from '@/components/strategies/ResultCharts';
 import TradeTable from '@/components/strategies/TradeTable';
 import RuleEditor from '@/components/strategies/RuleEditor';
+import OptimizerSurface from '@/components/strategies/OptimizerSurface';
 import { num, pct } from '@/components/strategies/format';
 import { cn } from '@/lib/utils';
 
@@ -101,7 +102,7 @@ const downloadText = (text: string, filename: string, type: string) => {
     URL.revokeObjectURL(url);
 };
 
-export default function CustomStrategyStudio({ lang, initialSymbol }: { lang: Lang; initialSymbol?: string }) {
+export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad }: { lang: Lang; initialSymbol?: string; initialLoad?: string }) {
     const t = (key: StringKey) => tx(lang, key);
 
     const [strategy, setStrategy] = useState<CustomStrategy>(() => ({ ...DEFAULT_CUSTOM_STRATEGY, params: DEFAULT_CUSTOM_STRATEGY.params.map((param) => ({ ...param })) }));
@@ -162,6 +163,9 @@ export default function CustomStrategyStudio({ lang, initialSymbol }: { lang: La
                 setSaved(merged);
                 storeSavedStrategies(merged);
                 if (JSON.stringify(merged) !== JSON.stringify(result.items)) void saveStrategies(merged);
+                // Arriving from the library's shelf opens that strategy, not the default one.
+                const wanted = initialLoad ? merged.find((entry) => entry.id === initialLoad) : undefined;
+                if (wanted) setStrategy(wanted.strategy);
             })
             .catch(() => {
                 if (!cancelled) setAccount('local');
@@ -169,7 +173,7 @@ export default function CustomStrategyStudio({ lang, initialSymbol }: { lang: La
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [initialLoad]);
 
     const patch = (next: Partial<CustomStrategy>) => {
         setStrategy((current) => ({ ...current, ...next }));
@@ -784,6 +788,17 @@ export default function CustomStrategyStudio({ lang, initialSymbol }: { lang: La
                                     )
                                 )}
                             </section>
+
+                            {optimizer && optimizer.all.length > 0 && (
+                                <OptimizerSurface
+                                    rows={optimizer.all}
+                                    keys={strategy.params.map((param) => param.key)}
+                                    objective={objective}
+                                    lang={lang}
+                                    onPick={applyBest}
+                                    format={(value) => (objective === 'totalReturn' ? pct(value, lang) : num(value, lang))}
+                                />
+                            )}
 
                             <section className="card flex flex-col gap-2 p-3">
                                 <div className="flex flex-wrap items-center gap-1.5">

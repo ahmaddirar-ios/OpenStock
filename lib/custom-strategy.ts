@@ -385,7 +385,10 @@ export function customMetrics(result: Backtest, intervalId: string, riskFreeRate
 
 export type OptimizerRow = { values: Record<string, number>; metrics: Metrics };
 export type OptimizerResult = {
+    /** The best rows, ranked by the objective: what the table shows. */
     rows: OptimizerRow[];
+    /** Every combination that traded, ranked the same way: what the surface draws. */
+    all: OptimizerRow[];
     /** How many combinations were actually run, which may be fewer than the grid asked for. */
     tried: number;
     /** True when the grid was cut to the cap, so the caller can say the search was partial. */
@@ -463,7 +466,7 @@ export function optimize(
         rows.push({ values, metrics: metrics(result, perYear, 0) });
     }
     rows.sort((a, b) => (objectiveValue(b.metrics, objective) ?? -Infinity) - (objectiveValue(a.metrics, objective) ?? -Infinity));
-    return { rows: rows.slice(0, 25), tried: combos.length, truncated };
+    return { rows: rows.slice(0, 25), all: rows, tried: combos.length, truncated };
 }
 
 // --- walk-forward -------------------------------------------------------------

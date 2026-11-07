@@ -23,7 +23,7 @@ export default async function CustomStrategyPage({ searchParams }: Props) {
                 </div>
             </header>
 
-            <CustomStrategyStudio lang={l} initialSymbol={pick(query.symbol)} />
+            <CustomStrategyStudio lang={l} initialSymbol={pick(query.symbol)} initialLoad={pick(query.load)} />
         </>
     );
 }
