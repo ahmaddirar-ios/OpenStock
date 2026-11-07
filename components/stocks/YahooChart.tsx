@@ -56,9 +56,9 @@ import {
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import ChartPrintSheet from '@/components/stocks/ChartPrintSheet';
 import { applyCopiedStyle, copyStyleOf, type CopiedStyle } from '@/lib/drawing-style-copy';
-import { printChange, printDocumentTitle } from '@/lib/chart-print';
+import { printDocumentTitle } from '@/lib/chart-print';
 import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
-import { EDIT_SHORTCUTS, MEASURE_KEY, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
+import { EDIT_SHORTCUTS, MEASURE_KEY, REPLAY_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
 import {
     readTimeZone,
     writeTimeZone,
@@ -93,6 +93,7 @@ import {
     sessionKey,
     settleBar,
     validateBracket,
+    validateBracketOrder,
     validateOrder,
     visibleCandles,
     type Bracket,
@@ -1234,6 +1235,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 setShortcutsOpen((open) => !open);
                 return;
             }
+            // Shift+letter is replay trading (⇧B / ⇧S / ⇧X), not a tool: the panel owns those.
+            if (event.shiftKey) return;
             if (event.key.toLowerCase() === MEASURE_KEY) {
                 event.preventDefault();
                 setTool((current) => (current === 'measure' ? null : 'measure'));
@@ -1804,7 +1807,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             }),
             currency: data?.currency ?? 'USD',
         };
-    }, [displayData, symbol, data, intervalId, quote, studies, lang]);
+    }, [displayData, symbol, data, intervalId, quote, studies, t]);
 
     /** The chart, stamped with symbol and interval, as a PNG file. */
     const exportImage = useCallback(async () => {
@@ -1929,6 +1932,63 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     };
 
     const cancelPendingOrder = () => setIntent((current) => ({ ...current, order: null }));
+
+    /**
+     * Entry, stop and target as one order. A market entry fills now and the bracket arms on this
+     * bar; a limit or a stop carries its bracket until the bar that fills it, so the position is
+     * protected from the bar after the fill without a second decision from the trader.
+     */
+    const placeBracketOrder = (entry: { type: OrderType; price?: number }, quantity: number, bracket: Bracket) => {
+        if (!replayBar) {
+            setOrderError('badPrice');
+            return;
+        }
+        if (entry.type === 'market') {
+            const refusal = validateBracket(bracket, replayBar.close);
+            if (refusal) {
+                setOrderError(refusal);
+                return;
+            }
+            const result = paperBuy(account, { price: replayBar.close, quantity, time: replayBar.time });
+            if (!result.ok) {
+                setOrderError(result.reason);
+                return;
+            }
+            setAccount(result.account);
+            setIntent((current) => ({ ...current, bracket: { ...bracket, placedAt: replayBar.time } }));
+            setOrderError(null);
+            return;
+        }
+
+        const price = entry.price ?? Number.NaN;
+        const refusal = validateOrder(entry.type, price, quantity, replayBar.close);
+        if (refusal) {
+            setOrderError(refusal);
+            return;
+        }
+        if (bracket.stopLoss == null && bracket.takeProfit == null) {
+            setOrderError('badBracket');
+            return;
+        }
+        // Levels the current mark has already passed cannot protect anything even if the entry
+        // gaps; the real cross-check against the fill happens when the bracket arms on the fill bar.
+        const guard = validateBracketOrder(replayBar.close, bracket);
+        if (guard) {
+            setOrderError(guard);
+            return;
+        }
+        const order: PendingOrder = {
+            id: `o-${replayBar.time}-${entry.type}`,
+            type: entry.type,
+            side: 'buy',
+            price,
+            quantity,
+            placedAt: replayBar.time,
+            bracket,
+        };
+        setIntent((current) => ({ ...current, order }));
+        setOrderError(null);
+    };
 
     /** A stop under the mark and a target above it; both optional, either alone is enough. */
     const setBracket = (bracket: Bracket) => {
@@ -3403,6 +3463,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     onSell={(quantity) => placePaperOrder('sell', quantity)}
                     intent={intent}
                     onPlacePending={placePendingOrder}
+                    onBracketOrder={placeBracketOrder}
                     onCancelOrder={cancelPendingOrder}
                     onSetBracket={setBracket}
                     onClearBracket={clearBracket}
@@ -3666,21 +3727,37 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                             </button>
                         </div>
                         <div className="mt-4 grid gap-6 sm:grid-cols-2">
-                            <div>
-                                <p className="form-label">{t('chart.shortcuts.tools')}</p>
-                                <ul className="mt-2 flex flex-col gap-1.5">
-                                    {TOOL_SHORTCUTS.map((shortcut) => (
-                                        <li key={shortcut.key} className="flex items-center justify-between gap-3 text-[13px]">
-                                            <span className="text-muted-foreground">{t(`chart.tool.${shortcut.tool}` as StringKey)}</span>
-                                            <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>
+                            {/* Replay replaces the tool list rather than adding to it: with the
+                                drawing rail off, ⇧B / ⇧S / ⇧X are the keys that matter. */}
+                            {replay ? (
+                                <div>
+                                    <p className="form-label">{t('replay.shortcuts')}</p>
+                                    <ul className="mt-2 flex flex-col gap-1.5">
+                                        {REPLAY_SHORTCUTS.map((shortcut) => (
+                                            <li key={shortcut.keys} className="flex items-center justify-between gap-3 text-[13px]">
+                                                <span className="text-muted-foreground">{t(shortcut.labelKey)}</span>
+                                                <kbd className="kbd">{shortcut.keys}</kbd>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : (
+                                <div>
+                                    <p className="form-label">{t('chart.shortcuts.tools')}</p>
+                                    <ul className="mt-2 flex flex-col gap-1.5">
+                                        {TOOL_SHORTCUTS.map((shortcut) => (
+                                            <li key={shortcut.key} className="flex items-center justify-between gap-3 text-[13px]">
+                                                <span className="text-muted-foreground">{t(`chart.tool.${shortcut.tool}` as StringKey)}</span>
+                                                <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>
+                                            </li>
+                                        ))}
+                                        <li className="flex items-center justify-between gap-3 text-[13px]">
+                                            <span className="text-muted-foreground">{t('chart.tool.measure')}</span>
+                                            <kbd className="kbd">{MEASURE_KEY.toUpperCase()}</kbd>
                                         </li>
-                                    ))}
-                                    <li className="flex items-center justify-between gap-3 text-[13px]">
-                                        <span className="text-muted-foreground">{t('chart.tool.measure')}</span>
-                                        <kbd className="kbd">{MEASURE_KEY.toUpperCase()}</kbd>
-                                    </li>
-                                </ul>
-                            </div>
+                                    </ul>
+                                </div>
+                            )}
                             <div>
                                 <p className="form-label">{t('chart.shortcuts.edit')}</p>
                                 <ul className="mt-2 flex flex-col gap-1.5">

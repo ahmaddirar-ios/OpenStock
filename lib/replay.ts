@@ -118,7 +118,7 @@ export type PaperAccount = {
     fills: Fill[];
 };
 
-export type OrderFailure = 'badQuantity' | 'badPrice' | 'insufficientFunds' | 'noPosition' | 'notEnoughShares' | 'wrongSideOfMarket';
+export type OrderFailure = 'badQuantity' | 'badPrice' | 'badBracket' | 'insufficientFunds' | 'noPosition' | 'notEnoughShares' | 'wrongSideOfMarket';
 export type OrderResult = { ok: true; account: PaperAccount } | { ok: false; reason: OrderFailure };
 
 export const openAccount = (cash: number = DEFAULT_STARTING_CASH): PaperAccount => ({
@@ -243,6 +243,10 @@ export type OrderType = 'market' | 'limit' | 'stop';
 /**
  * An order that has been armed but not filled: a limit waiting for a dip, or a stop waiting for
  * a break. `placedAt` is the bar it was placed on, and no bar at or before it may ever fill it.
+ *
+ * `bracket` is the stop and target that arm the moment this entry fills. It is what makes a
+ * bracket order one order instead of three: the trader decides the risk before the position
+ * exists, and the protection cannot be forgotten in the gap between the fill and the next click.
  */
 export type PendingOrder = {
     id: string;
@@ -251,6 +255,7 @@ export type PendingOrder = {
     price: number;
     quantity: number;
     placedAt: number;
+    bracket?: Bracket;
 };
 
 /** A stop-loss and a take-profit on the open position. Both are optional; both are prices. */
@@ -258,7 +263,6 @@ export type Bracket = { stopLoss?: number; takeProfit?: number; placedAt?: numbe
 
 /** Everything the trader has armed but not yet executed. Stored with the session. */
 export type ReplayIntent = { order?: PendingOrder | null; bracket?: Bracket | null };
-
 export type Refusal = 'badPrice' | 'badQuantity' | 'wrongSideOfMarket';
 
 /**
@@ -276,6 +280,24 @@ export function validateOrder(type: OrderType, price: number, quantity: number, 
 
 /** A stop has to sit under the mark and a target above it, or it is not protecting anything. */
 export function validateBracket(bracket: Bracket, mark: number): Refusal | null {
+    const { stopLoss, takeProfit } = bracket;
+    if (stopLoss == null && takeProfit == null) return 'badPrice';
+    if (stopLoss != null && !validPrice(stopLoss)) return 'badPrice';
+    if (takeProfit != null && !validPrice(takeProfit)) return 'badPrice';
+    if (stopLoss != null && stopLoss >= mark) return 'wrongSideOfMarket';
+    if (takeProfit != null && takeProfit <= mark) return 'wrongSideOfMarket';
+    return null;
+}
+
+/**
+ * What a bracket order can be checked on before its entry fills. The levels are judged against
+ * the price the entry will really pay, not the mark: a buy limit 2 % under the market needs its
+ * stop under *that* price. A level already on the wrong side of the current mark cannot protect
+ * anything even if the entry gaps, so that much is refused here; the rest is checked when the
+ * bracket arms on the fill bar, where the real price is known.
+ */
+export function validateBracketOrder(mark: number, bracket: Bracket): Refusal | null {
+    if (!validPrice(mark)) return 'badPrice';
     const { stopLoss, takeProfit } = bracket;
     if (stopLoss == null && takeProfit == null) return 'badPrice';
     if (stopLoss != null && !validPrice(stopLoss)) return 'badPrice';
@@ -368,7 +390,10 @@ export function settleBar({
         // The cash was not there when the level was: drop the order so it cannot fire every bar.
         return { account, intent: { order: null, bracket }, fills: [], rejected: filled.reason };
     }
-    return { account: filled.account, intent: { order: null, bracket }, fills: filled.account.fills.slice(-1) };
+    // A bracket carried by the entry arms on the fill bar, so it cannot take the position out on
+    // the same bar it was opened on — the trader gets at least one bar of the trade they chose.
+    const armed = order.bracket ? { ...order.bracket, placedAt: bar.time } : bracket;
+    return { account: filled.account, intent: { order: null, bracket: armed }, fills: filled.account.fills.slice(-1) };
 }
 
 export type AccountSummary = {
@@ -483,7 +508,8 @@ const isOrder = (value: unknown): value is PendingOrder => {
         (order.side === 'buy' || order.side === 'sell') &&
         validPrice(order.price) &&
         parseQuantity(order.quantity) != null &&
-        Number.isFinite(order.placedAt)
+        Number.isFinite(order.placedAt) &&
+        (order.bracket == null || isBracket(order.bracket))
     );
 };
 

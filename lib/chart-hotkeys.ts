@@ -44,3 +44,15 @@ export const EDIT_SHORTCUTS: readonly EditShortcut[] = [
     { keys: 'Esc', labelKey: 'chart.shortcut.cancel' },
     { keys: '?', labelKey: 'chart.shortcut.help' },
 ];
+
+/**
+ * Replay trading keys. They all carry Shift, because a bare letter already arms a drawing tool
+ * and a replay is exactly when a trader is most likely to hit one by accident. The handler lives
+ * in ReplayPanel, which is the only place that knows the quantity and the armed order type.
+ */
+export const REPLAY_SHORTCUTS: readonly EditShortcut[] = [
+    { keys: '⇧ + B', labelKey: 'replay.key.buy' },
+    { keys: '⇧ + S', labelKey: 'replay.key.sell' },
+    { keys: '⇧ + X', labelKey: 'replay.key.flatten' },
+    { keys: 'Space', labelKey: 'replay.key.play' },
+];

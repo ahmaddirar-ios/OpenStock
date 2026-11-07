@@ -69,8 +69,11 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
     studies — and lays it on a one-page sheet with symbol, interval, last, the session move, the span
     covered and the studies on it. The browser's print dialog serves paper and "Save as PDF" alike; the
     tab is briefly renamed to rovex-SYMBOL-INTERVAL-DATE so the saved file has a sane name.
-12. **🟡 No keyboard-driven trading** in replay (buy/sell by hotkey), no bracket orders (replay has
-    bracket intents, not entry+stop+target as one order).
+12. **✅ Keyboard replay trading and bracket orders.** Shipped: ⇧B buys at market, ⇧S sells the typed
+    quantity, ⇧X closes the position, Space plays or pauses; the help sheet lists them instead of the
+    drawing tools while a replay is running. A *bracket order* is one order — entry, stop and target —
+    and the bracket arms on the bar that fills the entry, so a limit can carry its protection without
+    a second decision after the fill. Keyed by `event.code`, so an Arabic layout places the same order.
 
 ## Suggested order
 
