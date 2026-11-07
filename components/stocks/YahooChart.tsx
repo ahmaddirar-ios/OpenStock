@@ -114,6 +114,7 @@ import DrawingRail from '@/components/stocks/DrawingRail';
 import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/drawing-templates';
 import { addChartTemplate, chartTemplateCounts, instantiateChartTemplate, loadChartTemplates, removeChartTemplate, saveChartTemplates, type ChartTemplate } from '@/lib/chart-templates';
 import { candlesToCsv, csvFileName } from '@/lib/chart-export';
+import { BAR_SECONDS } from '@/lib/chart-countdown';
 import { decodeChartShare, sharePath } from '@/lib/chart-share';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
@@ -144,6 +145,7 @@ import ChartPeriods from '@/components/stocks/ChartPeriods';
 import { formatPrice, signedPercent } from '@/lib/market-ribbon';
 import { riyadhNow, sessionChange, tadawulPhase, type TadawulPhase } from '@/lib/chart-quote';
 import ChartSettingsMenu from '@/components/stocks/ChartSettingsMenu';
+import BarCountdown from '@/components/stocks/BarCountdown';
 import {
     DEFAULT_PALETTE_STATE,
     FALLBACK_THEME_PALETTE,
@@ -607,6 +609,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [, setFrame] = useState(0);
     // True once the trader has panned or zoomed away from the newest bar; shows the "back to latest" pill.
     const [scrolledBack, setScrolledBack] = useState(false);
+    // Bumped by the background refresh so the compare overlays fetch again with the main series.
+    const [refreshTick, setRefreshTick] = useState(0);
     // Compare overlays: the symbols, their candles, and the little add control.
     const [compareList, setCompareList] = useState<string[]>([]);
     const [compareData, setCompareData] = useState<Record<string, CandleSet | null>>({});
@@ -747,7 +751,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             if (!cancelled) setCompareData(Object.fromEntries(entries));
         })();
         return () => { cancelled = true; };
-    }, [compareList, intervalId, replay]);
+    }, [compareList, intervalId, replay, refreshTick]);
 
     // `silent` is the background refresh: it never flashes the loading overlay, never clears the
     // chart on a failed fetch, and never moves the view or the "back to latest" pill.
@@ -779,6 +783,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             if (replayRef.current) return;
             if (document.visibilityState !== 'visible') return;
             void load({ silent: true });
+            setRefreshTick((tick) => tick + 1);
         };
         const timer = window.setInterval(refresh, 60_000);
         document.addEventListener('visibilitychange', refresh);
@@ -1970,6 +1975,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             )}
 
             {status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
+
+            {/* The newest bar's clock: only on intraday, only outside replay, and the component
+                itself hides when the market is shut (see secondsToBarClose). */}
+            {status === 'ready' && !replay && displayData && BAR_SECONDS[intervalId] && displayData.candles.length > 0 && (
+                <BarCountdown
+                    lastTime={displayData.candles[displayData.candles.length - 1].time}
+                    intervalId={intervalId}
+                    lang={lang}
+                />
+            )}
 
             {status === 'ready' && !replay && (
                 <DrawingRail
