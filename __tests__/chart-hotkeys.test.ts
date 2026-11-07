@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, MEASURE_KEY, toolForKey } from '@/lib/chart-hotkeys';
+import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, MEASURE_KEY, hotkeyForTool, toolForKey } from '@/lib/chart-hotkeys';
 
 describe('chart hotkeys', () => {
     it('arms a tool from a bare letter, in either case', () => {
@@ -8,6 +8,15 @@ describe('chart hotkeys', () => {
         expect(toolForKey('f')).toBe('fib');
         expect(toolForKey('esc')).toBeNull();
         expect(toolForKey('')).toBeNull();
+    });
+
+    it('answers the key of a tool, and nothing for a tool with none', () => {
+        expect(hotkeyForTool('trend')).toBe('t');
+        expect(hotkeyForTool('fib')).toBe('f');
+        // Every shortcut is reversible, so the rail and the handler read one table.
+        for (const shortcut of TOOL_SHORTCUTS) expect(toolForKey(hotkeyForTool(shortcut.tool)!)).toBe(shortcut.tool);
+        // A pattern tool lives only in the rail.
+        expect(hotkeyForTool('triangle' as never)).toBeNull();
     });
 
     it('never maps two tools to the same key', () => {

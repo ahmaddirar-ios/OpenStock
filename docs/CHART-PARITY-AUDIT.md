@@ -34,12 +34,14 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
    bars, elapsed time and volume, with the price at each end and a readout that stays inside the
    plot. `M` arms it; the help panel lists it.
 3. **✅ Right-click menu.** Shipped: a right-click on any drawing opens bring-to-front, send-to-back,
-   duplicate, copy, lock, hide, delete. It works with no tool armed, clamps inside the viewport, and
-   dismisses on an outside click, a scroll or Escape. The selection toolbar stays for styling.
-   TradingView's per-object *alert* and style flyout are still missing from the menu (alerts are
-   symbol-level today).
-4. **❌ No hotkey reference for the drawing rail** beyond `?`; no way to search a *setting* (only the
-   tool palette searches).
+   duplicate, copy, copy/paste style, lock, hide and delete, plus *Alert on drawing* for any drawing
+   that carries a line (the modal is snapshotted, so dragging the line later does not change what was
+   promised). It works with no tool armed, clamps inside the viewport, and dismisses on an outside
+   click, a scroll or Escape. Styling stays in the selection toolbar, which shows every control at
+   once instead of hiding them behind a submenu.
+4. **✅ Hotkey reference on the rail.** Every rail row shows its key beside the name (`Trend line  T`),
+   with the key in the tooltip too; `?` still opens the whole-sheet reference. Searching a *setting*
+   is still the settings menu's job — there is nothing to search in a six-control panel.
 
 ### Tier 2 — depth on what exists
 
@@ -49,10 +51,10 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 6. **✅ Optimizer surface.** Every combination the search ran is laid out as a two-parameter grid,
    coloured by the objective, with axis pickers and a legend; a cell click loads that combination.
    The ranked table stays, because a table is still the fastest way to read one number.
-7. **🟡 Indicator set is good, not complete.** Shipped: Stochastic RSI, Awesome Oscillator, Chaikin
-   Money Flow, and Pivot Points with a bar/week/month timeframe. DMI± already ships inside the ADX
-   study. Still missing: Keltner channel fill width, Volume Profile as a *study* (it exists as a
-   drawing), and VWAP anchored bands as a study (also a drawing today).
+7. **✅ Indicator set is good, not complete.** Shipped: Stochastic RSI, Awesome Oscillator, Chaikin
+   Money Flow, Pivot Points with a bar/week/month timeframe, the Keltner ribbon fill, Volume Profile as
+   a *study* and Anchored VWAP with bands as a *study* (the anchor is a date, the bands are the
+   volume-weighted deviation). DMI± already ships inside the ADX study.
 8. **🟡 No "compare to" for indicators** (correlation / spread panes).
 
 ### Tier 3 — infrastructure TradingView has and we do not

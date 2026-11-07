@@ -28,9 +28,13 @@ export const TOOL_SHORTCUTS: readonly ToolShortcut[] = [
 export const MEASURE_KEY = 'm';
 
 const BY_KEY = new Map(TOOL_SHORTCUTS.map((shortcut) => [shortcut.key, shortcut.tool]));
+const BY_TOOL = new Map(TOOL_SHORTCUTS.map((shortcut) => [shortcut.tool, shortcut.key]));
 
 /** The tool a bare letter arms, or null when the letter belongs to something else. */
 export const toolForKey = (key: string): ShapeTool | null => BY_KEY.get((key || '').toLowerCase()) ?? null;
+
+/** The letter that arms a tool, or null when the tool lives only in the rail. */
+export const hotkeyForTool = (tool: ShapeTool): string | null => BY_TOOL.get(tool) ?? null;
 
 export type EditShortcut = { keys: string; labelKey: StringKey };
 

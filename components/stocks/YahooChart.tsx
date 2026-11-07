@@ -607,6 +607,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     const [toolbarMore, setToolbarMore] = useState(false);
     // The right-click object menu: where it is anchored, and which drawing it acts on.
     const [objectMenu, setObjectMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+    // An alert opened from the object menu: the modal lives at the top level, so closing the menu
+    // does not take the dialog with it.
+    const [objectAlert, setObjectAlert] = useState<string | null>(null);
     // A copied look, held for the session: paste it onto any drawing the trader picks next.
     const [styleClipboard, setStyleClipboard] = useState<CopiedStyle | null>(null);
     // The chart caught as an image, while the print sheet is open. Printing waits for it, so the page
@@ -1669,6 +1672,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         setObjectMenu(hit);
     }, []);
     const objectTarget = objectMenu ? drawings.find((drawing) => drawing.id === objectMenu.id) ?? null : null;
+    // The line the object menu's alert would watch: snapshotted when the alert is made, so dragging
+    // the drawing afterwards cannot change what was promised.
+    const objectAnchor = objectTarget ? anchorFor(objectTarget.tool, objectTarget.points) : null;
+    const alertTarget = objectAlert ? drawings.find((drawing) => drawing.id === objectAlert) ?? null : null;
+    const alertAnchor = alertTarget ? anchorFor(alertTarget.tool, alertTarget.points) : null;
     const closeObjectMenu = () => setObjectMenu(null);
     // A menu is a moment, not a mode: a click anywhere else, a scroll or Escape dismisses it.
     useEffect(() => {
@@ -3652,10 +3660,21 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     className="fixed z-[70] flex w-44 flex-col rounded-[10px] bg-card p-1 text-[12.5px] shadow-[0_14px_40px_rgba(0,0,0,0.45)] ring-1 ring-line"
                     style={{
                         left: Math.min(objectMenu.x, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerWidth) - 184)),
-                        top: Math.min(objectMenu.y, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerHeight) - 330)),
+                        top: Math.min(objectMenu.y, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerHeight) - 372)),
                     }}
                 >
                     {[
+                        // An alert belongs on the object, not only on the toolbar: the trader is
+                        // already looking at the line they want watched.
+                        ...(alertSource(symbol) && objectAnchor
+                            ? [
+                                  {
+                                      key: 'alert',
+                                      label: t('chart.alertOnDrawing'),
+                                      run: () => setObjectAlert(objectTarget.id),
+                                  },
+                              ]
+                            : []),
                         { key: 'layer-front', label: t('chart.layer.front'), run: () => layerSelected('front') },
                         { key: 'layer-back', label: t('chart.layer.back'), run: () => layerSelected('back') },
                         { key: 'duplicate', label: t('chart.tool.duplicate'), run: duplicateSelected },
@@ -3695,6 +3714,22 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                         {t('chart.tool.delete')}
                     </button>
                 </div>
+            )}
+
+            {/* An alert opened from the object menu. The modal is not a child of the menu: a
+                dismissed menu must not dismiss the dialog it opened. */}
+            {alertAnchor && alertSource(symbol) && (
+                <CreateAlertModal
+                    symbol={symbol}
+                    currentPrice={alertPrice}
+                    currency={data?.currency ?? 'USD'}
+                    lang={lang}
+                    anchor={alertAnchor}
+                    open
+                    onOpenChange={(next) => {
+                        if (!next) setObjectAlert(null);
+                    }}
+                />
             )}
 
             {/* One sheet for paper and for PDF: the print dialog is the same dialog either way. */}

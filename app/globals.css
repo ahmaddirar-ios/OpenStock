@@ -2144,6 +2144,21 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 }
 .draw-rail-item:hover { background: var(--hover); }
 .draw-rail-item.is-on { background: var(--brand-soft); color: var(--brand-ink); }
+.draw-rail-item-name { flex: 1; }
+/* The shortcut sits at the row's far edge, so the eye scans one column of keys. */
+.draw-rail-key {
+    flex: none;
+    min-width: 18px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--page);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+}
 .draw-rail-glyph { width: 16px; height: 12px; display: grid; place-items: center; color: var(--muted); flex: none; }
 .draw-rail-glyph > span { width: 14px; height: 0; display: block; }
 

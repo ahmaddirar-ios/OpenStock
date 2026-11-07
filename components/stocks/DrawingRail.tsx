@@ -27,6 +27,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toolsInGroup, toolDef, type ShapeTool, type ToolGroup } from '@/lib/chart-drawings';
 import { TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/drawing-groups';
+import { hotkeyForTool, MEASURE_KEY } from '@/lib/chart-hotkeys';
 import type { ActiveTool } from '@/components/stocks/ChartDrawings';
 import type { StringKey } from '@/lib/i18n';
 
@@ -200,21 +201,36 @@ export default function DrawingRail({
             danger = false,
             glyph,
             checkable = false,
-        }: { active?: boolean; disabled?: boolean; danger?: boolean; glyph?: ShapeTool; checkable?: boolean } = {},
-    ) => (
-        <button
-            key={key}
-            type="button"
-            role={checkable ? 'menuitemcheckbox' : 'menuitem'}
-            aria-checked={checkable ? active : undefined}
-            onClick={onClick}
-            disabled={disabled}
-            className={cn('draw-rail-item', active && 'is-on', danger && 'is-danger')}
-        >
-            {glyph ? <ToolGlyph tool={glyph} /> : <Icon className="size-[16px] shrink-0" />}
-            <span>{title}</span>
-        </button>
-    );
+            shortcut: explicit = undefined,
+        }: {
+            active?: boolean;
+            disabled?: boolean;
+            danger?: boolean;
+            glyph?: ShapeTool;
+            checkable?: boolean;
+            shortcut?: string | null;
+        } = {},
+    ) => {
+        // The key is shown, not just documented: a trader reads "Trend line   T" once and stops
+        // opening the help sheet to remember it.
+        const shortcut = explicit !== undefined ? explicit : glyph ? hotkeyForTool(glyph) : null;
+        return (
+            <button
+                key={key}
+                type="button"
+                role={checkable ? 'menuitemcheckbox' : 'menuitem'}
+                aria-checked={checkable ? active : undefined}
+                onClick={onClick}
+                disabled={disabled}
+                title={shortcut ? `${title} (${shortcut.toUpperCase()})` : title}
+                className={cn('draw-rail-item', active && 'is-on', danger && 'is-danger')}
+            >
+                {glyph ? <ToolGlyph tool={glyph} /> : <Icon className="size-[16px] shrink-0" />}
+                <span className="draw-rail-item-name">{title}</span>
+                {shortcut && <kbd className="draw-rail-key">{shortcut.toUpperCase()}</kbd>}
+            </button>
+        );
+    };
 
     const cursorActive = tool === 'select' || tool === 'measure' || magnetStrength !== 'off' || locked || hidden;
 
@@ -265,7 +281,7 @@ export default function DrawingRail({
                                 {row('measure', label('chart.tool.measure'), Ruler, () => {
                                     onPick('measure');
                                     setOpen(null);
-                                }, { active: tool === 'measure' })}
+                                }, { active: tool === 'measure', shortcut: MEASURE_KEY })}
                                 {row(
                                     'magnet',
                                     label(magnetStrength === 'off' ? 'chart.tool.magnet' : magnetStrength === 'weak' ? 'chart.tool.magnetWeak' : 'chart.tool.magnetStrong'),

@@ -20,6 +20,9 @@ interface CreateAlertModalProps {
     onAlertCreated?: () => void;
     /** When given, the modal opens on the drawing rules for this snapshotted line instead of a price. */
     anchor?: DrawingAnchor | null;
+    /** Controlled opening, for a caller that is not a trigger (the chart's object menu). */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 // Labels live in the dictionary; the values are what the server stores. The quick modal offers
@@ -34,8 +37,9 @@ const CONDITIONS: AlertCondition[] = [
     'VOLUME_SPIKE',
 ];
 
-export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD', children, lang = 'en', onAlertCreated, anchor }: CreateAlertModalProps) {
-    const [open, setOpen] = useState(false);
+export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD', children, lang = 'en', onAlertCreated, anchor, open: controlledOpen, onOpenChange: controlledChange }: CreateAlertModalProps) {
+    const [innerOpen, setInnerOpen] = useState(false);
+    const open = controlledOpen ?? innerOpen;
     const [condition, setCondition] = useState<AlertCondition>('ABOVE');
     const [targetPrice, setTargetPrice] = useState('');
     const [period, setPeriod] = useState('');
@@ -56,7 +60,8 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
     const alreadyMet = distance !== null && (activeCondition === 'ABOVE' ? distance <= 0 : distance >= 0);
 
     const onOpenChange = (next: boolean) => {
-        setOpen(next);
+        if (controlledOpen === undefined) setInnerOpen(next);
+        controlledChange?.(next);
         if (!next) return;
         if (drawing) {
             setCondition('DRAWING_CROSS_UP');
@@ -88,7 +93,7 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
             toast.success(tx(lang, 'alertModal.created')
                 .replace('{s}', symbol)
                 .replace('{c}', `${alertConditionLabel(lang, rule)} ${price}`));
-            setOpen(false);
+            onOpenChange(false);
             onAlertCreated?.();
         } catch (error) {
             console.error(error);
