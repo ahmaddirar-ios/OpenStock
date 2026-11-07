@@ -12,7 +12,7 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 | --- | --- |
 | Chart types | ✅ candles, hollow, Heikin Ashi, bars, line, area, baseline, Renko, Kagi, Line Break, P&F (+ box/reversal inputs) |
 | Drawings | ✅ 79 tools across 9 groups (lines, Fib, Gann, patterns, Elliott, forecast, shapes, annotation, brush), multi-select, lock/hide, per-drawing visibility by interval, per-drawing alert, per-drawing font override, templates of a stroke |
-| Indicators | ✅ 29 studies + 1 custom formula study (SMA…Aroon, Ichimoku, SuperTrend, Donchian, Keltner, SAR, pivots by bar/week/month, MFI, Stoch RSI, Awesome Oscillator, Chaikin MF…), in-pane oscillators, per-study style/width/source |
+| Indicators | ✅ 33 studies + 1 custom formula study (SMA…Aroon, Ichimoku, SuperTrend, Donchian, Keltner, SAR, pivots by bar/week/month, MFI, Stoch RSI, Awesome Oscillator, Chaikin MF, correlation and spread against another symbol…), in-pane oscillators, per-study style/width/source |
 | Formula language | ✅ Pine-lite: saved formulas, visual builder that round-trips the string, formula *as a study* |
 | Strategy lab | ✅ 6 published rules + custom strategies (6 rule kinds, custom params, optimizer up to 2000 combos), next-open fills, costs, 12 metrics, benchmark, trade CSV |
 | Alerts | ✅ price/RSS/ATR/52w/formula/strategy conditions, 5 rules per alert, drawing-anchored alerts, on-visit checker + Inngest cron, 200-event log, in-app toast + chime on every page, Web Push |
@@ -55,7 +55,23 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
    Money Flow, Pivot Points with a bar/week/month timeframe, the Keltner ribbon fill, Volume Profile as
    a *study* and Anchored VWAP with bands as a *study* (the anchor is a date, the bands are the
    volume-weighted deviation). DMI± already ships inside the ADX study.
-8. **🟡 No "compare to" for indicators** (correlation / spread panes).
+8. **✅ "Compare to" for indicators.** Two studies take a ticker: **Correlation** (Pearson r over a
+   window, +1 is the same move, -1 the mirror) and **Spread %** (the charted symbol against the other
+   one's last close, in percent). They are deliberately different readings:
+
+   - Correlation pairs bars **by time**, because a correlation between prices that never traded at
+     the same moment is a number about nothing. Riyadh 07:00 UTC and New York 14:30 UTC still pair on
+     daily bars; a Riyadh morning and a New York afternoon on 60-minute bars do not, and there the
+     line stays empty rather than pairing by bar count — counting drifts by a week (a month holds
+     **116 Riyadh hours against 161 New York ones**).
+   - Spread needs only a price level, so it uses the other symbol's **last known close** (forward
+     filled, a week at most). That keeps it readable while one market is closed, which is most of
+     the day across time zones.
+
+   Both refuse a partner series whose spacing is more than 2× off the chart's, so a stale daily fetch
+   under a 60-minute chart paints nothing instead of something plausible. The pane says `%` on its
+   axis and in the legend; the partner loads through the existing compare action (`getCompareCandles`),
+   one request per symbol+interval per minute, and is refetched when the interval changes.
 
 ### Tier 3 — infrastructure TradingView has and we do not
 
