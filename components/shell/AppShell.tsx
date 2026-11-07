@@ -6,6 +6,7 @@ import Sidebar from "@/components/shell/Sidebar";
 import TabBar from "@/components/shell/TabBar";
 import MenuBar from "@/components/shell/MenuBar";
 import ShortcutSheet, { openShortcuts } from "@/components/shell/ShortcutSheet";
+import AlertNotifier from "@/components/shell/AlertNotifier";
 import { MarketStrip, NoticeBar, StatusBar } from "@/components/shell/TerminalBars";
 import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
@@ -126,6 +127,8 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
 
             <StatusBar lang={lang} />
 
+            {/* The app's own alert clock: any page open and visible checks the rules once a minute. */}
+            <AlertNotifier lang={lang} />
             <SearchCommand initialStocks={initialStocks} lang={lang} defaultSymbol={watchlist[0]?.symbol} />
             <ShortcutSheet lang={lang} />
         </div>

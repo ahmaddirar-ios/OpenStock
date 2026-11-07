@@ -13,7 +13,9 @@ import { ALERT_CONDITIONS, alertConditionLabel, alertParamsLabel, alertTargetLab
 import { checkFormula, describeFormulaError } from '@/lib/formula';
 import { loadSavedStrategies, type SavedStrategy } from '@/lib/strategy-library-custom';
 import PushToggle from '@/components/alerts/PushToggle';
+import InAppNotifyToggle from '@/components/alerts/InAppNotifyToggle';
 import { alertPushPayload } from '@/lib/push';
+import { firingDetail, firingMessage } from '@/lib/alert-notify';
 import type { FiredAlert } from '@/lib/actions/alert.actions';
 
 export type AlertRow = {
@@ -322,12 +324,14 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
         try {
             const result = await checkAlerts();
             if (result.fired.length > 0) {
+                const many = result.fired.length > 1;
                 toast.success(
-                    result.fired.length === 1
-                        ? t('alerts.firedAt')
-                              .replace('{s}', result.fired[0].symbol)
-                              .replace('{p}', measureLabel(lang, result.fired[0].condition, result.fired[0].value))
-                        : t('alerts.firedMany').replace('{n}', arDigits(result.fired.length, lang)),
+                    many
+                        ? t('alerts.firedMany').replace('{n}', arDigits(result.fired.length, lang))
+                        : firingMessage(result.fired[0], lang),
+                    many
+                        ? { description: result.fired.slice(0, 3).map((hit) => firingMessage(hit, lang)).join(' · ') }
+                        : { description: firingDetail(result.fired[0], lang) },
                 );
                 // Nothing to notify unless this device asked for notifications.
                 if (pushOn) void notifyFired(result.fired);
@@ -448,6 +452,7 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                 </div>
             )}
 
+            <InAppNotifyToggle lang={lang} />
             <PushToggle lang={lang} onChange={setPushOn} />
 
             <form onSubmit={submit} className="card flex flex-col gap-2 p-3">

@@ -74,6 +74,8 @@ export type FiredAlert = {
     join?: GroupJoin;
     /** How many rules the alert had. */
     rules?: number;
+    /** The rules that were joined, so a toast can name the one that tripped. */
+    ruleList?: { condition: AlertCondition; targetPrice: number; value: number }[];
 };
 
 export type CheckResult = {
@@ -381,6 +383,7 @@ export async function checkAlerts(): Promise<CheckResult> {
                 changePercent: fire.changePercent,
                 join: fire.join,
                 rules,
+                ruleList: fire.rules.length > 0 ? fire.rules : undefined,
             });
 
             // The log outlives the alert: it is the record of what happened, not of what is watched.

@@ -599,6 +599,12 @@ export type GroupFire = {
     price?: number;
     changePercent?: number;
     join: GroupJoin;
+    /**
+     * The rules that were true when the group fired, with what each measured: the one rule of a
+     * single-rule alert, the tripped rules of an OR group, or every rule of an AND group. A toast
+     * can therefore name the rule that tripped instead of the group's first rule.
+     */
+    rules: { condition: AlertCondition; targetPrice: number; value: number }[];
 };
 
 export type GroupPlan = {
@@ -663,6 +669,8 @@ export function planGroups(
             plan.checked += 1;
             const deciding = (join === 'or' ? fired[0] : fired[fired.length - 1]).outcome as Extract<RuleOutcome, { state: 'fire' }>;
             const row = (join === 'or' ? fired[0] : fired[fired.length - 1]).row;
+            // OR fired because these rules are true; AND fired because all of them are.
+            const firing = join === 'or' ? fired : outcomes;
             plan.fires.push({
                 groupId,
                 symbol: row.symbol,
@@ -672,6 +680,11 @@ export function planGroups(
                 ...(deciding.price === undefined ? {} : { price: deciding.price }),
                 ...(deciding.changePercent === undefined ? {} : { changePercent: deciding.changePercent }),
                 join,
+                rules: firing.map((entry) => ({
+                    condition: entry.row.condition,
+                    targetPrice: entry.row.targetPrice,
+                    value: (entry.outcome as Extract<RuleOutcome, { state: 'fire' }>).value,
+                })),
             });
             continue;
         }

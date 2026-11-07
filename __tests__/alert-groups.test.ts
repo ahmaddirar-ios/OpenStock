@@ -35,6 +35,9 @@ describe('planGroups — AND', () => {
         );
         expect(plan.fires).toHaveLength(1);
         expect(plan.fires[0]).toMatchObject({ groupId: 'a1', join: 'and', value: 250 });
+        // An AND group fired because every rule is true, so every rule travels with the fire.
+        expect(plan.fires[0].rules).toHaveLength(2);
+        expect(plan.fires[0].rules.map((rule) => rule.targetPrice)).toEqual([100, 200]);
         expect(plan.checked).toBe(1);
         expect(plan.skipped).toBe(0);
     });
@@ -78,6 +81,8 @@ describe('planGroups — OR', () => {
         expect(plan.fires[0].join).toBe('or');
         expect(plan.checked).toBe(1);
         expect(plan.skipped).toBe(0);
+        // The toast names the rule that tripped, not the false one above it.
+        expect(plan.fires[0].rules).toEqual([{ condition: 'ABOVE', targetPrice: 100, value: 250 }]);
     });
 
     it('is skipped when nothing was true and something could not be read', () => {
