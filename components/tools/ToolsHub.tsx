@@ -1,0 +1,79 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { Search } from 'lucide-react';
+import { tx, type Lang } from '@/lib/i18n';
+import type { Role } from '@/lib/authz';
+import { PAGE_SECTIONS, visiblePages, type PageDef } from '@/lib/shell/pages';
+
+/**
+ * The index of the terminal: every destination the signed-in role can open, grouped by the same
+ * sections the rail uses, with one filter box. It reads `PAGES` directly, so a page added to the
+ * shell appears here without a second edit.
+ */
+const ToolsHub = ({ lang, role }: { lang: Lang; role: Role }) => {
+    const [query, setQuery] = useState('');
+
+    const groups = useMemo(() => {
+        const needle = query.trim().toLowerCase();
+        const pages = visiblePages(role).filter((page) => {
+            if (!needle) return true;
+            const haystack = [tx(lang, page.labelKey), page.href, ...page.keywords].join(' ').toLowerCase();
+            return haystack.includes(needle);
+        });
+        return PAGE_SECTIONS
+            .map((section) => ({
+                section,
+                pages: pages.filter((page) => page.section === section.id),
+            }))
+            .filter((group) => group.pages.length > 0);
+    }, [lang, role, query]);
+
+    const total = groups.reduce((sum, group) => sum + group.pages.length, 0);
+
+    return (
+        <>
+            <div className="card flex items-center gap-2 p-2">
+                <Search className="ms-1 size-4 shrink-0 text-faint" />
+                <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={tx(lang, 'toolsHub.filter')}
+                    aria-label={tx(lang, 'toolsHub.filter')}
+                    className="form-input border-0 bg-transparent shadow-none focus:ring-0"
+                />
+            </div>
+
+            {total === 0 ? (
+                <p className="empty-state">{tx(lang, 'toolsHub.empty')}</p>
+            ) : (
+                groups.map(({ section, pages }) => (
+                    <section key={section.id} className="hatch">
+                        <div className="section-head">
+                            <h2 className="section-title">{tx(lang, section.labelKey)}</h2>
+                            <span className="pill">{pages.length}</span>
+                        </div>
+                        <div className="grid gap-2 p-3.5 sm:grid-cols-2 xl:grid-cols-3">
+                            {pages.map((page: PageDef) => {
+                                const Icon = page.icon;
+                                return (
+                                    <Link key={page.href} href={page.href} className="card group flex items-start gap-3 p-3.5 transition-colors hover:bg-hover">
+                                        <span className="bento-ico"><Icon /></span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block font-semibold">{tx(lang, page.labelKey)}</span>
+                                            <span className="mt-0.5 block truncate text-[12px] text-faint" dir="ltr">{page.href}</span>
+                                        </span>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </section>
+                ))
+            )}
+        </>
+    );
+};
+
+export default ToolsHub;

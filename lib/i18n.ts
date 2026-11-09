@@ -1278,6 +1278,11 @@ const en = {
     'admin.cap.content:manage': 'Edit content',
     'admin.cap.flag:manage': 'Manage flags',
     'admin.cap.ops:view': 'View operations',
+    // Tools hub
+    'toolsHub.title': 'Tools',
+    'toolsHub.sub': 'Every destination in the terminal, in one place.',
+    'toolsHub.filter': 'Filter pages…',
+    'toolsHub.empty': 'Nothing matches that filter.',
     // Goal / risk / industry options (values come from lib/constants.ts)
     'opt.growth': 'Growth',
     'opt.income': 'Income',
@@ -3030,6 +3035,10 @@ const ar: Record<StringKey, string> = {
     'admin.cap.content:manage': 'تعديل المحتوى',
     'admin.cap.flag:manage': 'إدارة الأعلام',
     'admin.cap.ops:view': 'عرض التشغيل',
+    'toolsHub.title': 'الأدوات',
+    'toolsHub.sub': 'كل وجهة في التطبيق، في مكان واحد.',
+    'toolsHub.filter': 'فلتر الصفحات…',
+    'toolsHub.empty': 'ما في شي يطابق هذا الفلتر.',
     'opt.growth': 'نمو',
     'opt.income': 'دخل',
     'opt.balanced': 'متوازن',
