@@ -136,6 +136,14 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     }, [layout, symbols, intervalId, pathname, router]);
 
     const panes = CHART_LAYOUTS[layout].panes;
+    // A single chart is the screen, not a 320px strip in the middle of it. Two-up gets half the
+    // window too; three and four stay at the pane's own minimum so the grid still scans as a grid.
+    const paneHeight =
+        layout === 1
+            ? 'min-h-[clamp(460px,calc(100dvh-210px),920px)]'
+            : layout === 2
+                ? 'lg:min-h-[clamp(420px,56dvh,720px)]'
+                : '';
     const slots = useMemo(() => paneSymbols(symbols, panes), [symbols, panes]);
     const timeframes = useMemo(
         () => CANDLE_INTERVALS.map((item) => ({ id: item.id as string, label: t(INTERVAL_LABEL_KEYS[item.id] ?? 'chart.tf.1d') })),
@@ -404,7 +412,7 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                         replay={replay}
                         cursorTime={cursorTime}
                         onReplaySeries={onReplaySeries}
-                        className={index === 0 ? CHART_LAYOUTS[layout].firstClassName : undefined}
+                        className={cn(index === 0 ? CHART_LAYOUTS[layout].firstClassName : undefined, paneHeight)}
                     />
                 ))}
             </div>

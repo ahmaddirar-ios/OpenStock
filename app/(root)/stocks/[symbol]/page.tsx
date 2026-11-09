@@ -109,7 +109,7 @@ export default async function StockDetails({ params, searchParams }: StockDetail
                         // candles. No panel head: the header card above already names the symbol and
                         // says the price is Yahoo's, and the chart carries its own toolbar — a title
                         // here would be 60px of furniture over the one thing the page is for.
-                        <Panel className="h-[clamp(420px,62dvh,660px)]" bodyClassName="flex min-h-0 flex-1 flex-col">
+                        <Panel className="h-[clamp(480px,74dvh,920px)]" bodyClassName="flex min-h-0 flex-1 flex-col">
                             <YahooChart
                                 symbol={symbol}
                                 tvSymbol={tvSymbol}
