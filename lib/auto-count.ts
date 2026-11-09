@@ -119,22 +119,36 @@ export function detectPivots(candles: Candle[], options: PivotOptions): Pivot[] 
         }
 
         if (direction === 'up' && high - candle.low >= threshold) {
-            pivots.push({ time: bars[highIndex].time, price: high, kind: 'high' });
+            const pivotIndex = highIndex;
+            pivots.push({ time: bars[pivotIndex].time, price: high, kind: 'high' });
             direction = 'down';
-            high = candle.high;
-            highIndex = i;
-            low = candle.low;
-            lowIndex = i;
+            high = -Infinity;
+            highIndex = i + 1;
+            // An outside bar can make the high and the reversal low at once. Two pivots on one bar
+            // would be a zero-width leg, so the down leg starts on the next bar instead.
+            if (pivotIndex === i) {
+                low = Infinity;
+                lowIndex = i + 1;
+            } else {
+                low = candle.low;
+                lowIndex = i;
+            }
             continue;
         }
 
         if (direction === 'down' && candle.high - low >= threshold) {
-            pivots.push({ time: bars[lowIndex].time, price: low, kind: 'low' });
+            const pivotIndex = lowIndex;
+            pivots.push({ time: bars[pivotIndex].time, price: low, kind: 'low' });
             direction = 'up';
-            low = candle.low;
-            lowIndex = i;
-            high = candle.high;
-            highIndex = i;
+            low = Infinity;
+            lowIndex = i + 1;
+            if (pivotIndex === i) {
+                high = -Infinity;
+                highIndex = i + 1;
+            } else {
+                high = candle.high;
+                highIndex = i;
+            }
         }
     }
 

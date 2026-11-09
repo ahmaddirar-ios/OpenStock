@@ -44,7 +44,9 @@ export function scanCandles(
         const points = PATTERN_POINTS[id];
         for (let end = pivots.length; end >= points; end -= 1) {
             const hit = detect(pivots.slice(end - points, end), candles);
-            if (!hit) continue;
+            // The four harmonic ids share one detector, and it names the variant it actually found.
+            // Asking for a Bat must not report a Gartley, or the same shape lands four times.
+            if (!hit || hit.pattern !== id) continue;
             hits.push({ ...hit, foundAt: end });
             break;
         }

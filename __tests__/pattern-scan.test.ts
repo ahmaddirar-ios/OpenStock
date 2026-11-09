@@ -30,6 +30,15 @@ describe('scanCandles', () => {
         expect(hits[0].tool).toBe('wolfe');
     });
 
+    it('never reports a harmonic variant it was not asked for', () => {
+        // X 100, A 200, B 138.2, C 176, D 121.4: a Gartley. The four harmonic ids share one detector,
+        // so asking for a Bat must come back empty rather than with the Gartley it found. The series
+        // opens above X and closes above D so the zigzag confirms both ends as pivots.
+        const gartley = candlesFrom([110, 100, 200, 138.2, 176, 121.4, 130]);
+        expect(scanCandles(gartley, ['bat'], percent)).toEqual([]);
+        expect(scanCandles(gartley, ['gartley'], percent).map((hit) => hit.pattern)).toEqual(['gartley']);
+    });
+
     it('returns nothing for a straight series', () => {
         const straight = Array.from({ length: 40 }, (_, i) => 100 + i);
         expect(scanCandles(candlesFrom(straight), SCAN_PATTERNS, percent)).toEqual([]);
