@@ -112,6 +112,123 @@ function apexOf(a: DrawPoint, b: DrawPoint, c: DrawPoint, d: DrawPoint): number 
     return (c.price - a.price - second * c.time + first * a.time) / (first - second);
 }
 
+/** Retracement of the leg `start → end` at `point`: 0 at the far end, 1 back at the start. */
+const fibRetrace = (start: number, end: number, point: number): number =>
+    Math.abs(end - point) / Math.abs(end - start);
+
+/** Extension of the leg `start → end` at `point`, read from `start`: 1 at the far end, more beyond it. */
+const fibExtend = (start: number, end: number, point: number): number =>
+    Math.abs(point - start) / Math.abs(end - start);
+
+/** How many BC lengths D sits past the far end of BC. D always lands outside BC, on B's side or C's. */
+const bcExtension = (b: number, c: number, d: number): number =>
+    Math.max(Math.abs(d - b), Math.abs(d - c)) / Math.abs(c - b);
+
+type Ratio = { readonly min: number; readonly max: number };
+/** A ratio measured back from A (Gartley, Bat) or out past A (Butterfly, Crab). */
+type RatioKind = 'retrace' | 'extend';
+
+/**
+ * The published ratios in the spec's order, so a shape that fits Gartley is never also reported as a
+ * Bat. `dXaKind` matters twice over: it decides which formula reads D's position on XA, and — because
+ * D lands on X's side for a retracement and on A's side for an extension — it also decides the
+ * direction. The same rising XA is therefore a bullish Gartley and a bearish Butterfly.
+ */
+const HARMONIC_VARIANTS: readonly {
+    id: 'gartley' | 'bat' | 'butterfly' | 'crab';
+    bXa: Ratio;
+    cAb: Ratio;
+    dXa: Ratio;
+    dXaKind: RatioKind;
+    dBc: Ratio;
+}[] = [
+    { id: 'gartley', bXa: { min: 0.618, max: 0.618 }, cAb: { min: 0.382, max: 0.886 }, dXa: { min: 0.786, max: 0.786 }, dXaKind: 'retrace', dBc: { min: 1.27, max: 1.618 } },
+    { id: 'bat', bXa: { min: 0.382, max: 0.5 }, cAb: { min: 0.382, max: 0.886 }, dXa: { min: 0.886, max: 0.886 }, dXaKind: 'retrace', dBc: { min: 1.618, max: 2.618 } },
+    { id: 'butterfly', bXa: { min: 0.786, max: 0.786 }, cAb: { min: 0.382, max: 0.886 }, dXa: { min: 1.27, max: 1.618 }, dXaKind: 'extend', dBc: { min: 1.618, max: 2.618 } },
+    { id: 'crab', bXa: { min: 0.382, max: 0.618 }, cAb: { min: 0.382, max: 0.886 }, dXa: { min: 1.618, max: 1.618 }, dXaKind: 'extend', dBc: { min: 2.24, max: 3.618 } },
+];
+
+/** Which way price is expected to leave D. Null when the X→A leg has no height to read. */
+const harmonicDirection = (x: number, a: number, kind: RatioKind): PatternDirection | null => {
+    if (a === x) return null;
+    const dIsLow = kind === 'retrace' ? a > x : a < x;
+    return dIsLow ? 'bullish' : 'bearish';
+};
+
+/** True once the newest close has turned back off D by at least a tenth of the CD leg. */
+const turnedOffD = (candles: readonly Candle[], direction: PatternDirection, c: number, d: number): boolean => {
+    const last = candles[candles.length - 1];
+    if (!last || !Number.isFinite(last.close)) return false;
+    const step = Math.abs(c - d) * 0.1;
+    return direction === 'bullish' ? last.close >= d + step : last.close <= d - step;
+};
+
+/**
+ * The XABCD family. Five pivots X, A, B, C, D, tested against the four published shapes in order;
+ * the first whose four ratios all hold is the answer. `target` is A, the conventional first target,
+ * and `invalidation` is D itself.
+ */
+export function detectHarmonic(pivots: readonly Pivot[], candles: readonly Candle[]): PatternHit | null {
+    if (pivots.length !== 5 || !usable(pivots)) return null;
+    const [x, a, b, c, d] = pivots;
+
+    const bXa = fibRetrace(x.price, a.price, b.price);
+    const cAb = fibRetrace(a.price, b.price, c.price);
+    const dBc = bcExtension(b.price, c.price, d.price);
+
+    for (const variant of HARMONIC_VARIANTS) {
+        const direction = harmonicDirection(x.price, a.price, variant.dXaKind);
+        if (!direction) return null;
+        const dXa = variant.dXaKind === 'retrace'
+            ? fibRetrace(x.price, a.price, d.price)
+            : fibExtend(x.price, a.price, d.price);
+        if (!within(bXa, variant.bXa.min, variant.bXa.max)) continue;
+        if (!within(cAb, variant.cAb.min, variant.cAb.max)) continue;
+        if (!within(dXa, variant.dXa.min, variant.dXa.max)) continue;
+        if (!within(dBc, variant.dBc.min, variant.dBc.max)) continue;
+        return {
+            pattern: variant.id,
+            direction,
+            tool: PATTERN_TOOL[variant.id],
+            points: asPoints(pivots),
+            labels: labelsFor(variant.id),
+            invalidation: d.price,
+            target: a.price,
+            confirmed: turnedOffD(candles, direction, c.price, d.price),
+            foundAt: pivots.length,
+        };
+    }
+    return null;
+}
+
+/**
+ * Cypher: B retraces 0.382–0.618 of XA, C overshoots A to 1.13–1.414 of XA, and D retraces 0.786 of
+ * XC. D sits on X's side, so the direction reads like the retracement harmonics.
+ */
+export function detectCypher(pivots: readonly Pivot[], candles: readonly Candle[]): PatternHit | null {
+    if (pivots.length !== 5 || !usable(pivots)) return null;
+    const [x, a, b, c, d] = pivots;
+
+    const direction = harmonicDirection(x.price, a.price, 'retrace');
+    if (!direction) return null;
+    if (!within(fibRetrace(x.price, a.price, b.price), 0.382, 0.618)) return null;
+    if (!within(fibExtend(x.price, a.price, c.price), 1.13, 1.414)) return null;
+    if (!within(fibRetrace(x.price, c.price, d.price), 0.786, 0.786)) return null;
+
+    return {
+        pattern: 'cypher',
+        direction,
+        tool: PATTERN_TOOL.cypher,
+        points: asPoints(pivots),
+        labels: labelsFor('cypher'),
+        invalidation: d.price,
+        target: a.price,
+        confirmed: turnedOffD(candles, direction, c.price, d.price),
+        foundAt: pivots.length,
+    };
+}
+
+
 /** The pivots as plain points, which is all a detector or a drawing needs. */
 const asPoints = (pivots: readonly Pivot[]): DrawPoint[] =>
     pivots.map((pivot) => ({ time: pivot.time, price: pivot.price }));

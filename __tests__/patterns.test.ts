@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectWolfe, retrace, within } from '@/lib/patterns';
+import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectCypher, detectHarmonic, detectWolfe, retrace, within } from '@/lib/patterns';
 import { pointsNeeded } from '@/lib/chart-drawings';
 import type { Pivot } from '@/lib/auto-count';
 import type { Candle } from '@/lib/yahoo-candles';
@@ -75,5 +75,55 @@ describe('detectWolfe', () => {
     it('returns null for a flat series rather than a NaN hit', () => {
         const flat = [pivot(1, 100, 'low'), pivot(2, 100, 'high'), pivot(3, 100, 'low'), pivot(4, 100, 'high'), pivot(5, 100, 'low')];
         expect(detectWolfe(flat, bars(10, () => 100))).toBeNull();
+    });
+});
+
+// X low, A high, B low, C high, D low: a bullish Gartley (D retraces 0.786 of XA).
+const gartley = [pivot(1, 100, 'low'), pivot(2, 200, 'high'), pivot(3, 138.2, 'low'), pivot(4, 176, 'high'), pivot(5, 121.4, 'low')];
+
+describe('detectHarmonic', () => {
+    it('names the variant whose ratios all hold', () => {
+        const hit = detectHarmonic(gartley, bars(10, (i) => 100 + i));
+        expect(hit?.pattern).toBe('gartley');
+        expect(hit?.direction).toBe('bullish');
+        expect(hit?.tool).toBe('xabcd');
+        expect(hit?.labels).toEqual(['X', 'A', 'B', 'C', 'D']);
+        expect(hit?.invalidation).toBe(121.4);
+        expect(hit?.target).toBe(200);
+    });
+
+    it('reads the mirrored shape as bearish', () => {
+        const mirror = gartley.map((p) => pivot(p.time, 300 - p.price, p.kind === 'high' ? 'low' : 'high'));
+        expect(detectHarmonic(mirror, bars(10, (i) => 100 + i))?.direction).toBe('bearish');
+    });
+
+    it('returns null when point C retraces almost nothing of AB', () => {
+        const broken = [gartley[0], gartley[1], gartley[2], pivot(4, 139, 'high'), gartley[4]];
+        expect(detectHarmonic(broken, bars(10, (i) => 100 + i))).toBeNull();
+    });
+});
+
+describe('detectCypher', () => {
+    it('accepts the shape whose C overshoots A and whose D is 0.786 of XC', () => {
+        const cypher = [pivot(1, 100, 'low'), pivot(2, 200, 'high'), pivot(3, 140, 'low'), pivot(4, 215, 'high'), pivot(5, 124.61, 'low')];
+        const hit = detectCypher(cypher, bars(10, (i) => 100 + i));
+        expect(hit?.pattern).toBe('cypher');
+        expect(hit?.tool).toBe('cypher');
+    });
+
+    it('returns null when C stays inside XA', () => {
+        expect(detectCypher(gartley, bars(10, (i) => 100 + i))).toBeNull();
+    });
+});
+
+describe('the extension harmonics', () => {
+    it('reads a Butterfly as bearish when XA rises, because D lands above A', () => {
+        // XA rises, D extends 1.27 past A, so D is a high and the trade is the reversal down.
+        const butterfly = [pivot(1, 100, 'low'), pivot(2, 200, 'high'), pivot(3, 121.4, 'low'), pivot(4, 176.4, 'high'), pivot(5, 227, 'low')];
+        const hit = detectHarmonic(butterfly, bars(10, (i) => 100 + i));
+        expect(hit?.pattern).toBe('butterfly');
+        expect(hit?.direction).toBe('bearish');
+        expect(hit?.invalidation).toBe(227);
+        expect(hit?.target).toBe(200);
     });
 });
