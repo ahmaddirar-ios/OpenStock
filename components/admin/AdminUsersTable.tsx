@@ -13,7 +13,7 @@ import {
     type AdminUserPage,
 } from '@/lib/actions/admin-users.actions';
 import { ROLES, type Role } from '@/lib/authz';
-import { tx, type Lang, type StringKey } from '@/lib/i18n';
+import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -117,7 +117,7 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
                     </button>
                 </form>
                 <span className="num text-[12px] text-faint">
-                    {tx(lang, 'admin.users.count').replace('{from}', String(from)).replace('{to}', String(to)).replace('{total}', String(page.total))}
+                    {tx(lang, 'admin.users.count').replace('{from}', arDigits(from, lang)).replace('{to}', arDigits(to, lang)).replace('{total}', arDigits(page.total, lang))}
                 </span>
             </div>
 

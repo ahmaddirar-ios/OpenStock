@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
-import { tx, type Lang } from '@/lib/i18n';
+import { arDigits, tx, type Lang } from '@/lib/i18n';
 import type { Role } from '@/lib/authz';
 import { PAGE_SECTIONS, visiblePages, type PageDef } from '@/lib/shell/pages';
 
@@ -53,7 +53,7 @@ const ToolsHub = ({ lang, role }: { lang: Lang; role: Role }) => {
                     <section key={section.id} className="hatch">
                         <div className="section-head">
                             <h2 className="section-title">{tx(lang, section.labelKey)}</h2>
-                            <span className="pill">{pages.length}</span>
+                            <span className="pill">{arDigits(pages.length, lang)}</span>
                         </div>
                         <div className="grid gap-2 p-3.5 sm:grid-cols-2 xl:grid-cols-3">
                             {pages.map((page: PageDef) => {
