@@ -165,14 +165,9 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     }, [layout, symbols, intervals, initial.intervalId, pathname, router]);
 
     const panes = CHART_LAYOUTS[layout].panes;
-    // A single chart is the screen, not a 320px strip in the middle of it. Two-up gets half the
-    // window too; three and four stay at the pane's own minimum so the grid still scans as a grid.
-    const paneHeight =
-        layout === 1
-            ? 'min-h-[clamp(460px,calc(100dvh-210px),920px)]'
-            : layout === 2
-                ? 'lg:min-h-[clamp(420px,56dvh,720px)]'
-                : '';
+    // On a phone the panes stack and each keeps a readable height. On a desktop the grid fills the
+    // window instead: a study screen that scrolls is a screen whose fourth chart is never seen.
+    const paneHeight = layout === 1 ? 'min-h-[clamp(460px,calc(100dvh-210px),920px)]' : 'min-h-[380px] lg:min-h-[220px]';
     const slots = useMemo(() => paneSymbols(symbols, panes), [symbols, panes]);
     const timeframes = useMemo(
         () => CANDLE_INTERVALS.map((item) => ({ id: item.id as string, label: t(INTERVAL_LABEL_KEYS[item.id] ?? 'chart.tf.1d') })),
@@ -184,6 +179,26 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
         [intervals, initial.intervalId],
     );
     const focusedInterval = intervalOf(focused);
+    // One pane filling the screen, the others put away. It is the reading mode of the grid: open a
+    // company on four horizons, then enlarge the one that matters without losing the workspace.
+    const [maximized, setMaximized] = useState<number | null>(null);
+    const isMaximized = maximized !== null && maximized < panes;
+    const shown = isMaximized ? [maximized as number] : slots.map((_, index) => index);
+
+    const toggleMaximize = (index: number) => {
+        setMaximized((current) => (current === index ? null : index));
+        setFocused(index);
+    };
+
+    // Escape leaves the enlarged pane, like closing a maximized window.
+    useEffect(() => {
+        if (maximized === null) return;
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setMaximized(null);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [maximized]);
 
     /** The interval buttons speak to the focused pane, or to every pane while the screen is linked. */
     const chooseInterval = (id: string) => {
@@ -195,8 +210,18 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
         });
     };
 
-    const toggleLink = () => {
-        setLinked((value) => {
+    /** The pane's own dropdown: same rule as the toolbar, but it targets the pane it sits on. */
+    const setPaneInterval = (index: number, id: string) => {
+        setFocused(index);
+        setIntervals((current) => {
+            const next = Array.from({ length: MAX_PANES }, (_, slot) => current[slot] ?? initial.intervalId);
+            if (linked) next.fill(id);
+            else next[index] = id;
+            return next;
+        });
+    };
+
+    const toggleLink = () => {        setLinked((value) => {
             // Linking a screen that had drifted brings every pane onto the focused one, which is
             // what the next interval click would have done anyway.
             if (!value) {
@@ -262,6 +287,8 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
 
     const chooseLayout = (id: GridLayoutId) => {
         setLayout(id);
+        // A new shape is a new reading of the screen; an enlarged pane has no meaning in it.
+        setMaximized(null);
         // The panes that are no longer shown are dropped, and a widened screen starts with empty
         // panes rather than inventing symbols, so the URL never claims more than the screen shows.
         setSymbols((current) => paneSymbols(current, CHART_LAYOUTS[id].panes));
@@ -366,7 +393,7 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     };
 
     return (
-        <div className="flex flex-col gap-2.5">
+        <div className="chart-grid flex min-h-0 flex-1 flex-col gap-2.5">
             <div className="chart-toolbar" dir="ltr">
                 <LayoutPicker value={layout} onChange={chooseLayout} lang={lang} />
                 <span className="mx-1 h-4 w-px bg-line" />
@@ -500,8 +527,15 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                 </div>
             )}
 
-            <div className={cn('grid gap-2.5', CHART_LAYOUTS[layout].className)}>
-                {slots.map((symbol, index) => (
+            <div
+                className={cn(
+                    'grid min-h-0 flex-1 gap-2.5',
+                    isMaximized ? 'grid-cols-1' : CHART_LAYOUTS[layout].className,
+                )}
+            >
+                {shown.map((index) => {
+                    const symbol = slots[index] ?? '';
+                    return (
                     <ChartPane
                         key={index}
                         lang={lang}
@@ -509,10 +543,13 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                         symbol={symbol}
                         watchlist={watchlist}
                         intervalId={intervalOf(index)}
+                        onInterval={(id) => setPaneInterval(index, id)}
                         studies={studiesByPane[index] ?? []}
                         drawingKey={paneDrawingKey(symbol, index)}
                         active={focused === index}
                         onFocus={() => setFocused(index)}
+                        maximized={maximized === index}
+                        onToggleMaximize={() => toggleMaximize(index)}
                         refreshNonce={refreshNonce}
                         crosshair={crosshair}
                         range={range}
@@ -523,9 +560,10 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                         replay={replay}
                         cursorTime={cursorTime}
                         onReplaySeries={onReplaySeries}
-                        className={cn(index === 0 ? CHART_LAYOUTS[layout].firstClassName : undefined, paneHeight)}
+                        className={cn(!isMaximized && index === 0 ? CHART_LAYOUTS[layout].firstClassName : undefined, paneHeight)}
                     />
-                ))}
+                    );
+                })}
             </div>
         </div>
     );

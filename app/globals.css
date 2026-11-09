@@ -259,6 +259,20 @@
         max-width: 1680px;
     }
 
+    /* The chart workspace is the one page that must not scroll: the whole point of the grid is that
+       every pane is on screen at once, so the grid takes whatever height the chrome leaves. */
+    .workspace-inner.is-charts {
+        height: 100%;
+        min-height: 0;
+        padding-bottom: 12px;
+    }
+    .workspace-inner.is-charts .page-head { padding: 0 2px; }
+    .workspace-inner.is-charts .page-title { font-size: 21px; }
+    .workspace-inner.is-charts .page-sub { margin-top: -1px; }
+    @media (max-width: 1023px) {
+        .workspace-inner.is-charts { height: auto; min-height: 100%; }
+    }
+
     @media (max-width: 1023px) {
         .desk-body { grid-template-columns: minmax(0, 1fr); }
         .shell-container { padding: 0; }

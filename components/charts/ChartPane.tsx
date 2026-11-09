@@ -9,6 +9,8 @@ import {
     List,
     Loader2,
     Lock,
+    Maximize2,
+    Minimize2,
     MousePointer2,
     Pencil,
     Redo2,
@@ -28,7 +30,7 @@ import { readChartType } from '@/lib/chart/view';
 import type { StudyConfig } from '@/lib/chart/studies';
 import { clipToCursor, INTERVAL_LABEL_KEYS, sessionChange, universeName } from '@/lib/chart/grid';
 import { getCompareCandles, getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
-import type { Candle, CandleSet } from '@/lib/market/yahoo-candles';
+import { CANDLE_INTERVALS, type Candle, type CandleSet } from '@/lib/market/yahoo-candles';
 import Price from '@/components/Price';
 import PaneSearch from '@/components/charts/PaneSearch';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
@@ -68,6 +70,8 @@ type Props = {
     paneIndex: number;
     watchlist: string[];
     intervalId: string;
+    /** The pane's own timeframe, changed from the pane's header. */
+    onInterval: (id: string) => void;
     studies: StudyConfig[];
     /**
      * Where this pane keeps its shapes. The grid gives each pane its own key, so four charts of one
@@ -77,6 +81,9 @@ type Props = {
     /** The pane the toolbar is speaking to; also where the accent ring is drawn. */
     active: boolean;
     onFocus: () => void;
+    /** The pane is filling the screen, with its siblings put away. */
+    maximized: boolean;
+    onToggleMaximize: () => void;
     /** Bumped by the refresh button to reload every pane. */
     refreshNonce: number;
     crosshair: { from: number; value: CrosshairSync | null } | null;
@@ -107,10 +114,13 @@ export default function ChartPane({
     paneIndex,
     watchlist,
     intervalId,
+    onInterval,
     studies,
     drawingKey,
     active,
     onFocus,
+    maximized,
+    onToggleMaximize,
     refreshNonce,
     crosshair,
     range,
@@ -154,6 +164,7 @@ export default function ChartPane({
     const [noteText, setNoteText] = useState('');
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [listOpen, setListOpen] = useState(false);
+    const [timeframeOpen, setTimeframeOpen] = useState(false);
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [drawingsHidden, setDrawingsHidden] = useState(false);
     // A resize moves the chart's coordinates without changing its visible range; this counter is
@@ -553,7 +564,15 @@ export default function ChartPane({
                 </span>
             )}
 
-            <header className="relative z-20 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2.5 py-1.5">
+            <header
+                className="relative z-20 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2.5 py-1.5"
+                // Double-clicking the bar maximizes the pane, the way a desktop window behaves; the
+                // buttons inside it keep their own click.
+                onDoubleClick={(event) => {
+                    if ((event.target as HTMLElement).closest('button, a, [role="menu"]')) return;
+                    onToggleMaximize();
+                }}
+            >
                 {symbol ? (
                     <>
                         <button
@@ -572,14 +591,50 @@ export default function ChartPane({
                                 {name}
                             </span>
                         )}
-                        {/* The pane's own timeframe, printed on the pane: with four of them open the
-                            toolbar's active pill is not enough to tell which chart is which. */}
-                        <span
-                            className="pill mono h-6 px-1.5 text-[11px] text-faint"
-                            title={tx(lang, 'chart.grid.interval')}
-                        >
-                            {tx(lang, INTERVAL_LABEL_KEYS[intervalId] ?? 'chart.tf.1d')}
-                        </span>
+                        {/* The pane's own timeframe, changed here: with four charts open, walking to
+                            the toolbar and back for every pane is the slow path. */}
+                        <div className="relative flex items-center">
+                            <button
+                                type="button"
+                                onClick={() => setTimeframeOpen((value) => !value)}
+                                aria-expanded={timeframeOpen}
+                                aria-haspopup="menu"
+                                className={cn('pill mono h-6 gap-0.5 px-1.5 text-[11px] text-faint', timeframeOpen && 'is-up')}
+                                title={tx(lang, 'chart.grid.interval')}
+                                dir="ltr"
+                            >
+                                {tx(lang, INTERVAL_LABEL_KEYS[intervalId] ?? 'chart.tf.1d')}
+                                <ChevronDown className="size-3" />
+                            </button>
+                            {timeframeOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-20" onClick={() => setTimeframeOpen(false)} />
+                                    <div
+                                        role="menu"
+                                        className="absolute start-0 top-full z-30 mt-1 grid w-28 grid-cols-2 gap-0.5 rounded-[10px] border border-line bg-card p-1 shadow-[0_12px_32px_oklch(0_0_0/0.45)]"
+                                    >
+                                        {CANDLE_INTERVALS.map((item) => (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                role="menuitemradio"
+                                                aria-checked={item.id === intervalId}
+                                                onClick={() => {
+                                                    onInterval(item.id);
+                                                    setTimeframeOpen(false);
+                                                }}
+                                                className={cn(
+                                                    'rounded-[7px] px-2 py-1 text-[11.5px] font-semibold text-muted hover:bg-hover hover:text-foreground',
+                                                    item.id === intervalId && 'bg-brand-soft text-brand-ink',
+                                                )}
+                                            >
+                                                {tx(lang, INTERVAL_LABEL_KEYS[item.id] ?? 'chart.tf.1d')}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                         {/* The pane's drawing controls: the same tools as the symbol page, folded into
                             a row of glyphs so a grid of four panes still has room for its charts. */}
                         {status === 'ready' && !replay && (
@@ -791,6 +846,16 @@ export default function ChartPane({
                                 </span>
                             </span>
                         )}
+                        <button
+                            type="button"
+                            onClick={onToggleMaximize}
+                            className="icon-btn"
+                            aria-pressed={maximized}
+                            aria-label={tx(lang, maximized ? 'chart.grid.restore' : 'chart.grid.maximize')}
+                            title={tx(lang, maximized ? 'chart.grid.restore' : 'chart.grid.maximize')}
+                        >
+                            {maximized ? <Minimize2 /> : <Maximize2 />}
+                        </button>
                         <a
                             href={`/stocks/${encodeURIComponent(symbol)}`}
                             className="icon-btn"

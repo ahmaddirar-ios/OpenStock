@@ -951,6 +951,8 @@ const en = {
     'chart.grid.copySymbol': 'Same symbol in every pane',
     'chart.grid.fourTimeframes': '4 timeframes',
     'chart.grid.fourTimeframesHint': 'One company on four horizons: month, week, day, hour',
+    'chart.grid.maximize': 'Fill the screen with this pane',
+    'chart.grid.restore': 'Back to the grid',
     'chart.grid.searchError': 'That does not look like a symbol.',
     // The strategy lab: a library of rules, their equations, and an honest backtest.
     'nav.strategies': 'Strategies',
@@ -2904,6 +2906,8 @@ const ar: Record<StringKey, string> = {
     'chart.grid.copySymbol': 'نفس الرمز في كل اللوحات',
     'chart.grid.fourTimeframes': '٤ فواصل',
     'chart.grid.fourTimeframesHint': 'شركة واحدة على أربع آفاق: شهر، أسبوع، يوم، ساعة',
+    'chart.grid.maximize': 'املأ الشاشة بهذه اللوحة',
+    'chart.grid.restore': 'رجوع إلى الشبكة',
     'chart.grid.searchError': 'هذا لا يبدو رمزًا صالحًا.',
     // مركز الاستراتيجيات: مكتبة قواعد ومعادلاتها، واختبار خلفي أمين.
     'nav.strategies': 'الاستراتيجيات',

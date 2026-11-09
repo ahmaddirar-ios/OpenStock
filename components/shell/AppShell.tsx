@@ -127,7 +127,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, role, features, notice
                     <div className="app">
                         <TabBar onMenu={() => setNavOpen(true)} lang={lang} role={role} features={features} />
                         <main id="main" tabIndex={-1} ref={workspaceRef} className={cn('workspace', pathname === '/dashboard' && 'is-first-tab')}>
-                            <div className={cn('workspace-inner', pathname === '/dashboard' && 'is-overview')}>
+                            <div className={cn('workspace-inner', pathname === '/charts' && 'is-charts', pathname === '/dashboard' && 'is-overview')}>
                                 {children}
                             </div>
                         </main>
