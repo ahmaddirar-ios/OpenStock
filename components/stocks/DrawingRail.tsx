@@ -8,6 +8,7 @@ import {
     Eraser,
     EyeOff,
     Grid2x2,
+    Layers,
     Lock,
     Magnet,
     Minus,
@@ -34,7 +35,9 @@ import type { StringKey } from '@/lib/i18n';
 const GROUP_ICONS: Record<ToolGroup, LucideIcon> = {
     cursor: MousePointer2,
     lines: Minus,
-    fib: Waves,
+    // Fib and Elliott used the same wave glyph, so the two groups read as one. Fibonacci is a set of
+    // levels stacked over a range, which is what Layers says; the waves belong to Elliott.
+    fib: Layers,
     gann: Grid2x2,
     patterns: Shapes,
     elliott: Waves,

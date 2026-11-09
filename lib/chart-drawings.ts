@@ -75,6 +75,7 @@ export type ShapeKind =
     | 'table'
     | 'text'
     | 'poly'
+    | 'wolfe'
     | 'hs'
     | 'triangle'
     | 'vlines'
@@ -106,6 +107,8 @@ export type ShapeTool =
     | 'icon' | 'image' | 'bars' | 'avwap' | 'vprofile'
     // classical patterns
     | 'xabcd' | 'cypher' | 'hs' | 'abcd' | 'triangle' | 'drives3'
+    // Wolfe's five-point reversal, with its converging channel and the 1-4 target line
+    | 'wolfe'
     // Elliott wave shapes
     | 'ew-impulse' | 'ew-abc' | 'ew-triangle' | 'ew-double' | 'ew-triple'
     // manual counts (labels come from the chosen degree)
@@ -408,6 +411,9 @@ export const TOOL_DEFS: ToolDef[] = [
     { tool: 'abcd', group: 'patterns', kind: 'poly', clicks: 4, pointLabels: ['A', 'B', 'C', 'D'], defaultColor: 'teal' },
     { tool: 'triangle', group: 'patterns', kind: 'triangle', clicks: 4, pointLabels: ['1', '2', '3', '4'], defaultColor: 'teal' },
     { tool: 'drives3', group: 'patterns', kind: 'poly', clicks: 3, pointLabels: ['1', '2', '3'], defaultColor: 'teal' },
+    // Wolfe's five turns. The 1-3 and 2-4 lines are the channel, and the 1-4 line is the target;
+    // the renderer draws both, so the trader only places the turns.
+    { tool: 'wolfe', group: 'patterns', kind: 'wolfe', clicks: 5, pointLabels: ['1', '2', '3', '4', '5'], defaultColor: 'teal' },
 
     { tool: 'ew-impulse', group: 'elliott', kind: 'poly', clicks: 6, pointLabels: ['0', '1', '2', '3', '4', '5'], defaultColor: 'cyan' },
     { tool: 'ew-abc', group: 'elliott', kind: 'poly', clicks: 4, pointLabels: ['0', 'A', 'B', 'C'], defaultColor: 'cyan' },

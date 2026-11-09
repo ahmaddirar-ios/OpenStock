@@ -125,6 +125,7 @@ import { BAR_SECONDS } from '@/lib/chart-countdown';
 import { decodeChartShare, sharePath } from '@/lib/chart-share';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
+import { findWolfe } from '@/lib/wolfe';
 import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
 import CandleTooltip from '@/components/stocks/CandleTooltip';
 import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
@@ -622,6 +623,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     });
     const [sensitivity, setSensitivity] = useState<AutoSensitivity>(AUTO_SENSITIVITIES[0]);
     const [autoNotice, setAutoNotice] = useState<StringKey | null>(null);
+    // Wolfe's notice is its own: the two autos sit in different flyouts and must not share a message.
+    const [wolfeNotice, setWolfeNotice] = useState<StringKey | null>(null);
     const [paste, setPaste] = useState('');
     const [transfer, setTransfer] = useState<'ok' | 'bad' | 'copied' | 'blocked' | null>(null);
     // Bumped whenever the chart pans or zooms, so the drawings are re-projected onto the new scale.
@@ -1451,6 +1454,34 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         setMenu(null);
     };
 
+    /**
+     * Finds the most recent Wolfe wave in the candles and places it like any other drawing: the
+     * trader can drag, recolour, or delete it straight away. Same one-shot behaviour as the count.
+     */
+    const runWolfe = (sensitivityId: AutoSensitivity) => {
+        const candles = data?.candles ?? [];
+        setSensitivity(sensitivityId);
+        if (candles.length === 0) {
+            setWolfeNotice('chart.wolfe.autoLoading');
+            return;
+        }
+        const drawing = findWolfe(candles, {
+            ...(sensitivityId === 'atr'
+                ? { mode: 'atr' as const }
+                : { mode: 'percent' as const, percent: Number(sensitivityId) }),
+        });
+        if (!drawing) {
+            setWolfeNotice('chart.wolfe.autoNone');
+            return;
+        }
+        commit(drawing);
+        setSelectedId([drawing.id]);
+        setTool(null);
+        setPendingLabels(null);
+        setWolfeNotice(null);
+        setMenu(null);
+    };
+
     /** The same wording the manual count rows use, so the automatic rows read as the same feature. */
     const countLabel = ({ degree, kind }: { degree: CountDegree; kind: CountKind }) =>
         `${t(COUNT_TOOL[kind] === 'ew-count' ? 'chart.count.impulse' : 'chart.count.correction')} · ${t(
@@ -1572,6 +1603,37 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             {autoNotice && (
                 <p role="status" className="px-2 pt-1.5 text-[11px] leading-snug text-faint">
                     {t(autoNotice)}
+                </p>
+            )}
+        </div>
+    );
+
+    // The patterns flyout offers the same one-shot detection for Wolfe, over the same sensitivities.
+    const wolfeExtra = (
+        <div className="mt-1 border-t border-line pt-1.5">
+            <p className="px-2 pb-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">{t('chart.wolfe.auto')}</p>
+            <div className="flex items-center gap-1 px-2">
+                {AUTO_SENSITIVITIES.map((id) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => runWolfe(id)}
+                        disabled={!hasCandles}
+                        aria-pressed={sensitivity === id}
+                        title={id === 'atr' ? t('chart.count.autoAtr') : undefined}
+                        className={cn(
+                            'flex-1 rounded-full px-2 py-1 text-[11.5px] font-semibold transition-colors',
+                            sensitivity === id ? 'bg-brand text-brand-ink' : 'bg-page text-muted hover:bg-hover',
+                            !hasCandles && 'cursor-not-allowed opacity-40',
+                        )}
+                    >
+                        {id === 'atr' ? 'ATR' : `${Math.round(Number(id) * 100)}%`}
+                    </button>
+                ))}
+            </div>
+            {wolfeNotice && (
+                <p role="status" className="px-2 pt-1.5 text-[11px] leading-snug text-faint">
+                    {t(wolfeNotice)}
                 </p>
             )}
         </div>
@@ -2227,7 +2289,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     canClear={drawings.length > 0}
                     onClear={clearAll}
                     label={t}
-                    renderGroupExtra={(group) => (group === 'elliott' ? countExtra : null)}
+                    renderGroupExtra={(group) => (group === 'elliott' ? countExtra : group === 'patterns' ? wolfeExtra : null)}
                 />
             )}
 

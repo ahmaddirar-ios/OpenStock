@@ -947,3 +947,78 @@ export function rollingCorrelation(values: readonly number[], other: readonly (n
     }
     return out;
 }
+
+export type WaveTrend = { wt1: Series; wt2: Series };
+
+/**
+ * An exponential average that starts on the first real value rather than on a window of padding.
+ * The channel index below is null through its warm-up, and seeding the second average with zeros
+ * would drag the first real bars toward zero for weeks. Pine's `ta.ema` skips those gaps, so this
+ * one does too.
+ */
+function emaSeries(values: Series, period: number): Series {
+    const out: Series = values.map(() => null);
+    if (period < 1) return out;
+    const k = 2 / (period + 1);
+    const seed: number[] = [];
+    let running: number | null = null;
+    for (let i = 0; i < values.length; i += 1) {
+        const value = values[i];
+        if (value == null || !Number.isFinite(value)) continue;
+        if (running == null) {
+            seed.push(value);
+            if (seed.length === period) {
+                running = seed.reduce((sum, item) => sum + item, 0) / period;
+                out[i] = running;
+            }
+            continue;
+        }
+        running = value * k + running * (1 - k);
+        out[i] = running;
+    }
+    return out;
+}
+
+/** A moving average over the real values of a series, null until its window is full. */
+function smaSeries(values: Series, period: number): Series {
+    const out: Series = values.map(() => null);
+    if (period < 1) return out;
+    const window: number[] = [];
+    for (let i = 0; i < values.length; i += 1) {
+        const value = values[i];
+        if (value == null || !Number.isFinite(value)) {
+            window.length = 0;
+            continue;
+        }
+        window.push(value);
+        if (window.length > period) window.shift();
+        if (window.length === period) out[i] = window.reduce((sum, item) => sum + item, 0) / period;
+    }
+    return out;
+}
+
+export type WaveBar = { high: number; low: number; close: number };
+
+/**
+ * WaveTrend (LazyBear's channel index): how far the typical price sits from its own average, in
+ * units of that distance's own average. A distance measured against its own volatility is what
+ * makes the +/-60 bands mean the same thing on a quiet stock and a wild one.
+ *
+ * `channel` is the length of both averages inside the index; `average` smooths the index itself.
+ * The signal line is a four-bar average of the first line, as published.
+ */
+export function waveTrend(candles: readonly WaveBar[], channel = 10, average = 21): WaveTrend {
+    const ap = candles.map((candle) => (candle.high + candle.low + candle.close) / 3);
+    const esa = emaSeries(ap, channel);
+    const deviation: Series = ap.map((value, index) => (esa[index] == null ? null : Math.abs(value - (esa[index] as number))));
+    const d = emaSeries(deviation, channel);
+    const ci: Series = ap.map((value, index) => {
+        const mean = esa[index];
+        const spread = d[index];
+        if (mean == null || spread == null || spread === 0) return null;
+        return (value - mean) / (0.015 * spread);
+    });
+    const wt1 = emaSeries(ci, average);
+    const wt2 = smaSeries(wt1, 4);
+    return { wt1, wt2 };
+}

@@ -213,6 +213,29 @@ describe('the geometric shapes on the chart', () => {
     });
 });
 
+describe('the Wolfe wave on the chart', () => {
+    const wave: DrawPoint[] = [
+        { time: 1000, price: 100 },
+        { time: 2000, price: 120 },
+        { time: 3000, price: 90 },
+        { time: 4000, price: 108 },
+        { time: 5000, price: 78 },
+    ];
+
+    it('labels the five turns and names the target line', () => {
+        const { texts } = renderTool('wolfe', wave);
+        expect(texts).toEqual(expect.arrayContaining(['1', '2', '3', '4', '5', 'EPA']));
+    });
+
+    it('draws the wave, the two channel lines and the 1-4 target', () => {
+        const { lines, dashes } = renderTool('wolfe', wave);
+        // Four segments of the wave, two channel rays (1-3 and 2-4), and the target ray (1-4).
+        expect(lines).toHaveLength(7);
+        expect(dashes.filter((dash) => dash === '5 3')).toHaveLength(2);
+        expect(dashes.filter((dash) => dash === '7 4')).toHaveLength(1);
+    });
+});
+
 describe('the freehand brush on the chart', () => {
     it('draws a stroke through every point it was given', () => {
         const { paths } = renderTool('brush', [

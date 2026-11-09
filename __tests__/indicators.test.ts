@@ -34,6 +34,7 @@ import {
     williamsR,
     wma,
     hma,
+    waveTrend,
 } from '@/lib/indicators';
 
 describe('sma', () => {
@@ -753,5 +754,43 @@ describe('rollingCorrelation', () => {
     it('has no window before the first one closes', () => {
         const base = series((index) => index);
         expect(rollingCorrelation(base, base, 10).slice(0, 9).every((value) => value == null)).toBe(true);
+    });
+});
+
+describe('waveTrend', () => {
+    const bars = (count: number, price: (index: number) => number) =>
+        Array.from({ length: count }, (_, index) => {
+            const close = price(index);
+            return { time: index * 60, open: close, high: close + 1, low: close - 1, close, volume: 10 };
+        });
+
+    it('stays null until the channel and the average have both filled', () => {
+        const { wt1, wt2 } = waveTrend(bars(60, (index) => 100 + index), 10, 21);
+        // 10 bars for the channel, 10 more for its deviation, 21 for the average of the channel index.
+        expect(wt1.slice(0, 38).every((value) => value == null)).toBe(true);
+        expect(wt1[38]).not.toBeNull();
+        // The signal line is a four-bar average of the first line.
+        expect(wt2.slice(0, 41).every((value) => value == null)).toBe(true);
+        expect(wt2[41]).not.toBeNull();
+    });
+
+    it('reads positive while price runs above its own average, and negative below it', () => {
+        const rising = waveTrend(bars(80, (index) => 100 + index), 10, 21);
+        const falling = waveTrend(bars(80, (index) => 200 - index), 10, 21);
+        expect(rising.wt1.at(-1)).toBeGreaterThan(0);
+        expect(falling.wt1.at(-1)).toBeLessThan(0);
+    });
+
+    it('returns one value per candle', () => {
+        const candles = bars(50, (index) => 100 + Math.sin(index / 3) * 5);
+        const { wt1, wt2 } = waveTrend(candles, 10, 21);
+        expect(wt1).toHaveLength(candles.length);
+        expect(wt2).toHaveLength(candles.length);
+    });
+
+    it('draws nothing when the history is shorter than the warm-up', () => {
+        const { wt1, wt2 } = waveTrend(bars(3, (index) => 100 + index), 10, 21);
+        expect(wt1.every((value) => value == null)).toBe(true);
+        expect(wt2.every((value) => value == null)).toBe(true);
     });
 });

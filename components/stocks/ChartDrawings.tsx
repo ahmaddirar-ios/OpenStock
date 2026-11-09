@@ -767,6 +767,52 @@ export default function ChartDrawings({
             );
         }
 
+        // Wolfe's five turns: the wave itself, the two converging channel lines (1-3 and 2-4), and
+        // the 1-4 line extended as the target. The target is the 1-4 line, not the 1-3 line — the
+        // 1-3 line is what point 5 pierces, and the 1-4 line is where the move is expected to end.
+        if (kind === 'wolfe') {
+            const rightEdge = svgRef.current?.clientWidth ?? 0;
+            const extend = (from: ScreenPoint, to: ScreenPoint): ScreenPoint => {
+                const dx = to.x - from.x;
+                return { x: rightEdge, y: Math.abs(dx) > 1 ? from.y + ((to.y - from.y) / dx) * (rightEdge - from.x) : from.y };
+            };
+            const channel13 = screen.length >= 3 ? extend(screen[0], screen[2]) : null;
+            const channel24 = screen.length >= 4 ? extend(screen[1], screen[3]) : null;
+            const target = screen.length >= 4 ? extend(screen[0], screen[3]) : null;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {screen.slice(0, -1).map((point, i) => (
+                        <line key={`${drawing.id}-s${i}`} x1={point.x} y1={point.y} x2={screen[i + 1].x} y2={screen[i + 1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    ))}
+                    {channel13 && (
+                        <line x1={screen[0].x} y1={screen[0].y} x2={channel13.x} y2={channel13.y} stroke={color} strokeWidth={1} strokeDasharray="5 3" opacity={0.7} />
+                    )}
+                    {channel24 && (
+                        <line x1={screen[1].x} y1={screen[1].y} x2={channel24.x} y2={channel24.y} stroke={color} strokeWidth={1} strokeDasharray="5 3" opacity={0.7} />
+                    )}
+                    {target && (
+                        <>
+                            <line x1={screen[0].x} y1={screen[0].y} x2={target.x} y2={target.y} stroke={color} strokeWidth={width} strokeDasharray="7 4" opacity={opacity} />
+                            <text x={rightEdge - 6} y={target.y - 6} textAnchor="end" fontSize={11} className="mono" fill={color} opacity={opacity}>
+                                EPA
+                            </text>
+                        </>
+                    )}
+                    {screen.map((point, i) => (
+                        <g key={`${drawing.id}-p${i}`}>
+                            {dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity)}
+                            {glyphs[i] && (
+                                <text x={point.x} y={point.y - 8} textAnchor="middle" fontSize={12} fontWeight={700} fill={color} opacity={opacity}>
+                                    {glyphs[i]}
+                                </text>
+                            )}
+                        </g>
+                    ))}
+                    {selected && !locked && screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
         if (kind === 'poly' || kind === 'hs' || kind === 'triangle') {
             const rightEdge = svgRef.current?.clientWidth ?? 0;
             const ray = (from: ScreenPoint, to: ScreenPoint, key: string, stroke: string) => {

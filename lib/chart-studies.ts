@@ -35,6 +35,7 @@ import {
     supertrend,
     vwap,
     vwma,
+    waveTrend,
     williamsR,
     wma,
     type PivotPeriod,
@@ -93,6 +94,7 @@ export type StudyId =
     | 'mfi'
     | 'correlation'
     | 'spread'
+    | 'wavetrend'
     | 'avwap'
     | 'vprofile'
     | 'formula';
@@ -554,6 +556,30 @@ const DEFINITIONS: StudyDef[] = [
         ],
         lines: [{ key: 'ao', short: 'AO', name: 'study.line.ao', color: 'brand', kind: 'histogram' }],
         compute: (candles, param) => ({ ao: awesomeOscillator(candles, param('fast'), param('slow')) }),
+    }),
+    define({
+        id: 'wavetrend',
+        label: 'study.wavetrend',
+        group: 'oscillator',
+        params: [
+            { key: 'channel', label: 'study.param.channel', min: 2, max: 100, step: 1, default: 10 },
+            { key: 'average', label: 'study.param.average', min: 2, max: 200, step: 1, default: 21 },
+            { key: 'level', label: 'study.param.level', min: 10, max: 100, step: 1, default: 60 },
+        ],
+        lines: [
+            { key: 'wt1', short: 'WT1', name: 'study.line.wt1', color: 'brand', kind: 'line' },
+            { key: 'wt2', short: 'WT2', name: 'study.line.wt2', color: 'warn', kind: 'line' },
+            { key: 'ob', short: 'OB', name: 'study.line.ob', color: 'faint', kind: 'line' },
+            { key: 'os', short: 'OS', name: 'study.line.os', color: 'faint', kind: 'line' },
+        ],
+        compute: (candles, param) => {
+            const { wt1, wt2 } = waveTrend(candles, param('channel'), param('average'));
+            const level = param('level');
+            // The bands only exist once the index does, so a series shorter than the warm-up draws
+            // nothing at all rather than two lines across an empty pane.
+            const flat = (value: number) => wt1.map((wt) => (wt == null ? null : value));
+            return { wt1, wt2, ob: flat(level), os: flat(-level) };
+        },
     }),
     define({
         id: 'cmf',

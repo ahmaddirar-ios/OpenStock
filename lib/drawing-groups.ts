@@ -48,6 +48,7 @@ export const TOOL_LABEL_KEYS: Record<ShapeTool, StringKey> = {
     abcd: 'chart.pat.abcd',
     triangle: 'chart.pat.triangle',
     drives3: 'chart.pat.drives3',
+    wolfe: 'chart.pat.wolfe',
     'ew-impulse': 'chart.pat.ewImpulse',
     'ew-abc': 'chart.pat.ewAbc',
     'ew-triangle': 'chart.pat.ewTriangle',

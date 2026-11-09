@@ -111,7 +111,7 @@ describe('the tool registry', () => {
             'icon',
             'image',
         ]);
-        expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3']);
+        expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3', 'wolfe']);
         // The Gann flyout holds the angles, the pitchforks, the measured channels and the cycles,
         // in the order they sit in the registry (and so in the flyout). The original `gann` tool is
         // retired (hidden) now that the richer gannbox replaced it.

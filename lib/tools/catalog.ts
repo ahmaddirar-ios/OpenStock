@@ -133,6 +133,7 @@ const DRAWING_KEYWORDS: Partial<Record<ShapeTool | 'select' | 'measure', readonl
     abcd: ['ab cd', 'نمط abcd'],
     triangle: ['مثلث'],
     drives3: ['three drives', 'ثلاث دفعات'],
+    wolfe: ['wolfe wave', 'wolfe', 'وولف', 'موجة وولف', 'موجات'],
     // elliott
     'ew-impulse': ['elliott', 'impulse', 'اليوت', 'دافعة', 'موجة'],
     'ew-abc': ['correction', 'abc', 'تصحيح'],
