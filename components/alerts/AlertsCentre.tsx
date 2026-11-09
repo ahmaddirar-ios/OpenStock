@@ -10,8 +10,8 @@ import { alertSource, hasSecondNumber, PARAM_BOUNDS, needsCandles, type AlertCon
 import { cn } from '@/lib/utils';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { ALERT_CONDITIONS, alertConditionLabel, alertParamsLabel, alertTargetLabel, alertTargetPlaceholder, alertTargetUnit, isTextAlert, measureLabel } from '@/lib/alert-labels';
-import { checkFormula, describeFormulaError } from '@/lib/formula';
-import { loadSavedStrategies, type SavedStrategy } from '@/lib/strategy-library-custom';
+import { checkFormula, describeFormulaError } from '@/lib/formula/formula';
+import { loadSavedStrategies, type SavedStrategy } from '@/lib/strategy/library-custom';
 import PushToggle from '@/components/alerts/PushToggle';
 import InAppNotifyToggle from '@/components/alerts/InAppNotifyToggle';
 import { alertPushPayload } from '@/lib/push';

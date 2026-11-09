@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_SCREEN_SYMBOLS, SCREEN_BATCH, screenBatches, screenFormulaMatch } from '@/lib/screener-formula';
-import type { FormulaBar } from '@/lib/formula';
+import { MAX_SCREEN_SYMBOLS, SCREEN_BATCH, screenBatches, screenFormulaMatch } from '@/lib/formula/screener';
+import type { FormulaBar } from '@/lib/formula/formula';
 
 const bar = (close: number, volume = 1_000): FormulaBar => ({ time: 0, open: close, high: close, low: close, close, volume });
 

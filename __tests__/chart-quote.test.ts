@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { previousSessionClose, sessionChange, sessionDay, tadawulPhase } from '@/lib/chart-quote';
-import type { Candle } from '@/lib/yahoo-candles';
+import { previousSessionClose, sessionChange, sessionDay, tadawulPhase } from '@/lib/chart/quote';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const bar = (time: number, close: number): Candle => ({
     time,

@@ -70,7 +70,7 @@ const AlertSchema = new Schema<IAlert>(
         triggered: { type: Boolean, default: false },
         lastPrice: { type: Number, default: null },
         // Mixed: a drawing snapshot is the same object the chart hands over, validated by
-        // lib/drawing-alert on the way in and on the way out.
+        // lib/chart/drawing-alert on the way in and on the way out.
         anchor: { type: Schema.Types.Mixed, default: null },
         lastGap: { type: Number, default: null },
         triggeredAt: { type: Date, default: null },

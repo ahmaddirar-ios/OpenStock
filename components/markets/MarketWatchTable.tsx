@@ -3,9 +3,9 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
-import { directionOf, watchChange, watchPrice, type WatchSort, type WatchSortKey } from '@/lib/market-watch';
+import { directionOf, watchChange, watchPrice, type WatchSort, type WatchSortKey } from '@/lib/market/watch';
 import { tradingViewSymbolUrl } from '@/lib/utils';
-import type { SectionBoard } from '@/lib/world-board';
+import type { SectionBoard } from '@/lib/market/world-board';
 
 /**
  * The market-watch table, the way a terminal draws one: market · symbol · name · last · change,

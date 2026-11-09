@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowUpRight, CircleDot, Clock3, Info, Wifi } from 'lucide-react';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import type { WorldBoardPayload } from '@/lib/world-board';
+import type { WorldBoardPayload } from '@/lib/market/world-board';
 import type { SiteNotice } from '@/lib/notice';
 
 /**

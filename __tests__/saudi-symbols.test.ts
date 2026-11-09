@@ -5,7 +5,7 @@ import {
     normalizeArabic,
     saudiSymbolName,
     saudiSymbolNameAr,
-} from '@/lib/saudi-symbols';
+} from '@/lib/market/saudi-symbols';
 
 // Arabic users type company names in Arabic script. Finnhub's index is Latin-only, so a local
 // table answers those queries. These tests pin the normalisation and the ranking.

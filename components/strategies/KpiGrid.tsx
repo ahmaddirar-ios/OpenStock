@@ -1,6 +1,6 @@
 'use client';
 
-import type { Metrics } from '@/lib/strategies';
+import type { Metrics } from '@/lib/strategy/strategies';
 import { tx, type Lang } from '@/lib/i18n';
 import { bars, num, pct } from '@/components/strategies/format';
 import { cn } from '@/lib/utils';

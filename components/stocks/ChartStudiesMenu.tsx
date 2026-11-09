@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Maximize2, Plus, Search, X } from 'lucide-react';
-import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_COLOR_TOKENS, STUDY_IDS, STUDY_LINE_DASHES, STUDY_WIDTHS, defaultStudy, describeStudy, studiesChoice, studiesParam, studiesText, studyLineStyle, studyLines, studyWidth, type StudyConfig, type StudyId, type StudyLineStyle } from '@/lib/chart-studies';
+import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_COLOR_TOKENS, STUDY_IDS, STUDY_LINE_DASHES, STUDY_WIDTHS, defaultStudy, describeStudy, studiesChoice, studiesParam, studiesText, studyLineStyle, studyLines, studyWidth, type StudyConfig, type StudyId, type StudyLineStyle } from '@/lib/chart/studies';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { checkFormula, describeFormulaError } from '@/lib/formula';
-import { addSavedFormula, loadSavedFormulas, removeSavedFormula, saveSavedFormulas, type SavedFormula } from '@/lib/formula-library';
+import { checkFormula, describeFormulaError } from '@/lib/formula/formula';
+import { addSavedFormula, loadSavedFormulas, removeSavedFormula, saveSavedFormulas, type SavedFormula } from '@/lib/formula/library';
 import FormulaStudio from '@/components/stocks/FormulaStudio';
 
 // The indicators menu: search a study, add it, tune its parameters, remove it. It owns no state of

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildSurface, MAX_SURFACE_AXIS, pickSurfaceAxes, surfaceTone, thinAxis } from '@/lib/strategy-surface';
-import type { OptimizerRow } from '@/lib/custom-strategy';
+import { buildSurface, MAX_SURFACE_AXIS, pickSurfaceAxes, surfaceTone, thinAxis } from '@/lib/strategy/surface';
+import type { OptimizerRow } from '@/lib/strategy/custom';
 
 const row = (values: Record<string, number>, sharpe: number | null, totalReturn = 0): OptimizerRow => ({
     values,

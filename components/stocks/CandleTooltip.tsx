@@ -2,8 +2,8 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
-import type { BarReadout } from '@/lib/chart-readout';
-import { timeLabel, type TimeZoneId } from '@/lib/chart-time';
+import type { BarReadout } from '@/lib/chart/readout';
+import { timeLabel, type TimeZoneId } from '@/lib/chart/time';
 import { cn } from '@/lib/utils';
 
 // The bar under the cursor, spelled out: the stamp, the four prices, the move against the previous

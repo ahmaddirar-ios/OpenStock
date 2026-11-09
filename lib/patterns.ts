@@ -3,9 +3,9 @@
 // are one of the shapes a trader names. lib/pattern-scan.ts runs them; the page renders the hits.
 
 import { checkWolfe, lineAt } from '@/lib/wolfe';
-import { toolDef, type DrawPoint, type ShapeTool } from '@/lib/chart-drawings';
-import type { Pivot } from '@/lib/auto-count';
-import type { Candle } from '@/lib/yahoo-candles';
+import { toolDef, type DrawPoint, type ShapeTool } from '@/lib/chart/drawings';
+import type { Pivot } from '@/lib/chart/auto-count';
+import type { Candle } from '@/lib/market/yahoo-candles';
 import type { StringKey } from '@/lib/i18n';
 
 export type PatternDirection = 'bullish' | 'bearish';

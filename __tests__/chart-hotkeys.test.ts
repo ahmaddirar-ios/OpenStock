@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, MEASURE_KEY, hotkeyForTool, toolForKey } from '@/lib/chart-hotkeys';
+import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, MEASURE_KEY, hotkeyForTool, toolForKey } from '@/lib/chart/hotkeys';
 
 describe('chart hotkeys', () => {
     it('arms a tool from a bare letter, in either case', () => {
@@ -42,7 +42,7 @@ describe('chart hotkeys', () => {
     });
 });
 
-import { textStyleOf, parseDrawingList, TEXT_SIZES } from '@/lib/chart-drawings';
+import { textStyleOf, parseDrawingList, TEXT_SIZES } from '@/lib/chart/drawings';
 
 describe('note text styling', () => {
     const note = (extra: Record<string, unknown> = {}) => ({
@@ -74,7 +74,7 @@ describe('note text styling', () => {
     });
 });
 
-import { MAGNET_PIXELS_BY_STRENGTH, magnetPixels, nextMagnetStrength } from '@/lib/chart-magnet';
+import { MAGNET_PIXELS_BY_STRENGTH, magnetPixels, nextMagnetStrength } from '@/lib/chart/magnet';
 
 describe('magnet strength', () => {
     it('cycles off → weak → strong → off', () => {
@@ -91,7 +91,7 @@ describe('magnet strength', () => {
     });
 });
 
-import { FILL_OPACITIES, fillOf, hasFill, parseDrawingList as parseDrawings2, textStyleOf as styleOf } from '@/lib/chart-drawings';
+import { FILL_OPACITIES, fillOf, hasFill, parseDrawingList as parseDrawings2, textStyleOf as styleOf } from '@/lib/chart/drawings';
 
 describe('fill and italic', () => {
     const box = (extra: Record<string, unknown> = {}) => ({
@@ -125,7 +125,7 @@ describe('fill and italic', () => {
     });
 });
 
-import { visibleOn } from '@/lib/chart-drawings';
+import { visibleOn } from '@/lib/chart/drawings';
 
 describe('drawing visibility by interval', () => {
     it('shows everywhere by default', () => {
@@ -154,7 +154,7 @@ describe('note background', () => {
     });
 });
 
-import { fibLevels, fibRatiosOf, hasFibLevels, MAX_FIB_LEVELS } from '@/lib/chart-drawings';
+import { fibLevels, fibRatiosOf, hasFibLevels, MAX_FIB_LEVELS } from '@/lib/chart/drawings';
 
 describe('Fibonacci levels', () => {
     const fib = (extra: Record<string, unknown> = {}) => ({
@@ -196,7 +196,7 @@ describe('Fibonacci levels', () => {
     });
 });
 
-import { textColorOf } from '@/lib/chart-drawings';
+import { textColorOf } from '@/lib/chart/drawings';
 
 describe('text colour', () => {
     it('follows the stroke until a colour of its own is chosen', () => {
@@ -215,7 +215,7 @@ describe('text colour', () => {
     });
 });
 
-import { translateDrawing } from '@/lib/chart-drawings';
+import { translateDrawing } from '@/lib/chart/drawings';
 
 describe('moving a whole drawing', () => {
     const line = {
@@ -240,7 +240,7 @@ describe('moving a whole drawing', () => {
     });
 });
 
-import { CUSTOM_COLOR, drawingColor } from '@/lib/chart-drawings';
+import { CUSTOM_COLOR, drawingColor } from '@/lib/chart/drawings';
 
 describe('custom colours', () => {
     const line = (extra: Record<string, unknown> = {}) => ({

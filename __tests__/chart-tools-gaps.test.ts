@@ -7,7 +7,7 @@ import {
     volumeProfile,
     type DrawCandle,
     type Drawing,
-} from '@/lib/chart-drawings';
+} from '@/lib/chart/drawings';
 
 const candles: DrawCandle[] = [
     { time: 1000, open: 100, high: 102, low: 99, close: 101, volume: 10 },

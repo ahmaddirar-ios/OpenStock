@@ -1,4 +1,4 @@
-import { loadWorldBoard } from '@/lib/world-board';
+import { loadWorldBoard } from '@/lib/market/world-board';
 import WorldBoard from '@/components/markets/WorldBoard';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';

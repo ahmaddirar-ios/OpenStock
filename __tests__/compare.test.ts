@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import type { Candle } from '@/lib/yahoo-candles';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const candle = (time: number, close: number): Candle => ({ time, open: close, high: close, low: close, close, volume: 1 });
 

@@ -9,8 +9,8 @@ import {
     removeSavedStrategy,
     storeSavedStrategies,
     type SavedStrategy,
-} from '@/lib/strategy-library-custom';
-import type { CustomStrategy } from '@/lib/custom-strategy';
+} from '@/lib/strategy/library-custom';
+import type { CustomStrategy } from '@/lib/strategy/custom';
 
 const strategy = (over: Partial<CustomStrategy> = {}): CustomStrategy => ({
     id: 'base',

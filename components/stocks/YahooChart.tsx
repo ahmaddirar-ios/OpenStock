@@ -55,15 +55,15 @@ import {
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import ChartPrintSheet from '@/components/stocks/ChartPrintSheet';
-import { applyCopiedStyle, copyStyleOf, type CopiedStyle } from '@/lib/drawing-style-copy';
-import { printDocumentTitle } from '@/lib/chart-print';
-import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
-import { EDIT_SHORTCUTS, MEASURE_KEY, REPLAY_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
+import { applyCopiedStyle, copyStyleOf, type CopiedStyle } from '@/lib/chart/drawing-style-copy';
+import { printDocumentTitle } from '@/lib/chart/print';
+import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart/magnet';
+import { EDIT_SHORTCUTS, MEASURE_KEY, REPLAY_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart/hotkeys';
 import {
     readTimeZone,
     writeTimeZone,
     type TimeZoneId,
-} from '@/lib/chart-time';
+} from '@/lib/chart/time';
 import {
     applyHistory,
     canRedo,
@@ -73,11 +73,11 @@ import {
     redoHistory,
     undoHistory,
     type History as DrawingHistory,
-} from '@/lib/chart-history';
+} from '@/lib/chart/history';
 import StrategyMenu from '@/components/stocks/StrategyMenu';
 import ReplayPanel from '@/components/stocks/ReplayPanel';
 import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { CANDLE_INTERVALS, eventLabel, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, eventLabel, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/market/yahoo-candles';
 import { getEarningsDates } from '@/lib/actions/finnhub.actions';
 import {
     MIN_WARMUP_BARS,
@@ -104,11 +104,11 @@ import {
     type PendingOrder,
     type ReplayIntent,
     type ReplaySpeed,
-} from '@/lib/replay';
+} from '@/lib/chart/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, canExtend, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, hitTest, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
-import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, canExtend, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, hitTest, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart/drawings';
+import { TOOL_LABEL_KEYS } from '@/lib/chart/drawing-groups';
 import {
     loadDrawingStyles,
     saveDrawingStyles,
@@ -116,24 +116,24 @@ import {
     withDrawingStyle,
     withoutDrawingStyle,
     type DrawingStyleMap,
-} from '@/lib/drawing-styles';
+} from '@/lib/chart/drawing-styles';
 import DrawingRail from '@/components/stocks/DrawingRail';
-import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/drawing-templates';
-import { addChartTemplate, chartTemplateCounts, instantiateChartTemplate, loadChartTemplates, removeChartTemplate, saveChartTemplates, type ChartTemplate } from '@/lib/chart-templates';
-import { candlesToCsv, csvFileName } from '@/lib/chart-export';
-import { BAR_SECONDS } from '@/lib/chart-countdown';
-import { decodeChartShare, sharePath } from '@/lib/chart-share';
+import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/chart/drawing-templates';
+import { addChartTemplate, chartTemplateCounts, instantiateChartTemplate, loadChartTemplates, removeChartTemplate, saveChartTemplates, type ChartTemplate } from '@/lib/chart/templates';
+import { candlesToCsv, csvFileName } from '@/lib/chart/export';
+import { BAR_SECONDS } from '@/lib/chart/countdown';
+import { decodeChartShare, sharePath } from '@/lib/chart/share';
 import { decodePatternLink, drawingFromLink } from '@/lib/pattern-link';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
-import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
+import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/chart/auto-count';
 import { findWolfe } from '@/lib/wolfe';
-import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
+import { createCandleHost, token, type CandleHost } from '@/lib/chart/candle-host';
 import CandleTooltip from '@/components/stocks/CandleTooltip';
-import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
+import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart/studies';
 import ToolPalette from '@/components/stocks/ToolPalette';
 import ChartToolbarMore from '@/components/stocks/ChartToolbarMore';
 import type { ToolEntry } from '@/lib/tools/catalog';
-import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
+import { readStudies, writeStudies } from '@/lib/chart/studies-storage';
 import {
     mergeSetup,
     mergeStudies,
@@ -142,17 +142,17 @@ import {
     setupDecision,
     setupFromLocal,
     writeSetupPending,
-} from '@/lib/chart-setup';
+} from '@/lib/chart/setup';
 import { loadChartSetup, saveChartSetup } from '@/lib/actions/chart-setup.actions';
-import { anchorFor } from '@/lib/drawing-alert';
+import { anchorFor } from '@/lib/chart/drawing-alert';
 import { alertSource } from '@/lib/alerts';
 import ChartLegend from '@/components/stocks/ChartLegend';
-import type { BarReadout } from '@/lib/chart-readout';
-import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
+import type { BarReadout } from '@/lib/chart/readout';
+import { INTERVAL_LABEL_KEYS } from '@/lib/chart/grid';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
 import ChartPeriods from '@/components/stocks/ChartPeriods';
-import { formatPrice, signedPercent } from '@/lib/market-ribbon';
-import { riyadhNow, sessionChange, tadawulPhase, type TadawulPhase } from '@/lib/chart-quote';
+import { formatPrice, signedPercent } from '@/lib/market/ribbon';
+import { riyadhNow, sessionChange, tadawulPhase, type TadawulPhase } from '@/lib/chart/quote';
 import ChartSettingsMenu from '@/components/stocks/ChartSettingsMenu';
 import BarCountdown from '@/components/stocks/BarCountdown';
 import {
@@ -165,7 +165,7 @@ import {
     writePaletteState,
     type ChartPalette,
     type ChartPaletteState,
-} from '@/lib/chart-palette';
+} from '@/lib/chart/palette';
 import CreateAlertModal from '@/components/watchlist/CreateAlertModal';
 import {
     CHART_TYPES,
@@ -187,8 +187,8 @@ import {
     writeScaleMode,
     type ChartType,
     type ScaleMode,
-} from '@/lib/chart-view';
-import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
+} from '@/lib/chart/view';
+import { STRATEGY_IDS, type StrategyId } from '@/lib/strategy/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { toolFromParam } from '@/lib/shell/command';
 

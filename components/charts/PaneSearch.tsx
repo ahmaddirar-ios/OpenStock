@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { compareYahooSymbol } from '@/lib/compare';
-import { paneOwning, searchUniverse, universeName } from '@/lib/chart-grid';
+import { paneOwning, searchUniverse, universeName } from '@/lib/chart/grid';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

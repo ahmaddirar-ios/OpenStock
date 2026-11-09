@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAGNET_PIXELS, nearestBar, snapPoint, type MagnetBar } from '@/lib/chart-magnet';
+import { MAGNET_PIXELS, nearestBar, snapPoint, type MagnetBar } from '@/lib/chart/magnet';
 
 const bar = (time: number, open: number, high: number, low: number, close: number): MagnetBar => ({
     time,

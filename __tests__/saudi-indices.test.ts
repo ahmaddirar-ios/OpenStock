@@ -2,7 +2,7 @@
 // table answers Arabic company queries only. A trader who types the index — in either script —
 // must find it, so the index gets its own small directory and its own test.
 import { describe, expect, it } from 'vitest';
-import { SAUDI_INDICES, searchSaudiIndices } from '@/lib/saudi-indices';
+import { SAUDI_INDICES, searchSaudiIndices } from '@/lib/market/saudi-indices';
 
 describe('the Saudi index directory', () => {
     it('covers the index the app can chart', () => {

@@ -7,7 +7,7 @@ import {
     normalizeSavedFormulas,
     parseSavedFormulas,
     removeSavedFormula,
-} from '@/lib/formula-library';
+} from '@/lib/formula/library';
 
 describe('formula library', () => {
     it('keeps a named expression', () => {

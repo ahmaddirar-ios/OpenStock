@@ -50,7 +50,7 @@ import {
     withPoint,
     withText,
     writeStayDrawing,
-} from '@/lib/chart-drawings';
+} from '@/lib/chart/drawings';
 
 const trend = (id: string, points: { time: number; price: number }[]): Drawing => ({ id, tool: 'trend', points });
 

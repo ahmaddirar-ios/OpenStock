@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import ChangePill from '@/components/ChangePill';
 import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
-import { tadawulAppSymbol } from '@/lib/yahoo';
-import { saudiSymbolNameAr } from '@/lib/saudi-symbols';
+import { tadawulAppSymbol } from '@/lib/market/yahoo';
+import { saudiSymbolNameAr } from '@/lib/market/saudi-symbols';
 import { sectorLabel, tx, type Lang } from '@/lib/i18n';
-import type { Market } from '@/lib/markets';
+import type { Market } from '@/lib/market/markets';
 import { arDigits } from "@/lib/i18n";
 
 const fmt = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

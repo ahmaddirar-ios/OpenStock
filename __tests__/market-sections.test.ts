@@ -6,7 +6,7 @@ import {
     sectionQuotes,
     worldQuoteFromRow,
     type WorldQuote,
-} from '@/lib/market-sections';
+} from '@/lib/market/sections';
 
 const LANGS: Lang[] = ['en', 'ar'];
 const row = (d: (number | string | null)[], s: string) => ({ s, d });

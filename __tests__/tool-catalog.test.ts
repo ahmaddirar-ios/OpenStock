@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { TOOL_DEFS } from '@/lib/chart-drawings';
-import { STUDY_IDS } from '@/lib/chart-studies';
-import { CHART_TYPES } from '@/lib/chart-view';
-import { FORMULA_FUNCTIONS } from '@/lib/formula';
-import { checkFormula } from '@/lib/formula';
+import { TOOL_DEFS } from '@/lib/chart/drawings';
+import { STUDY_IDS } from '@/lib/chart/studies';
+import { CHART_TYPES } from '@/lib/chart/view';
+import { FORMULA_FUNCTIONS } from '@/lib/formula/formula';
+import { checkFormula } from '@/lib/formula/formula';
 import { tx, type Lang } from '@/lib/i18n';
 import {
     TOOLS,

@@ -1,8 +1,8 @@
 // The ribbon answers one question in one line: what is the market doing, right now? Its formatting is
 // the whole product, so it is pure and tested apart from the markup that prints it.
 import { describe, expect, it } from 'vitest';
-import { compactFigure, formatPrice, ribbonQuotes, signedPercent } from '@/lib/market-ribbon';
-import type { WorldBoardPayload } from '@/lib/world-board';
+import { compactFigure, formatPrice, ribbonQuotes, signedPercent } from '@/lib/market/ribbon';
+import type { WorldBoardPayload } from '@/lib/market/world-board';
 
 const payload = (): WorldBoardPayload => ({
     asOf: 0,

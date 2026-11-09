@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
-import { loadSaudiBoard } from '@/lib/saudi-board';
-import { loadWorldBoard } from '@/lib/world-board';
-import { compactFigure, formatPrice, ribbonQuotes, signedPercent } from '@/lib/market-ribbon';
+import { loadSaudiBoard } from '@/lib/market/saudi-board';
+import { loadWorldBoard } from '@/lib/market/world-board';
+import { compactFigure, formatPrice, ribbonQuotes, signedPercent } from '@/lib/market/ribbon';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 
 /**

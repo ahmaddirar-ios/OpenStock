@@ -7,7 +7,7 @@
 import { scanCandles, pivotOptionsFor, SCAN_BATCH } from '@/lib/pattern-scan';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import type { PatternHit, PatternId } from '@/lib/patterns';
-import type { AutoSensitivity } from '@/lib/auto-count';
+import type { AutoSensitivity } from '@/lib/chart/auto-count';
 
 export type SymbolPatternHits = { symbol: string; hits: PatternHit[] };
 

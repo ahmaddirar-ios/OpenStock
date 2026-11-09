@@ -7,7 +7,7 @@ import {
     strategyRange,
     yahooCandleSymbol,
     type CandleSet,
-} from '@/lib/yahoo-candles';
+} from '@/lib/market/yahoo-candles';
 import { compareYahooSymbol } from '@/lib/compare';
 
 // Candles from Yahoo Finance for the exchanges TradingView will not embed — the same free, keyless

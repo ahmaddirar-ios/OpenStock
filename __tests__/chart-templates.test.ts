@@ -7,9 +7,9 @@ import {
     instantiateChartTemplate,
     parseChartTemplates,
     removeChartTemplate,
-} from '@/lib/chart-templates';
-import type { Drawing } from '@/lib/chart-drawings';
-import type { StudyConfig } from '@/lib/chart-studies';
+} from '@/lib/chart/templates';
+import type { Drawing } from '@/lib/chart/drawings';
+import type { StudyConfig } from '@/lib/chart/studies';
 
 const trend = (id: string): Drawing => ({
     id,

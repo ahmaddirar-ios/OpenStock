@@ -3,7 +3,7 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { FormulaModel } from '@/database/models/formula.model';
 import { requireUserId } from '@/lib/better-auth/auth';
-import { MAX_SAVED_FORMULAS, normalizeSavedFormulas, type SavedFormula } from '@/lib/formula-library';
+import { MAX_SAVED_FORMULAS, normalizeSavedFormulas, type SavedFormula } from '@/lib/formula/library';
 
 /**
  * The account's half of the formula shelf: read the formulas a trader saved, and write them back.

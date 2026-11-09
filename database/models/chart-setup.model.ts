@@ -5,8 +5,8 @@ import { Schema, model, models, type Document, type Model } from 'mongoose';
  * existed, a chart setup lived only in one browser's localStorage — a new device, a new browser, or a
  * cleared site meant the work was gone.
  *
- * The two lists are stored as they travel (Mixed) rather than as a second schema: `lib/chart-setup.ts`
- * and `lib/chart-drawings.ts` are the single gate every entry passes, both on the way in and on the way
+ * The two lists are stored as they travel (Mixed) rather than as a second schema: `lib/chart/setup.ts`
+ * and `lib/chart/drawings.ts` are the single gate every entry passes, both on the way in and on the way
  * out, and a duplicated mongoose schema would only be a second place for the format to drift.
  */
 export interface ChartSetupDocument extends Document {

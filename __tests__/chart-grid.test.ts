@@ -20,9 +20,9 @@ import {
     sessionChange,
     stepReplayTime,
     universeName,
-} from '@/lib/chart-grid';
-import { MIN_WARMUP_BARS } from '@/lib/replay';
-import type { Candle } from '@/lib/yahoo-candles';
+} from '@/lib/chart/grid';
+import { MIN_WARMUP_BARS } from '@/lib/chart/replay';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const candle = (time: number, close: number): Candle => ({ time, open: close, high: close, low: close, close, volume: 1 });
 

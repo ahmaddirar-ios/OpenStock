@@ -2,12 +2,12 @@
 // The on-visit checker and the Inngest cron both run this file, so the demo and Cloud can
 // never disagree about whether an alert fired.
 
-import { hasFinnhubQuotes } from '@/lib/markets';
-import { normalizeYahooSymbol } from '@/lib/yahoo';
-import { atr, rsi, sma } from '@/lib/indicators';
-import { checkFormula, evaluateFormula } from '@/lib/formula';
-import { customSignals, parseCustomStrategy, type CustomStrategy } from '@/lib/custom-strategy';
-import type { Candle } from '@/lib/yahoo-candles';
+import { hasFinnhubQuotes } from '@/lib/market/markets';
+import { normalizeYahooSymbol } from '@/lib/market/yahoo';
+import { atr, rsi, sma } from '@/lib/chart/indicators';
+import { checkFormula, evaluateFormula } from '@/lib/formula/formula';
+import { customSignals, parseCustomStrategy, type CustomStrategy } from '@/lib/strategy/custom';
+import type { Candle } from '@/lib/market/yahoo-candles';
 import {
     DRAWING_BAND,
     DRAWING_CONDITIONS,
@@ -16,7 +16,7 @@ import {
     evaluateDrawingRule,
     isDrawingCondition,
     type DrawingAnchor,
-} from '@/lib/drawing-alert';
+} from '@/lib/chart/drawing-alert';
 
 /** A formula alert is a sentence, not a program: long enough for a real rule, short enough to store. */
 export const MAX_ALERT_FORMULA = 400;

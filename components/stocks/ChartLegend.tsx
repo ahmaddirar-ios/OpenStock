@@ -1,7 +1,7 @@
 'use client';
 
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
-import { compactVolume, type BarReadout } from '@/lib/chart-readout';
+import { compactVolume, type BarReadout } from '@/lib/chart/readout';
 import {
     STUDIES,
     describeStudy,
@@ -12,7 +12,7 @@ import {
     type StudyConfig,
     type StudyId,
     type StudyLine,
-} from '@/lib/chart-studies';
+} from '@/lib/chart/studies';
 import { cn } from '@/lib/utils';
 
 // The chart's own reading of the bar under the crosshair: O H L C, the change against the previous

@@ -1,4 +1,4 @@
-import { loadSaudiBoard } from '@/lib/saudi-board';
+import { loadSaudiBoard } from '@/lib/market/saudi-board';
 import SaudiBoard from '@/components/saudi/SaudiBoard';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';

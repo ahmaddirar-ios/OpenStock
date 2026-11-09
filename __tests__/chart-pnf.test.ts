@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoPnfBox, pnfBoxes, pointAndFigure } from '@/lib/chart-pnf';
+import { autoPnfBox, pnfBoxes, pointAndFigure } from '@/lib/chart/pnf';
 
 const candles = (closes: number[]) => closes.map((close, index) => ({ time: 1_700_000_000 + index * 60, close }));
 

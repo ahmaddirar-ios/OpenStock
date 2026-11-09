@@ -2,8 +2,8 @@
 // of that zigzag. No fetch, no clock — lib/actions/pattern-scan.actions.ts does the I/O.
 
 import { DETECTORS, PATTERN_ORDER, PATTERN_POINTS, type PatternHit, type PatternId } from '@/lib/patterns';
-import { detectPivots, type AutoSensitivity, type PivotOptions } from '@/lib/auto-count';
-import type { Candle } from '@/lib/yahoo-candles';
+import { detectPivots, type AutoSensitivity, type PivotOptions } from '@/lib/chart/auto-count';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 /** Everything the scanner offers, in the picker's order. */
 export const SCAN_PATTERNS: readonly PatternId[] = PATTERN_ORDER;

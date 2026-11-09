@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Bookmark } from 'lucide-react';
 import { loadStrategies } from '@/lib/actions/strategy.actions';
-import { loadSavedStrategies, mergeStrategies, storeSavedStrategies, type SavedStrategy } from '@/lib/strategy-library-custom';
+import { loadSavedStrategies, mergeStrategies, storeSavedStrategies, type SavedStrategy } from '@/lib/strategy/library-custom';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 
 /**

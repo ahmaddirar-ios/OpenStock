@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { arDigits } from '@/lib/i18n';
 import { tx, type Lang } from '@/lib/i18n';
-import { printChange, printDay, printRange, printStudies } from '@/lib/chart-print';
+import { printChange, printDay, printRange, printStudies } from '@/lib/chart/print';
 
 /** What the sheet states about the chart, decided before the page is laid out. */
 export type PrintSheetMeta = {

@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { Grid3x3 } from 'lucide-react';
-import { buildSurface, pickSurfaceAxes, surfaceTone } from '@/lib/strategy-surface';
-import type { Objective, OptimizerRow } from '@/lib/custom-strategy';
+import { buildSurface, pickSurfaceAxes, surfaceTone } from '@/lib/strategy/surface';
+import type { Objective, OptimizerRow } from '@/lib/strategy/custom';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

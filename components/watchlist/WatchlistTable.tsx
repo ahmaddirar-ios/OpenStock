@@ -15,7 +15,7 @@ import { formatNumber } from "@/lib/utils";
 import { alertSource } from "@/lib/alerts";
 import { tx, type Lang } from "@/lib/i18n";
 import { arDigits } from "@/lib/i18n";
-import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { saudiSymbolNameAr } from "@/lib/market/saudi-symbols";
 import { DEFAULT_GROUP, groupNames, normalizeGroup, watchlistToCsv, type WatchlistMeta } from "@/lib/watchlist";
 import { importWatchlistCsv, type WatchlistItemRecord } from "@/lib/actions/watchlist.actions";
 import type { getWatchlistData } from "@/lib/actions/finnhub.actions";

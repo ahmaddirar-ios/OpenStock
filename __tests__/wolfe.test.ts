@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkWolfe, findWolfe, wolfeDirection } from '@/lib/wolfe';
-import type { DrawPoint } from '@/lib/chart-drawings';
-import type { Candle } from '@/lib/yahoo-candles';
+import type { DrawPoint } from '@/lib/chart/drawings';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const at = (time: number, price: number): DrawPoint => ({ time, price });
 

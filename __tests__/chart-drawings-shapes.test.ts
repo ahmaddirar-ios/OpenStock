@@ -54,7 +54,7 @@ import {
     withText,
     type DrawCandle,
     type DrawPoint,
-} from '@/lib/chart-drawings';
+} from '@/lib/chart/drawings';
 
 const a: DrawPoint = { time: 1000, price: 100 };
 const b: DrawPoint = { time: 2000, price: 120 };

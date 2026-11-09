@@ -5,7 +5,7 @@ import {
     emptyBuilderGroup,
     parseBuilder,
     type BuilderGroup,
-} from '@/lib/formula-builder';
+} from '@/lib/formula/builder';
 
 const group = (): BuilderGroup => ({
     join: 'and',

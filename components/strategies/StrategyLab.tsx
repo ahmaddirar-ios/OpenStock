@@ -3,12 +3,12 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Play, RotateCcw } from 'lucide-react';
-import { backtest, barsPerYear, DEFAULT_COSTS, metrics as computeMetrics, type Backtest, type Metrics, type Params } from '@/lib/strategies';
+import { backtest, barsPerYear, DEFAULT_COSTS, metrics as computeMetrics, type Backtest, type Metrics, type Params } from '@/lib/strategy/strategies';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { compareYahooSymbol } from '@/lib/compare';
-import { CANDLE_INTERVALS } from '@/lib/yahoo-candles';
-import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
-import type { StrategyDoc } from '@/lib/strategy-library';
+import { CANDLE_INTERVALS } from '@/lib/market/yahoo-candles';
+import { INTERVAL_LABEL_KEYS } from '@/lib/chart/grid';
+import type { StrategyDoc } from '@/lib/strategy/library';
 import { tx, arDigits, type Lang } from '@/lib/i18n';
 import KpiGrid from '@/components/strategies/KpiGrid';
 import ResultCharts from '@/components/strategies/ResultCharts';

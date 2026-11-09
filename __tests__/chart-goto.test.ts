@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centredRange, isAtLatest, latestRange, nearestBarIndex } from '@/lib/chart-goto';
+import { centredRange, isAtLatest, latestRange, nearestBarIndex } from '@/lib/chart/goto';
 
 describe('nearestBarIndex', () => {
     it('finds the bar closest to the target, on either side', () => {

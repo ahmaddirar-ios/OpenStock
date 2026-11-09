@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import ChartDrawings from '@/components/stocks/ChartDrawings';
-import { layerDrawings, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool } from '@/lib/chart-drawings';
+import { layerDrawings, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool } from '@/lib/chart/drawings';
 
 // The panel the SVG fills; jsdom has no layout, so the size is declared rather than measured.
 // It has to sit on Element.prototype: the drawing layer is an <svg>, which is not an HTMLElement.

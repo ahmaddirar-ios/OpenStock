@@ -8,8 +8,8 @@ import {
     parseGoogleNewsRss,
     type RssNewsItem,
 } from '@/lib/news-rss';
-import { saudiSymbolName, saudiSymbolNameAr } from '@/lib/saudi-symbols';
-import { hasFinnhubQuotes } from '@/lib/markets';
+import { saudiSymbolName, saudiSymbolNameAr } from '@/lib/market/saudi-symbols';
+import { hasFinnhubQuotes } from '@/lib/market/markets';
 import { getNews } from '@/lib/actions/finnhub.actions';
 import type { Lang } from '@/lib/i18n';
 

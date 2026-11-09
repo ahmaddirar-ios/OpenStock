@@ -3,7 +3,7 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { StrategyModel } from '@/database/models/strategy.model';
 import { requireUserId } from '@/lib/better-auth/auth';
-import { MAX_SAVED_STRATEGIES, normalizeSavedStrategies, type SavedStrategy } from '@/lib/strategy-library-custom';
+import { MAX_SAVED_STRATEGIES, normalizeSavedStrategies, type SavedStrategy } from '@/lib/strategy/library-custom';
 
 /**
  * The account's half of the custom-strategy shelf. The browser's localStorage stays the fast copy;

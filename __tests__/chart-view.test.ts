@@ -17,10 +17,10 @@ import {
     writeScaleMode,
     CHART_TYPE_KEY,
     type ChartType,
-} from '@/lib/chart-view';
-import type { Candle } from '@/lib/yahoo-candles';
-import { kagi } from '@/lib/chart-kagi';
-import { lineBreak } from '@/lib/chart-linebreak';
+} from '@/lib/chart/view';
+import type { Candle } from '@/lib/market/yahoo-candles';
+import { kagi } from '@/lib/chart/kagi';
+import { lineBreak } from '@/lib/chart/linebreak';
 
 const bars: Candle[] = [
     { time: 1, open: 10, high: 14, low: 8, close: 12, volume: 100 },

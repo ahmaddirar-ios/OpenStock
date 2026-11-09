@@ -4,10 +4,10 @@ import Link from 'next/link';
 import { LineChart } from 'lucide-react';
 import ChangePill from '@/components/ChangePill';
 import DataFreshness from '@/components/DataFreshness';
-import { tadawulAppSymbol, type YahooDailyQuote } from '@/lib/yahoo';
+import { tadawulAppSymbol, type YahooDailyQuote } from '@/lib/market/yahoo';
 import { useLiveQuotes } from '@/hooks/useLiveQuotes';
 import { tx, type Lang } from '@/lib/i18n';
-import { saudiSymbolNameAr } from '@/lib/saudi-symbols';
+import { saudiSymbolNameAr } from '@/lib/market/saudi-symbols';
 import { arDigits } from "@/lib/i18n";
 import Price from '@/components/Price';
 

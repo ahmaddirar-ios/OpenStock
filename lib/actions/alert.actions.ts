@@ -1,7 +1,7 @@
 'use server';
 
 import { connectToDatabase } from '@/database/mongoose';
-import { anchorPriceAt, isDrawingCondition, parseAnchor } from '@/lib/drawing-alert';
+import { anchorPriceAt, isDrawingCondition, parseAnchor } from '@/lib/chart/drawing-alert';
 import { Alert } from '@/database/models/alert.model';
 import { AlertEvent } from '@/database/models/alert-event.model';
 import { revalidatePath } from 'next/cache';
@@ -10,7 +10,7 @@ import { getLiveQuotes } from '@/lib/actions/finnhub.actions';
 import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
 import { getAlertCandles } from '@/lib/actions/yahoo-candles.actions';
 import { compareYahooSymbol } from '@/lib/compare';
-import type { Candle } from '@/lib/yahoo-candles';
+import type { Candle } from '@/lib/market/yahoo-candles';
 import {
     alertSource,
     alertStoredSymbol,

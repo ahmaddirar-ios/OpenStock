@@ -5,15 +5,15 @@ import StockLivePrice from "@/components/stocks/StockLivePrice";
 import { isStockInWatchlist } from "@/lib/actions/watchlist.actions";
 import { getCompanyProfile, getLiveQuotes } from "@/lib/actions/finnhub.actions";
 import { formatNumber, formatPrice, formatSymbolForTradingView } from "@/lib/utils";
-import { hasFinnhubQuotes } from "@/lib/markets";
+import { hasFinnhubQuotes } from "@/lib/market/markets";
 import { alertSource } from "@/lib/alerts";
 import { symbolInfoConfig } from "@/lib/constants";
 import { tx, type Lang } from "@/lib/i18n";
 import TradingViewWidget from "@/components/TradingViewWidget";
 import ChangePill from "@/components/ChangePill";
 import { getYahooDailyQuotes } from "@/lib/actions/yahoo.actions";
-import { isTadawulSymbol } from "@/lib/yahoo";
-import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { isTadawulSymbol } from "@/lib/market/yahoo";
+import { saudiSymbolNameAr } from "@/lib/market/saudi-symbols";
 import Price from "@/components/Price";
 
 // Symbols Finnhub's free plan can't price (most non-US listings) use TradingView's quote panel instead.

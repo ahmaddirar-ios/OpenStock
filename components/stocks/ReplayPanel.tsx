@@ -13,11 +13,11 @@ import {
     type OrderFailure,
     type PaperAccount,
     type ReplaySpeed,
-} from '@/lib/replay';
+} from '@/lib/chart/replay';
 import { cn, formatPrice } from '@/lib/utils';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
-import type { Candle } from '@/lib/yahoo-candles';
-import type { Bracket, OrderType, ReplayIntent } from '@/lib/replay';
+import type { Candle } from '@/lib/market/yahoo-candles';
+import type { Bracket, OrderType, ReplayIntent } from '@/lib/chart/replay';
 
 type Props = {
     lang: Lang;

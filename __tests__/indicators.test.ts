@@ -35,7 +35,7 @@ import {
     wma,
     hma,
     waveTrend,
-} from '@/lib/indicators';
+} from '@/lib/chart/indicators';
 
 describe('sma', () => {
     it('stays null until the window is full, then averages it', () => {

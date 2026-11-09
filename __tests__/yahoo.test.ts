@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dailyQuoteFromChart, isIndexSymbol, liveQuoteFromChart, normalizeYahooSymbol, tadawulAppSymbol } from '@/lib/yahoo';
+import { dailyQuoteFromChart, isIndexSymbol, liveQuoteFromChart, normalizeYahooSymbol, tadawulAppSymbol } from '@/lib/market/yahoo';
 import { formatSymbolForTradingView, isChartEmbeddable } from '@/lib/utils';
 
 describe('Tadawul symbols', () => {

@@ -5,8 +5,8 @@ import {
     formulaAst,
     formulaPlotCount,
     type FormulaBar,
-} from '@/lib/formula';
-import { rsi } from '@/lib/indicators';
+} from '@/lib/formula/formula';
+import { rsi } from '@/lib/chart/indicators';
 
 const bar = (close: number, index = 0): FormulaBar => ({
     time: index,

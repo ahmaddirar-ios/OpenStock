@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Search } from 'lucide-react';
-import { STRATEGY_LIBRARY, CATEGORY_KEYS, type StrategyCategory } from '@/lib/strategy-library';
+import { STRATEGY_LIBRARY, CATEGORY_KEYS, type StrategyCategory } from '@/lib/strategy/library';
 import { tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

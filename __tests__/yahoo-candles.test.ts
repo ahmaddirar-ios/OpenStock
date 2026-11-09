@@ -11,7 +11,7 @@ import {
     openingInterval,
     strategyRange,
     type Candle,
-} from '@/lib/yahoo-candles';
+} from '@/lib/market/yahoo-candles';
 
 const payload = (overrides: Record<string, unknown> = {}) => ({
     chart: {

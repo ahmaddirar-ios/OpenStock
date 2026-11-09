@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { directionOf, filterSections, nextWatchSort, sortSections, watchChange, watchDecimals, watchPrice } from '@/lib/market-watch';
-import type { MarketSection, WorldQuote } from '@/lib/market-sections';
-import type { SectionBoard } from '@/lib/world-board';
+import { directionOf, filterSections, nextWatchSort, sortSections, watchChange, watchDecimals, watchPrice } from '@/lib/market/watch';
+import type { MarketSection, WorldQuote } from '@/lib/market/sections';
+import type { SectionBoard } from '@/lib/market/world-board';
 
 const quote = (over: Partial<WorldQuote> = {}): WorldQuote => ({
     ticker: 'COMEX:GC1!',

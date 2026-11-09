@@ -17,8 +17,8 @@ import {
     substituteParams,
     walkForward,
     type CustomStrategy,
-} from '@/lib/custom-strategy';
-import type { Candle } from '@/lib/yahoo-candles';
+} from '@/lib/strategy/custom';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const candle = (time: number, open: number, high: number, low: number, close: number): Candle => ({
     time,

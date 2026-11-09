@@ -11,7 +11,7 @@ const load = async (mode?: 'cached' | 'realtime') => {
     vi.resetModules();
     vi.stubEnv('NEXT_PUBLIC_ROVEX_DATA_MODE', mode ?? '');
     vi.stubEnv('NEXT_PUBLIC_OPENSTOCK_DATA_MODE', '');
-    return import('@/lib/market-data');
+    return import('@/lib/market/data');
 };
 
 afterEach(() => {

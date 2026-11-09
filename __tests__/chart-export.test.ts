@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CSV_HEADER, candlesToCsv, csvFileName, csvTime } from '@/lib/chart-export';
-import type { Candle } from '@/lib/yahoo-candles';
+import { CSV_HEADER, candlesToCsv, csvFileName, csvTime } from '@/lib/chart/export';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const bar = (time: number, close: number): Candle => ({
     time,

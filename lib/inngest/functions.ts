@@ -8,7 +8,7 @@ import { callAIProviderWithFallback } from "@/lib/ai-provider";
 import { refreshScreenerSlice, SCREENER_BATCH_LIMIT } from "@/lib/screener-refresh";
 import { SCREENER_TOTAL } from "@/lib/screener-universe";
 import type { AlertCondition } from "@/lib/alerts";
-import type { Candle } from "@/lib/yahoo-candles";
+import type { Candle } from "@/lib/market/yahoo-candles";
 import type { Lang } from "@/lib/i18n";
 
 export const sendSignUpEmail = inngest.createFunction(
@@ -272,7 +272,7 @@ export const checkStockAlerts = inngest.createFunction(
         // Step 4: the same decision the alert centre makes, from the same pure function, so the
         // two paths cannot disagree about what fired or what the next cross compares against.
         const { needsCandles, planGroups, groupedRowsFromAlerts, rememberUpdate } = await import("@/lib/alerts");
-        const { parseAnchor } = await import("@/lib/drawing-alert");
+        const { parseAnchor } = await import("@/lib/chart/drawing-alert");
         type Snapshot = { price: number; changePercent: number };
         const { rows, owners } = groupedRowsFromAlerts(
             alerts.map((alert) => ({

@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { useDebounce } from "@/hooks/useDebounce";
 import { tx, type Lang, type StringKey } from "@/lib/i18n";
-import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { saudiSymbolNameAr } from "@/lib/market/saudi-symbols";
 import { typeLabel } from "@/lib/i18n";
 import { commandPages, commandTools, toolHref, DEFAULT_SYMBOL, LAST_SYMBOL_KEY } from "@/lib/shell/command";
 import type { Role } from "@/lib/authz";

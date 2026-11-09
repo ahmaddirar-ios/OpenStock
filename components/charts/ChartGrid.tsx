@@ -20,11 +20,11 @@ import {
     stepReplayTime,
     type GridLayoutId,
     type GridState,
-} from '@/lib/chart-grid';
-import { CANDLE_INTERVALS, type Candle } from '@/lib/yahoo-candles';
-import type { StudyConfig } from '@/lib/chart-studies';
-import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
-import { REPLAY_SPEEDS, type ReplaySpeed } from '@/lib/replay';
+} from '@/lib/chart/grid';
+import { CANDLE_INTERVALS, type Candle } from '@/lib/market/yahoo-candles';
+import type { StudyConfig } from '@/lib/chart/studies';
+import { readStudies, writeStudies } from '@/lib/chart/studies-storage';
+import { REPLAY_SPEEDS, type ReplaySpeed } from '@/lib/chart/replay';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

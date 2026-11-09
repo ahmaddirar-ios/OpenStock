@@ -4,7 +4,7 @@ import TradingViewWidget from "@/components/TradingViewWidget";
 import { getLiveQuotes } from "@/lib/actions/finnhub.actions";
 import { getYahooDailyQuotes } from "@/lib/actions/yahoo.actions";
 import { singleQuoteConfig } from "@/lib/constants";
-import { getMarket, type Market } from "@/lib/markets";
+import { getMarket, type Market } from "@/lib/market/markets";
 import type { Lang } from "@/lib/i18n";
 
 const SINGLE_QUOTE = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';

@@ -4,9 +4,9 @@ import { connectToDatabase } from '@/database/mongoose';
 import { ScreenerRowModel } from '@/database/models/screener.model';
 import { refreshScreenerSlice, SCREENER_BATCH_LIMIT, type RefreshProgress } from '@/lib/screener-refresh';
 import type { ScreenerRow } from '@/lib/screener';
-import { screenFormulaMatch, SCREEN_BATCH, type FormulaScreenHit } from '@/lib/screener-formula';
+import { screenFormulaMatch, SCREEN_BATCH, type FormulaScreenHit } from '@/lib/formula/screener';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { checkFormula } from '@/lib/formula';
+import { checkFormula } from '@/lib/formula/formula';
 
 export async function getScreenerRows(): Promise<ScreenerRow[]> {
     try {

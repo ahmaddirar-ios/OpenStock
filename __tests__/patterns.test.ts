@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DETECTORS, PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectAbc, detectCypher, detectHarmonic, detectHeadShoulders, detectImpulse, detectThreeDrives, detectTriangle, detectWolfe, retrace, within } from '@/lib/patterns';
-import { pointsNeeded } from '@/lib/chart-drawings';
-import type { Pivot } from '@/lib/auto-count';
-import type { Candle } from '@/lib/yahoo-candles';
+import { pointsNeeded } from '@/lib/chart/drawings';
+import type { Pivot } from '@/lib/chart/auto-count';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const pivot = (time: number, price: number, kind: 'high' | 'low'): Pivot => ({ time, price, kind });
 

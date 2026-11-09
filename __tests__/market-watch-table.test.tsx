@@ -6,8 +6,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import MarketWatchTable from '@/components/markets/MarketWatchTable';
-import { MARKET_SECTIONS, type WorldQuote } from '@/lib/market-sections';
-import type { SectionBoard } from '@/lib/world-board';
+import { MARKET_SECTIONS, type WorldQuote } from '@/lib/market/sections';
+import type { SectionBoard } from '@/lib/market/world-board';
 
 const gulf = MARKET_SECTIONS.find((section) => section.id === 'gulf')!;
 

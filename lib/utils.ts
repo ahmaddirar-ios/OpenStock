@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
-import { isIndexSymbol, TASI_TRADINGVIEW } from '@/lib/yahoo';
+import { isIndexSymbol, TASI_TRADINGVIEW } from '@/lib/market/yahoo';
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyCopiedStyle, copyStyleOf, sameStyle } from '@/lib/drawing-style-copy';
-import { canExtend, extendSegment, parseDrawingList, type Drawing } from '@/lib/chart-drawings';
+import { applyCopiedStyle, copyStyleOf, sameStyle } from '@/lib/chart/drawing-style-copy';
+import { canExtend, extendSegment, parseDrawingList, type Drawing } from '@/lib/chart/drawings';
 
 const base = (patch: Partial<Drawing> = {}): Drawing => ({
     id: 'd1',

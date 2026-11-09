@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { alignCloses, carryCloses, medianSpacing } from '@/lib/symbol-series';
-import type { Candle } from '@/lib/yahoo-candles';
+import { alignCloses, carryCloses, medianSpacing } from '@/lib/chart/symbol-series';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const DAY = 86_400;
 const HOUR = 3_600;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Candle } from '@/lib/yahoo-candles';
-import { macd } from '@/lib/indicators';
+import type { Candle } from '@/lib/market/yahoo-candles';
+import { macd } from '@/lib/chart/indicators';
 import {
     STRATEGY_IDS,
     barsPerYear,
@@ -11,7 +11,7 @@ import {
     toCsv,
     type Backtest,
     type Costs,
-} from '@/lib/strategies';
+} from '@/lib/strategy/strategies';
 
 const FREE: Costs = { commissionBps: 0, slippageBps: 0 };
 

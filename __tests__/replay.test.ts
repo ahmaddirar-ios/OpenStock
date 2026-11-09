@@ -26,8 +26,8 @@ import {
     type Fill,
     type PendingOrder,
     type ReplayIntent,
-} from '@/lib/replay';
-import type { Candle } from '@/lib/yahoo-candles';
+} from '@/lib/chart/replay';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const candle = (time: number, close: number): Candle => ({
     time,

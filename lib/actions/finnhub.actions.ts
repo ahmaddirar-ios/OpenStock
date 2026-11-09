@@ -3,13 +3,13 @@
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCKS } from '@/lib/constants';
 import { cache } from 'react';
-import { quoteTtlSeconds } from '@/lib/market-data';
-import { hasFinnhubQuotes } from '@/lib/markets';
+import { quoteTtlSeconds } from '@/lib/market/data';
+import { hasFinnhubQuotes } from '@/lib/market/markets';
 import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
-import { isTadawulSymbol } from '@/lib/yahoo';
+import { isTadawulSymbol } from '@/lib/market/yahoo';
 import { getSession } from '@/lib/better-auth/auth';
-import { searchSaudiSymbols } from '@/lib/saudi-symbols';
-import { searchSaudiIndices } from '@/lib/saudi-indices';
+import { searchSaudiSymbols } from '@/lib/market/saudi-symbols';
+import { searchSaudiIndices } from '@/lib/market/saudi-indices';
 import { finnhubCanAnswer, mergeSearchResults } from '@/lib/search';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
@@ -455,7 +455,7 @@ export async function getEarningsDates(symbol: string): Promise<EarningsDates | 
 
     if (isTadawulSymbol(ticker)) {
         try {
-            const { fetchSaudiFundamentals } = await import('@/lib/saudi-fundamentals');
+            const { fetchSaudiFundamentals } = await import('@/lib/market/saudi-fundamentals');
             const fundamentals = await fetchSaudiFundamentals([ticker]);
             const entry = fundamentals[ticker];
             if (!entry) return { symbol: ticker, last: null, next: null };

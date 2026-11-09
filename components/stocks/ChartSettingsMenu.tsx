@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, RotateCcw, Settings2, X } from 'lucide-react';
 import { tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { TIME_ZONES, type TimeZoneId } from '@/lib/chart-time';
-import { SCALE_MODES, SCALE_MODE_KEYS, type ScaleMode } from '@/lib/chart-view';
+import { TIME_ZONES, type TimeZoneId } from '@/lib/chart/time';
+import { SCALE_MODES, SCALE_MODE_KEYS, type ScaleMode } from '@/lib/chart/view';
 import {
     CHART_PALETTE_IDS,
     CHART_PALETTE_KEYS,
@@ -14,7 +14,7 @@ import {
     PALETTE_FIELD_KEYS,
     type ChartPalette,
     type ChartPaletteState,
-} from '@/lib/chart-palette';
+} from '@/lib/chart/palette';
 
 /**
  * The settings a trader changes once and then forgets — the clock, the price axis, an inverted axis,

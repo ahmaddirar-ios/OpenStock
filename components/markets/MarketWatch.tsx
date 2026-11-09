@@ -6,8 +6,8 @@ import { Search } from 'lucide-react';
 import MarketWatchTable from '@/components/markets/MarketWatchTable';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { filterSections, nextWatchSort, sortSections, type WatchSort, type WatchSortKey } from '@/lib/market-watch';
-import type { WorldBoardPayload } from '@/lib/world-board';
+import { filterSections, nextWatchSort, sortSections, type WatchSort, type WatchSortKey } from '@/lib/market/watch';
+import type { WorldBoardPayload } from '@/lib/market/world-board';
 
 /**
  * The market-watch pane that sits beside the chart, the way a terminal docks one: the same world

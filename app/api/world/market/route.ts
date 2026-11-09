@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/better-auth/auth";
-import { loadWorldBoard } from "@/lib/world-board";
+import { loadWorldBoard } from "@/lib/market/world-board";
 import { clientIp, isRateLimited } from "@/lib/rate-limit";
 
 // The sections board polls this. One scanner call per minute behind a shared cache, so the limit is

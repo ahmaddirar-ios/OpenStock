@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, FlaskConical, X } from 'lucide-react';
 import type { SeriesMarker, UTCTimestamp } from 'lightweight-charts';
-import { backtest, barsPerYear, DEFAULT_COSTS, metrics as computeMetrics, type Metrics, type StrategyId } from '@/lib/strategies';
-import { STRATEGY_LIBRARY } from '@/lib/strategy-library';
+import { backtest, barsPerYear, DEFAULT_COSTS, metrics as computeMetrics, type Metrics, type StrategyId } from '@/lib/strategy/strategies';
+import { STRATEGY_LIBRARY } from '@/lib/strategy/library';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { token } from '@/lib/candle-host';
+import { token } from '@/lib/chart/candle-host';
 import { tx, arDigits, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

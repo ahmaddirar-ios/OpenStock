@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysUntil, fundamentalsFromRow } from '@/lib/saudi-fundamentals';
+import { daysUntil, fundamentalsFromRow } from '@/lib/market/saudi-fundamentals';
 
 const row = (values: (number | string | null)[]) => ({ s: 'TADAWUL:2222', d: values });
 

@@ -39,7 +39,7 @@ The spec implies these inputs; each one has a test in the task that owns the cod
 - Test: `__tests__/patterns.test.ts`
 
 **Interfaces:**
-- Consumes: `detectPivots`, `Pivot`, `PivotOptions` from `@/lib/auto-count`; `checkWolfe`, `lineAt` from `@/lib/wolfe`; `DrawPoint`, `ShapeTool`, `Drawing`, `newDrawingId`, `toolDef` from `@/lib/chart-drawings`; `Candle` from `@/lib/yahoo-candles`; `StringKey` from `@/lib/i18n`.
+- Consumes: `detectPivots`, `Pivot`, `PivotOptions` from `@/lib/chart/auto-count`; `checkWolfe`, `lineAt` from `@/lib/wolfe`; `DrawPoint`, `ShapeTool`, `Drawing`, `newDrawingId`, `toolDef` from `@/lib/chart/drawings`; `Candle` from `@/lib/market/yahoo-candles`; `StringKey` from `@/lib/i18n`.
 - Produces:
   ```ts
   export type PatternDirection = 'bullish' | 'bearish';
@@ -69,9 +69,9 @@ In `__tests__/patterns.test.ts`:
 ```ts
 import { describe, expect, it } from 'vitest';
 import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectWolfe, retrace, within } from '@/lib/patterns';
-import { pointsNeeded } from '@/lib/chart-drawings';
-import type { Pivot } from '@/lib/auto-count';
-import type { Candle } from '@/lib/yahoo-candles';
+import { pointsNeeded } from '@/lib/chart/drawings';
+import type { Pivot } from '@/lib/chart/auto-count';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const pivot = (time: number, price: number, kind: 'high' | 'low'): Pivot => ({ time, price, kind });
 
@@ -471,7 +471,7 @@ git commit -m "Add the three-drives and Elliott detectors"
 - Test: `__tests__/pattern-scan.test.ts`
 
 **Interfaces:**
-- Consumes: `DETECTORS`, `PATTERN_ORDER`, `PATTERN_POINTS`, `PatternHit`, `PatternId` from `@/lib/patterns`; `detectPivots`, `PivotOptions`, `AutoSensitivity` from `@/lib/auto-count`; `Candle` from `@/lib/yahoo-candles`.
+- Consumes: `DETECTORS`, `PATTERN_ORDER`, `PATTERN_POINTS`, `PatternHit`, `PatternId` from `@/lib/patterns`; `detectPivots`, `PivotOptions`, `AutoSensitivity` from `@/lib/chart/auto-count`; `Candle` from `@/lib/market/yahoo-candles`.
 - Produces:
   ```ts
   export const SCAN_PATTERNS: readonly PatternId[];
@@ -488,7 +488,7 @@ git commit -m "Add the three-drives and Elliott detectors"
 ```ts
 import { describe, expect, it } from 'vitest';
 import { MAX_SCAN_SYMBOLS, SCAN_BATCH, SCAN_PATTERNS, pivotOptionsFor, scanCandles } from '@/lib/pattern-scan';
-import type { Candle } from '@/lib/yahoo-candles';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 /** A close path walked in equal steps, so the zigzag detector sees one pivot per waypoint. */
 const candlesFrom = (waypoints: number[]): Candle[] => {
@@ -577,7 +577,7 @@ git commit -m "Add the candle scan that runs each detector once"
 - Test: `__tests__/pattern-scan-actions.test.ts`
 
 **Interfaces:**
-- Consumes: `scanCandles`, `SCAN_BATCH`, `pivotOptionsFor` from `@/lib/pattern-scan`; `getStrategyCandles` from `@/lib/actions/yahoo-candles.actions`; `PatternHit`, `PatternId` from `@/lib/patterns`; `AutoSensitivity` from `@/lib/auto-count`.
+- Consumes: `scanCandles`, `SCAN_BATCH`, `pivotOptionsFor` from `@/lib/pattern-scan`; `getStrategyCandles` from `@/lib/actions/yahoo-candles.actions`; `PatternHit`, `PatternId` from `@/lib/patterns`; `AutoSensitivity` from `@/lib/chart/auto-count`.
 - Produces:
   ```ts
   export type SymbolPatternHits = { symbol: string; hits: PatternHit[] };
@@ -689,7 +689,7 @@ git commit -m "Add the batched pattern scan action"
 - Test: `__tests__/pattern-link.test.ts`
 
 **Interfaces:**
-- Consumes: `PATTERN_ORDER`, `PATTERN_TOOL`, `PATTERN_POINTS`, `PatternHit`, `PatternId`, `PatternDirection` from `@/lib/patterns`; `DrawPoint`, `Drawing`, `newDrawingId`, `toolDef` from `@/lib/chart-drawings`; `CANDLE_INTERVALS` from `@/lib/yahoo-candles`.
+- Consumes: `PATTERN_ORDER`, `PATTERN_TOOL`, `PATTERN_POINTS`, `PatternHit`, `PatternId`, `PatternDirection` from `@/lib/patterns`; `DrawPoint`, `Drawing`, `newDrawingId`, `toolDef` from `@/lib/chart/drawings`; `CANDLE_INTERVALS` from `@/lib/market/yahoo-candles`.
 - Produces:
   ```ts
   export type PatternLink = { pattern: PatternId; direction: PatternDirection; intervalId: string; points: DrawPoint[] };
@@ -792,7 +792,7 @@ git commit -m "Add the pattern link token"
 - Test: `__tests__/pattern-scanner-render.test.tsx`
 
 **Interfaces:**
-- Consumes: `scanPatternBatch` from `@/lib/actions/pattern-scan.actions`; `PATTERN_GROUP`, `PATTERN_LABEL_KEY`, `PATTERN_ORDER`, `PatternHit`, `PatternId` from `@/lib/patterns`; `AUTO_SENSITIVITIES`, `AutoSensitivity` from `@/lib/auto-count`; `SCAN_BATCH`, `MAX_SCAN_SYMBOLS` from `@/lib/pattern-scan`; `encodePatternLink` from `@/lib/pattern-link`; `tx`, `arDigits`, `Lang`, `StringKey` from `@/lib/i18n`; `SCREENER_UNIVERSE` from `@/lib/screener-universe`; `getUserWatchlist` from `@/lib/actions/watchlist.actions`; `getLang` from `@/lib/i18n-server`.
+- Consumes: `scanPatternBatch` from `@/lib/actions/pattern-scan.actions`; `PATTERN_GROUP`, `PATTERN_LABEL_KEY`, `PATTERN_ORDER`, `PatternHit`, `PatternId` from `@/lib/patterns`; `AUTO_SENSITIVITIES`, `AutoSensitivity` from `@/lib/chart/auto-count`; `SCAN_BATCH`, `MAX_SCAN_SYMBOLS` from `@/lib/pattern-scan`; `encodePatternLink` from `@/lib/pattern-link`; `tx`, `arDigits`, `Lang`, `StringKey` from `@/lib/i18n`; `SCREENER_UNIVERSE` from `@/lib/screener-universe`; `getUserWatchlist` from `@/lib/actions/watchlist.actions`; `getLang` from `@/lib/i18n-server`.
 - Produces:
   ```ts
   // components/scanner/PatternScanner.tsx

@@ -2,7 +2,7 @@
 
 import { Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { formatCountdown, secondsToBarClose } from '@/lib/chart-countdown';
+import { formatCountdown, secondsToBarClose } from '@/lib/chart/countdown';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 
 /**

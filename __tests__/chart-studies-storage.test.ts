@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { STUDIES_KEY, readStudies, writeStudies } from '@/lib/chart-studies-storage';
-import { defaultStudy, type StudyConfig } from '@/lib/chart-studies';
+import { STUDIES_KEY, readStudies, writeStudies } from '@/lib/chart/studies-storage';
+import { defaultStudy, type StudyConfig } from '@/lib/chart/studies';
 
 const memory = (initial: Record<string, string> = {}) => {
     const map = new Map(Object.entries(initial));

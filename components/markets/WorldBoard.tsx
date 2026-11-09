@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import DataFreshness from '@/components/DataFreshness';
 import MarketWatchTable from '@/components/markets/MarketWatchTable';
 import { tx, type Lang } from '@/lib/i18n';
-import type { WorldBoardPayload } from '@/lib/world-board';
+import type { WorldBoardPayload } from '@/lib/market/world-board';
 
 /**
  * The world board: five sections, each a small table of what a trader reads before the open.

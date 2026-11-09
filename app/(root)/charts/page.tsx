@@ -1,6 +1,6 @@
 import ChartGrid from '@/components/charts/ChartGrid';
 import { getUserWatchlist } from '@/lib/actions/watchlist.actions';
-import { normalizeGridSymbols, parseGridState } from '@/lib/chart-grid';
+import { normalizeGridSymbols, parseGridState } from '@/lib/chart/grid';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';
 

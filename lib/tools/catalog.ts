@@ -7,15 +7,15 @@
 // cannot infer: which section a tool belongs to, what a formula function's ready example looks
 // like, and how many clicks a drawing asks for.
 //
-// Nothing here holds behaviour. A drawing's geometry lives in lib/chart-drawings.ts, a study's maths
-// in lib/chart-studies.ts, an expression in lib/formula.ts — this file only knows they exist.
+// Nothing here holds behaviour. A drawing's geometry lives in lib/chart/drawings.ts, a study's maths
+// in lib/chart/studies.ts, an expression in lib/formula/formula.ts — this file only knows they exist.
 
-import { TOOL_DEFS, type ShapeTool, type ToolGroup } from '@/lib/chart-drawings';
-import { STUDIES, STUDY_IDS } from '@/lib/chart-studies';
-import { CHART_TYPE_KEYS, CHART_TYPES, type ChartType } from '@/lib/chart-view';
-import { FORMULA_FUNCTIONS } from '@/lib/formula';
-import { TOOL_SHORTCUTS } from '@/lib/chart-hotkeys';
-import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import { TOOL_DEFS, type ShapeTool, type ToolGroup } from '@/lib/chart/drawings';
+import { STUDIES, STUDY_IDS } from '@/lib/chart/studies';
+import { CHART_TYPE_KEYS, CHART_TYPES, type ChartType } from '@/lib/chart/view';
+import { FORMULA_FUNCTIONS } from '@/lib/formula/formula';
+import { TOOL_SHORTCUTS } from '@/lib/chart/hotkeys';
+import { TOOL_LABEL_KEYS } from '@/lib/chart/drawing-groups';
 import { tx, type Lang, type StringKey } from '@/lib/i18n';
 
 export type ToolFamily = 'drawing' | 'study' | 'chartType' | 'formula';

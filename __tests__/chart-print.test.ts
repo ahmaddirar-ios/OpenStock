@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { printChange, printDay, printDocumentTitle, printRange, printStudies } from '@/lib/chart-print';
+import { printChange, printDay, printDocumentTitle, printRange, printStudies } from '@/lib/chart/print';
 
 const at = new Date(Date.UTC(2026, 10, 7, 9, 30));
 

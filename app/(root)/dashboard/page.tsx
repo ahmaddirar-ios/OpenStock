@@ -14,13 +14,13 @@ import { AlertsCard, PortfolioCard, ScannerCard, ScreenersCard, StrategiesCard, 
 import { getSaudiMarketNews } from "@/lib/actions/news.actions";
 import { getDashboardLayout } from "@/lib/actions/dashboard.actions";
 import { isFlagEnabled } from "@/lib/flags";
-import { loadWorldBoard } from "@/lib/world-board";
+import { loadWorldBoard } from "@/lib/market/world-board";
 import { getLang } from "@/lib/i18n-server";
 import { tx, type Lang } from "@/lib/i18n";
 import { LAST_SYMBOL_KEY, overviewSymbol } from "@/lib/shell/command";
 import { formatSymbolForTradingView, isChartEmbeddable, tradingViewSymbolUrl } from "@/lib/utils";
-import { yahooCandleSymbol } from "@/lib/yahoo-candles";
-import { isIndexSymbol } from "@/lib/yahoo";
+import { yahooCandleSymbol } from "@/lib/market/yahoo-candles";
+import { isIndexSymbol } from "@/lib/market/yahoo";
 
 export const metadata = {
     title: "Overview",

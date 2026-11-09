@@ -21,7 +21,7 @@ import {
     type OptimizerResult,
     type StrategyDirection,
     type WalkForwardResult,
-} from '@/lib/custom-strategy';
+} from '@/lib/strategy/custom';
 import {
     MAX_SAVED_STRATEGIES,
     addSavedStrategy,
@@ -30,14 +30,14 @@ import {
     removeSavedStrategy,
     storeSavedStrategies,
     type SavedStrategy,
-} from '@/lib/strategy-library-custom';
+} from '@/lib/strategy/library-custom';
 import { loadStrategies, saveStrategies } from '@/lib/actions/strategy.actions';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { compareYahooSymbol } from '@/lib/compare';
-import { CANDLE_INTERVALS, type Candle } from '@/lib/yahoo-candles';
-import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
-import { DEFAULT_COSTS, barsPerYear, type Backtest, type Costs, type Metrics } from '@/lib/strategies';
-import { describeFormulaError } from '@/lib/formula';
+import { CANDLE_INTERVALS, type Candle } from '@/lib/market/yahoo-candles';
+import { INTERVAL_LABEL_KEYS } from '@/lib/chart/grid';
+import { DEFAULT_COSTS, barsPerYear, type Backtest, type Costs, type Metrics } from '@/lib/strategy/strategies';
+import { describeFormulaError } from '@/lib/formula/formula';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import KpiGrid from '@/components/strategies/KpiGrid';
 import ResultCharts from '@/components/strategies/ResultCharts';

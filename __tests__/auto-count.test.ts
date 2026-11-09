@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { COUNT_GLYPHS, type Drawing } from '@/lib/chart-drawings';
-import { AUTO_SENSITIVITIES, autoCount, detectPivots, type Pivot } from '@/lib/auto-count';
-import type { Candle } from '@/lib/yahoo-candles';
+import { COUNT_GLYPHS, type Drawing } from '@/lib/chart/drawings';
+import { AUTO_SENSITIVITIES, autoCount, detectPivots, type Pivot } from '@/lib/chart/auto-count';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const DAY = 86_400;
 const T0 = 1_700_000_000;

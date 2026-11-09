@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_SCAN_SYMBOLS, SCAN_BATCH, SCAN_PATTERNS, pivotOptionsFor, scanCandles } from '@/lib/pattern-scan';
-import type { Candle } from '@/lib/yahoo-candles';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 /** A close path walked in equal steps, so the zigzag detector sees one pivot per waypoint. */
 const candlesFrom = (waypoints: number[]): Candle[] => {

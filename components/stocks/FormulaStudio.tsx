@@ -9,7 +9,7 @@ import {
     FORMULA_SERIES,
     checkFormula,
     describeFormulaError,
-} from '@/lib/formula';
+} from '@/lib/formula/formula';
 import {
     BUILDER_INDICATORS,
     BUILDER_OPERATORS,
@@ -24,7 +24,7 @@ import {
     type BuilderIndicator,
     type BuilderOperand,
     type BuilderOperator,
-} from '@/lib/formula-builder';
+} from '@/lib/formula/builder';
 import {
     MAX_SAVED_FORMULAS,
     addSavedFormula,
@@ -34,9 +34,9 @@ import {
     removeSavedFormula,
     saveSavedFormulas,
     type SavedFormula,
-} from '@/lib/formula-library';
+} from '@/lib/formula/library';
 import { loadFormulas, saveFormulas } from '@/lib/actions/formula.actions';
-import { MAX_FORMULA_LENGTH } from '@/lib/chart-studies';
+import { MAX_FORMULA_LENGTH } from '@/lib/chart/studies';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

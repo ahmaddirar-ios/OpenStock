@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/better-auth/auth";
-import { loadSaudiBoard } from "@/lib/saudi-board";
+import { loadSaudiBoard } from "@/lib/market/saudi-board";
 import { clientIp, isRateLimited } from "@/lib/rate-limit";
 
 // The Saudi board polls this while the Riyadh session runs. Two scanner calls per minute behind a

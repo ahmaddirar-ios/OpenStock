@@ -9,8 +9,8 @@ import {
     type AlertRule,
     type GroupedRuleRow,
 } from '@/lib/alerts';
-import { DEFAULT_CUSTOM_STRATEGY } from '@/lib/custom-strategy';
-import type { Candle } from '@/lib/yahoo-candles';
+import { DEFAULT_CUSTOM_STRATEGY } from '@/lib/strategy/custom';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const quote = (price: number, changePercent = 0) => ({ price, changePercent });
 

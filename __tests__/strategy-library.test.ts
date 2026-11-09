@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { STRATEGY_IDS } from '@/lib/strategies';
-import { CATEGORY_KEYS, STRATEGY_LIBRARY, strategyById } from '@/lib/strategy-library';
+import { STRATEGY_IDS } from '@/lib/strategy/strategies';
+import { CATEGORY_KEYS, STRATEGY_LIBRARY, strategyById } from '@/lib/strategy/library';
 
 describe('strategy library', () => {
     it('documents every strategy the engine knows', () => {

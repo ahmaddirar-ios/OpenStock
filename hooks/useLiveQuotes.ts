@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { isQuoteLive, quoteTtlSeconds } from "@/lib/market-data";
+import { isQuoteLive, quoteTtlSeconds } from "@/lib/market/data";
 
 export type LiveQuote = { c?: number; d?: number; dp?: number; h?: number; l?: number; o?: number; pc?: number; t?: number };
 

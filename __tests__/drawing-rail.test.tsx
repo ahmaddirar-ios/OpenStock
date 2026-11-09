@@ -5,8 +5,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import DrawingRail from '@/components/stocks/DrawingRail';
-import { toolsInGroup } from '@/lib/chart-drawings';
-import { railGroupsWithTools, TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import { toolsInGroup } from '@/lib/chart/drawings';
+import { railGroupsWithTools, TOOL_LABEL_KEYS } from '@/lib/chart/drawing-groups';
 import { tx } from '@/lib/i18n';
 
 const label = (key: Parameters<typeof tx>[1]) => tx('en', key);

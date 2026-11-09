@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { scanPatternBatch } from '@/lib/actions/pattern-scan.actions';
 import { PATTERN_GROUP, PATTERN_LABEL_KEY, PATTERN_ORDER, type PatternGroup, type PatternHit, type PatternId } from '@/lib/patterns';
-import { AUTO_SENSITIVITIES, type AutoSensitivity } from '@/lib/auto-count';
+import { AUTO_SENSITIVITIES, type AutoSensitivity } from '@/lib/chart/auto-count';
 import { MAX_SCAN_SYMBOLS, SCAN_BATCH } from '@/lib/pattern-scan';
 import { encodePatternLink } from '@/lib/pattern-link';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';

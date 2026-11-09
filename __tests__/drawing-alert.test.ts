@@ -11,7 +11,7 @@ import {
     evaluateDrawingRule,
     parseAnchor,
     type DrawingAnchor,
-} from '@/lib/drawing-alert';
+} from '@/lib/chart/drawing-alert';
 
 // A rising line: 20 bars from (1000, 100) to (2000, 120) — 0.02 price per second.
 const line = (time: number) => 100 + (time - 1000) * 0.02;

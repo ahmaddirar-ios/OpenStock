@@ -4,7 +4,7 @@ import { Schema, model, models, type Document, type Model } from 'mongoose';
  * One row per user holding the formulas they have saved. Before this, a shelf lived only in one
  * browser's localStorage — a new device, a new browser, or a cleared site meant the work was gone.
  *
- * The entries are stored as they travel rather than as a second schema: `lib/formula-library.ts` is
+ * The entries are stored as they travel rather than as a second schema: `lib/formula/library.ts` is
  * the gate every entry passes on the way in and on the way out, and a duplicated mongoose schema
  * would only be a second place for the format to drift.
  */

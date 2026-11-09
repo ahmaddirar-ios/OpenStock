@@ -16,8 +16,8 @@ import {
     type BuilderIndicator,
     type BuilderOperand,
     type BuilderOperator,
-} from '@/lib/formula-builder';
-import { MAX_FORMULA_LENGTH } from '@/lib/chart-studies';
+} from '@/lib/formula/builder';
+import { MAX_FORMULA_LENGTH } from '@/lib/chart/studies';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

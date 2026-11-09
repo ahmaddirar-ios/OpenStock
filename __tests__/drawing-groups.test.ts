@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TOOL_DEFS, toolsInGroup, type ToolGroup } from '@/lib/chart-drawings';
-import { RAIL_GROUPS, TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/drawing-groups';
+import { TOOL_DEFS, toolsInGroup, type ToolGroup } from '@/lib/chart/drawings';
+import { RAIL_GROUPS, TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/chart/drawing-groups';
 import { tx } from '@/lib/i18n';
 
 const TEN_GROUPS: ToolGroup[] = [

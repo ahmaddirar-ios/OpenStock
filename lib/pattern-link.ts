@@ -3,8 +3,8 @@
 // build on the server and read on the client.
 
 import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, labelsFor, type PatternDirection, type PatternHit, type PatternId } from '@/lib/patterns';
-import { newDrawingId, toolDef, type Drawing, type DrawPoint } from '@/lib/chart-drawings';
-import { CANDLE_INTERVALS } from '@/lib/yahoo-candles';
+import { newDrawingId, toolDef, type Drawing, type DrawPoint } from '@/lib/chart/drawings';
+import { CANDLE_INTERVALS } from '@/lib/market/yahoo-candles';
 
 export type PatternLink = {
     pattern: PatternId;

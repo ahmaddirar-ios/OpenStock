@@ -1,6 +1,6 @@
-import { newDrawingId, type DrawPoint, type Drawing } from '@/lib/chart-drawings';
-import { detectPivots, type PivotOptions } from '@/lib/auto-count';
-import type { Candle } from '@/lib/yahoo-candles';
+import { newDrawingId, type DrawPoint, type Drawing } from '@/lib/chart/drawings';
+import { detectPivots, type PivotOptions } from '@/lib/chart/auto-count';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 /**
  * Wolfe waves: five alternating turns whose two channel lines converge, and whose fifth point

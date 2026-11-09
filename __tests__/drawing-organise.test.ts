@@ -3,7 +3,7 @@
 // tool starts with. Both are rules the trader sets once and expects to keep, so both live in lib and
 // are proved here rather than in the component.
 import { describe, expect, it } from 'vitest';
-import { layerDrawings, layerDrawingsMany, type Drawing } from '@/lib/chart-drawings';
+import { layerDrawings, layerDrawingsMany, type Drawing } from '@/lib/chart/drawings';
 import {
     DRAWING_STYLES_KEY,
     loadDrawingStyles,
@@ -12,7 +12,7 @@ import {
     styleFor,
     withDrawingStyle,
     withoutDrawingStyle,
-} from '@/lib/drawing-styles';
+} from '@/lib/chart/drawing-styles';
 
 const list = (ids: string[]): Drawing[] =>
     ids.map((id) => ({ id, tool: 'trend', points: [{ time: 1000, price: 10 }, { time: 2000, price: 12 }] }));

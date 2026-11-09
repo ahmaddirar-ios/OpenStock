@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildSaudiBoard, isNomuSymbol, valueTraded } from '@/lib/saudi-market';
-import type { SaudiQuote } from '@/lib/tradingview-scanner';
+import { buildSaudiBoard, isNomuSymbol, valueTraded } from '@/lib/market/saudi-market';
+import type { SaudiQuote } from '@/lib/market/tradingview-scanner';
 
 const q = (symbol: string, changePercent: number, price = 10, volume = 1000, sector = 'Finance'): SaudiQuote => ({
     symbol,

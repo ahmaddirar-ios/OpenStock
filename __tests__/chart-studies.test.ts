@@ -20,9 +20,9 @@ import {
     parseStudies,
     studiesParam,
     type StudyId,
-} from '@/lib/chart-studies';
+} from '@/lib/chart/studies';
 import { tx } from '@/lib/i18n';
-import type { Candle } from '@/lib/yahoo-candles';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 /** Studies that answer from the first bars instead of waiting for a window to fill. */
 const IMMEDIATE = new Set<StudyId>(['vwap', 'obv', 'sar', 'pivots', 'avwap']);

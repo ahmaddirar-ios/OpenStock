@@ -5,8 +5,8 @@ import {
     measureDetail,
     measureHeadline,
     measureReadout,
-} from '@/lib/chart-measure';
-import type { DrawCandle } from '@/lib/chart-drawings';
+} from '@/lib/chart/measure';
+import type { DrawCandle } from '@/lib/chart/drawings';
 
 const candle = (time: number, volume: number): DrawCandle => ({
     time,

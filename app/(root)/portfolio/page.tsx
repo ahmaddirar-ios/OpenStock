@@ -9,7 +9,7 @@ import EquityCurveCard from '@/components/portfolio/EquityCurveCard';
 import { buildLedger, buildEquityCurve, mergePositions, totalReturnPercent, type PriceBar } from '@/lib/portfolio-ledger';
 import { summarizePortfolio, computePositionMetrics } from '@/lib/portfolio';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { isTadawulSymbol } from '@/lib/yahoo';
+import { isTadawulSymbol } from '@/lib/market/yahoo';
 import { getLang } from '@/lib/i18n-server';
 import { tx, arDigits } from '@/lib/i18n';
 

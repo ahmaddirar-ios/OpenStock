@@ -23,17 +23,17 @@ import {
     type MouseEventParams,
     type UTCTimestamp,
 } from 'lightweight-charts';
-import { createCandleHost, type CandleHost } from '@/lib/candle-host';
-import { readChartType } from '@/lib/chart-view';
-import type { StudyConfig } from '@/lib/chart-studies';
-import { sessionChange, universeName } from '@/lib/chart-grid';
+import { createCandleHost, type CandleHost } from '@/lib/chart/candle-host';
+import { readChartType } from '@/lib/chart/view';
+import type { StudyConfig } from '@/lib/chart/studies';
+import { sessionChange, universeName } from '@/lib/chart/grid';
 import { getCompareCandles, getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
-import type { Candle, CandleSet } from '@/lib/yahoo-candles';
+import type { Candle, CandleSet } from '@/lib/market/yahoo-candles';
 import Price from '@/components/Price';
 import PaneSearch from '@/components/charts/PaneSearch';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { clipToCursor } from '@/lib/chart-grid';
+import { clipToCursor } from '@/lib/chart/grid';
 import ChartLegend from '@/components/stocks/ChartLegend';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import ToolPalette from '@/components/stocks/ToolPalette';
@@ -54,10 +54,10 @@ import {
     type DrawPoint,
     type Drawing,
     type ScreenPoint,
-} from '@/lib/chart-drawings';
-import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
-import { applyHistory, canRedo, canUndo, checkpointHistory, createHistory, redoHistory, undoHistory, type History } from '@/lib/chart-history';
-import type { BarReadout } from '@/lib/chart-readout';
+} from '@/lib/chart/drawings';
+import { TOOL_LABEL_KEYS } from '@/lib/chart/drawing-groups';
+import { applyHistory, canRedo, canUndo, checkpointHistory, createHistory, redoHistory, undoHistory, type History } from '@/lib/chart/history';
+import type { BarReadout } from '@/lib/chart/readout';
 
 export type CrosshairSync = { time: number; price: number };
 export type RangeSync = { from: number; to: number };

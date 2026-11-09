@@ -3,7 +3,7 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { ChartSetupModel } from '@/database/models/chart-setup.model';
 import { requireUserId } from '@/lib/better-auth/auth';
-import { SETUP_VERSION, parseChartSetup, type ChartSetup } from '@/lib/chart-setup';
+import { SETUP_VERSION, parseChartSetup, type ChartSetup } from '@/lib/chart/setup';
 
 /**
  * The account's half of the chart setup: read the drawings and studies a trader has on a symbol, and

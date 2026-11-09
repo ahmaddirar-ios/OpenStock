@@ -1,7 +1,7 @@
 'use server';
 
-import { dailyQuoteFromChart, liveQuoteFromChart, normalizeYahooSymbol, type YahooDailyQuote, type YahooLiveQuote } from '@/lib/yahoo';
-import { quoteTtlSeconds } from '@/lib/market-data';
+import { dailyQuoteFromChart, liveQuoteFromChart, normalizeYahooSymbol, type YahooDailyQuote, type YahooLiveQuote } from '@/lib/market/yahoo';
+import { quoteTtlSeconds } from '@/lib/market/data';
 
 const yahooHeaders = { 'User-Agent': 'Mozilla/5.0' };
 

@@ -11,7 +11,7 @@ import { useLiveQuotes } from "@/hooks/useLiveQuotes";
 import { computePositionMetrics, positionWeight, summarizePortfolio, type PortfolioTotals } from "@/lib/portfolio";
 import { deletePosition } from "@/lib/actions/portfolio.actions";
 import { tx, arDigits, type Lang } from "@/lib/i18n";
-import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { saudiSymbolNameAr } from "@/lib/market/saudi-symbols";
 import { toast } from "sonner";
 import PositionFormModal, { type PositionDraft } from "./PositionFormModal";
 

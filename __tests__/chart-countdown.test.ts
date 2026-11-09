@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BAR_SECONDS, formatCountdown, secondsToBarClose } from '@/lib/chart-countdown';
+import { BAR_SECONDS, formatCountdown, secondsToBarClose } from '@/lib/chart/countdown';
 
 describe('secondsToBarClose', () => {
     it('counts down inside an open intraday bar', () => {

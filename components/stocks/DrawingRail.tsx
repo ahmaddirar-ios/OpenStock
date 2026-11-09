@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { MagnetStrength } from '@/lib/chart-magnet';
+import type { MagnetStrength } from '@/lib/chart/magnet';
 import {
     Brush,
     Circle,
@@ -26,9 +26,9 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toolsInGroup, toolDef, type ShapeTool, type ToolGroup } from '@/lib/chart-drawings';
-import { TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/drawing-groups';
-import { hotkeyForTool, MEASURE_KEY } from '@/lib/chart-hotkeys';
+import { toolsInGroup, toolDef, type ShapeTool, type ToolGroup } from '@/lib/chart/drawings';
+import { TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/chart/drawing-groups';
+import { hotkeyForTool, MEASURE_KEY } from '@/lib/chart/hotkeys';
 import type { ActiveTool } from '@/components/stocks/ChartDrawings';
 import type { StringKey } from '@/lib/i18n';
 

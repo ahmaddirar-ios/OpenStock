@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Download } from 'lucide-react';
-import { toCsv, type Trade } from '@/lib/strategies';
+import { toCsv, type Trade } from '@/lib/strategy/strategies';
 import { tx, arDigits, type Lang } from '@/lib/i18n';
 import { num, pct } from '@/components/strategies/format';
 import { cn } from '@/lib/utils';
