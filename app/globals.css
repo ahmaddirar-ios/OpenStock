@@ -1918,6 +1918,11 @@ html[lang="ar"] [lang="en"] {
 .chart-toolbar > .icon-btn { width: 26px; height: 26px; border-radius: 8px; }
 .chart-toolbar .tool-divider { width: 1px; height: 14px; margin: 0 3px; background: var(--line); }
 .chart-toolbar .chart-toolbar-spacer { flex: 1 1 0; min-width: 4px; }
+
+/* The pane the toolbar is speaking to. A hairline, not a glow: four panes already carry enough. */
+.chart-pane[data-active] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brand-ink) 45%, transparent);
+}
 /* A narrower chart pane keeps the controls, not their names: the glyph is the control, the tooltip
    is the label. Nothing moves to a second row, because a bar that wraps stops reading as a bar. */
 @media (max-width: 1400px) {

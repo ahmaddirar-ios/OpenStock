@@ -65,7 +65,13 @@ export type GridState = {
     layout: GridLayoutId;
     /** Every symbol that resolved, in pane order, capped at four. Empty panes are absent. */
     symbols: string[];
+    /** The interval a pane follows unless it has one of its own — the first pane's by default. */
     intervalId: string;
+    /**
+     * One interval per pane, in pane order. A study screen runs the same company on a weekly, a
+     * daily and two intraday panes, so the timeframe belongs to the pane, not to the screen.
+     */
+    intervals: string[];
 };
 
 /**
@@ -90,6 +96,17 @@ export function normalizeGridSymbols(inputs: readonly unknown[], fallback: reado
 export function paneSymbols(symbols: readonly string[], panes: number): string[] {
     return Array.from({ length: Math.max(0, panes) }, (_, index) => symbols[index] ?? '');
 }
+
+/**
+ * Where a grid pane keeps its drawings. The symbol page keeps one notebook per symbol; a pane keeps
+ * one per pane, so four charts of the same company can be annotated four different ways. The symbol
+ * is still part of the key, so switching a pane to another company does not drag the old shapes in.
+ */
+export function paneDrawingKey(symbol: string, paneIndex: number): string {
+    const name = (symbol || '').trim().toUpperCase();
+    return name ? `${name}@pane${paneIndex + 1}` : '';
+}
+
 
 /**
  * Splits the URL's `s` parameter into one entry per pane. A cleared pane keeps its place (`a,,b`
@@ -130,7 +147,37 @@ export function parseGridState(
     const symbols = named.length > 0 ? slots : normalizeGridSymbols(slots, fallback.symbols ?? []);
     const interval = firstValue(search.i);
     const remembered = isCandleIntervalId(fallback.intervalId) ? fallback.intervalId : DEFAULT_CANDLE_INTERVAL;
-    return { layout, symbols, intervalId: isCandleIntervalId(interval) ? interval : remembered };
+    const intervalId = isCandleIntervalId(interval) ? interval : remembered;
+    return {
+        layout,
+        symbols,
+        intervalId,
+        intervals: parsePaneIntervals(firstValue(search.is), intervalId),
+    };
+}
+
+/**
+ * The per-pane timeframes from the URL, one slot per pane. A pane the link is silent about follows
+ * the screen's interval, so an older link (`?l=4&s=…&i=1d`) still opens the screen it described.
+ */
+export function parsePaneIntervals(raw: string | undefined, fallback: string): string[] {
+    const parts = (raw ?? '').split(',');
+    return Array.from({ length: MAX_PANES }, (_, index) => {
+        const value = parts[index]?.trim();
+        return isCandleIntervalId(value) ? value : fallback;
+    });
+}
+
+/**
+ * The per-pane intervals as one value, with trailing panes that just follow the screen's interval
+ * dropped — a uniform workspace keeps the short `?l=4&s=…&i=1d` shape it always had.
+ */
+export function serializePaneIntervals(intervals: readonly string[], fallback: string): string {
+    const slots = intervals.length > 0 ? [...intervals] : [fallback];
+    while (slots.length > 1 && (slots[slots.length - 1] === fallback || !isCandleIntervalId(slots[slots.length - 1]))) {
+        slots.pop();
+    }
+    return slots.join(',');
 }
 
 /**
@@ -145,11 +192,16 @@ export function serializeGridSymbols(symbols: readonly string[]): string {
 }
 
 export function serializeGridState(state: GridState): string {
-    return new URLSearchParams({
+    const params: Record<string, string> = {
         l: String(state.layout),
         s: serializeGridSymbols(state.symbols),
         i: state.intervalId,
-    }).toString();
+    };
+    // Only a screen that actually differs per pane carries the extra parameter.
+    if ((state.intervals ?? []).some((value) => value !== state.intervalId)) {
+        params.is = serializePaneIntervals(state.intervals, state.intervalId);
+    }
+    return new URLSearchParams(params).toString();
 }
 
 export type SessionChange = { price: number; change: number; percent: number };

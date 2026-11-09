@@ -6,16 +6,19 @@ import {
     MAX_PANES,
     clipToCursor,
     normalizeGridSymbols,
+    paneDrawingKey,
     paneOwning,
     paneSymbols,
     parseGridLayout,
     parseGridState,
+    parsePaneIntervals,
     randomReplayTime,
     replayAnchor,
     replayEndTime,
     replayStartTime,
     searchUniverse,
     serializeGridState,
+    serializePaneIntervals,
     serializeGridSymbols,
     sessionChange,
     stepReplayTime,
@@ -72,6 +75,13 @@ describe('normalizeGridSymbols', () => {
 });
 
 describe('pane bookkeeping', () => {
+    it('gives every pane its own drawing notebook, and none to an empty pane', () => {
+        expect(paneDrawingKey('2222.SR', 0)).toBe('2222.SR@pane1');
+        expect(paneDrawingKey('2222.SR', 3)).toBe('2222.SR@pane4');
+        expect(new Set([0, 1, 2, 3].map((i) => paneDrawingKey('2222.SR', i))).size).toBe(4);
+        expect(paneDrawingKey('', 1)).toBe('');
+    });
+
     it('pads the panes that are still empty', () => {
         expect(paneSymbols(['AAPL'], 4)).toEqual(['AAPL', '', '', '']);
         expect(paneSymbols(['AAPL', 'MSFT', 'NVDA'], 2)).toEqual(['AAPL', 'MSFT']);
@@ -87,7 +97,7 @@ describe('pane bookkeeping', () => {
 describe('parseGridState', () => {
     it('reads the layout, symbols and interval from the query string', () => {
         const state = parseGridState({ l: '3', s: '2222.SR,aapl', i: '60m' });
-        expect(state).toEqual({ layout: 3, symbols: ['2222.SR', 'AAPL'], intervalId: '60m' });
+        expect(state).toEqual({ layout: 3, symbols: ['2222.SR', 'AAPL'], intervalId: '60m', intervals: ['60m', '60m', '60m', '60m'] });
     });
 
     it('takes the first value when a parameter is repeated', () => {
@@ -100,8 +110,9 @@ describe('parseGridState', () => {
             layout: 4,
             symbols: ['1120.SR'],
             intervalId: '1wk',
+            intervals: ['1wk', '1wk', '1wk', '1wk'],
         });
-        expect(parseGridState({})).toEqual({ layout: 4, symbols: [], intervalId: '1d' });
+        expect(parseGridState({})).toEqual({ layout: 4, symbols: [], intervalId: '1d', intervals: ['1d', '1d', '1d', '1d'] });
     });
 
     it('ignores an interval Yahoo cannot price and an unreadable layout', () => {
@@ -119,27 +130,58 @@ describe('parseGridState', () => {
         expect(parseGridState({ s: '2222.SR,,AAPL' }).symbols).toEqual(['2222.SR', '', 'AAPL']);
         expect(parseGridState({ s: 'AAPL,,' }).symbols).toEqual(['AAPL']);
     });
+
+    it('reads one interval per pane, and follows the screen where the link is silent', () => {
+        const study = parseGridState({ l: '4', s: '2222.SR,2222.SR', i: '1d', is: '1mo,1wk,60m' });
+        expect(study.intervals).toEqual(['1mo', '1wk', '60m', '1d']);
+        // An older link carries one interval only; every pane still opens on it.
+        expect(parseGridState({ i: '4h' }).intervals).toEqual(['4h', '4h', '4h', '4h']);
+        // A broken entry falls back instead of leaking through.
+        expect(parsePaneIntervals('1d,3d,1wk', '1d')).toEqual(['1d', '1d', '1wk', '1d']);
+    });
 });
 
 describe('serializeGridState', () => {
     it('round trips through the query string', () => {
-        const state = { layout: 2 as const, symbols: ['2222.SR', 'AAPL'], intervalId: '4h' };
+        const state = { layout: 2 as const, symbols: ['2222.SR', 'AAPL'], intervalId: '4h', intervals: ['4h', '4h', '4h', '4h'] };
         const query = serializeGridState(state);
         expect(query).toBe('l=2&s=2222.SR%2CAAPL&i=4h');
         const parsed = new URLSearchParams(query);
         expect(parseGridState({ l: parsed.get('l')!, s: parsed.get('s')!, i: parsed.get('i')! })).toEqual(state);
     });
 
+    it('round trips a screen whose panes differ', () => {
+        const state = {
+            layout: 4 as const,
+            symbols: ['2222.SR', '2222.SR', '2222.SR', '2222.SR'],
+            intervalId: '1mo',
+            intervals: ['1mo', '1wk', '1d', '60m'],
+        };
+        const query = serializeGridState(state);
+        expect(query).toContain('is=1mo%2C1wk%2C1d%2C60m');
+        const parsed = new URLSearchParams(query);
+        expect(
+            parseGridState({ l: parsed.get('l')!, s: parsed.get('s')!, i: parsed.get('i')!, is: parsed.get('is')! }),
+        ).toEqual(state);
+    });
+
     it('keeps an empty workspace readable', () => {
-        expect(serializeGridState({ layout: 4, symbols: [], intervalId: '1d' })).toBe('l=4&s=&i=1d');
+        expect(serializeGridState({ layout: 4, symbols: [], intervalId: '1d', intervals: [] })).toBe('l=4&s=&i=1d');
+    });
+
+    it('leaves the short link alone when every pane shares a timeframe', () => {
+        expect(serializePaneIntervals(['1d', '1d', '1d', '1d'], '1d')).toBe('1d');
+        expect(serializePaneIntervals(['1d', '1d', '60m', '1d'], '1d')).toBe('1d,1d,60m');
+        expect(serializePaneIntervals([], '1d')).toBe('1d');
     });
 
     it('drops empty panes at the end but keeps a cleared one in the middle', () => {
-        expect(serializeGridState({ layout: 4, symbols: ['2222.SR', '', '', ''], intervalId: '1d' })).toBe(
+
+        expect(serializeGridState({ layout: 4, symbols: ['2222.SR', '', '', ''], intervalId: '1d', intervals: ['1d', '1d', '1d', '1d'] })).toBe(
             'l=4&s=2222.SR&i=1d',
         );
         expect(serializeGridSymbols(['2222.SR', '', 'AAPL'])).toBe('2222.SR,,AAPL');
-        const query = serializeGridState({ layout: 3, symbols: ['2222.SR', '', 'AAPL'], intervalId: '1wk' });
+        const query = serializeGridState({ layout: 3, symbols: ['2222.SR', '', 'AAPL'], intervalId: '1wk', intervals: ['1wk', '1wk', '1wk', '1wk'] });
         expect(parseGridState({ l: '3', s: new URLSearchParams(query).get('s')!, i: '1wk' }).symbols).toEqual([
             '2222.SR',
             '',

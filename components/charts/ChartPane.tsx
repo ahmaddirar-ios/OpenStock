@@ -26,14 +26,13 @@ import {
 import { createCandleHost, type CandleHost } from '@/lib/chart/candle-host';
 import { readChartType } from '@/lib/chart/view';
 import type { StudyConfig } from '@/lib/chart/studies';
-import { sessionChange, universeName } from '@/lib/chart/grid';
+import { clipToCursor, INTERVAL_LABEL_KEYS, sessionChange, universeName } from '@/lib/chart/grid';
 import { getCompareCandles, getStrategyCandles, getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
 import type { Candle, CandleSet } from '@/lib/market/yahoo-candles';
 import Price from '@/components/Price';
 import PaneSearch from '@/components/charts/PaneSearch';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { clipToCursor } from '@/lib/chart/grid';
 import ChartLegend from '@/components/stocks/ChartLegend';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
 import ToolPalette from '@/components/stocks/ToolPalette';
@@ -67,11 +66,17 @@ type Props = {
     /** Empty until the trader picks one, in which case the pane shows its empty state. */
     symbol: string;
     paneIndex: number;
-    /** Every symbol on the screen, so a duplicate can be refused by name. */
-    symbols: string[];
     watchlist: string[];
     intervalId: string;
     studies: StudyConfig[];
+    /**
+     * Where this pane keeps its shapes. The grid gives each pane its own key, so four charts of one
+     * company are four notebooks rather than one shared page.
+     */
+    drawingKey: string;
+    /** The pane the toolbar is speaking to; also where the accent ring is drawn. */
+    active: boolean;
+    onFocus: () => void;
     /** Bumped by the refresh button to reload every pane. */
     refreshNonce: number;
     crosshair: { from: number; value: CrosshairSync | null } | null;
@@ -100,10 +105,12 @@ export default function ChartPane({
     lang,
     symbol,
     paneIndex,
-    symbols,
     watchlist,
     intervalId,
     studies,
+    drawingKey,
+    active,
+    onFocus,
     refreshNonce,
     crosshair,
     range,
@@ -159,21 +166,30 @@ export default function ChartPane({
         setTimeline((history) => applyHistory(history, typeof updater === 'function' ? updater(history.present) : updater));
     }, []);
 
-    // A symbol change is a different chart: its own shapes, its own history, nothing selected.
+    // A different chart is a different notebook: its own shapes, its own history, nothing selected.
+    // In the grid the key carries the pane, so two panes of the same company stay apart.
+    const skipSave = useRef(false);
     useEffect(() => {
-        setTimeline(createHistory(symbol ? loadDrawings(symbol) : []));
+        // The commit that changes the key still holds the previous chart's shapes; writing them
+        // here would put one pane's drawings into another pane's notebook.
+        skipSave.current = true;
+        setTimeline(createHistory(drawingKey ? loadDrawings(drawingKey) : []));
         setSelectedId([]);
         setTool(null);
         setNoteText('');
         setListOpen(false);
         setEditRequest(null);
-    }, [symbol]);
+    }, [drawingKey]);
 
-    // Every edit is written straight through, so a reload or a trip to the symbol page keeps it.
+    // Every edit is written straight through, so a reload keeps it.
     useEffect(() => {
-        if (!symbol) return;
-        saveDrawings(symbol, drawings);
-    }, [symbol, drawings]);
+        if (!drawingKey) return;
+        if (skipSave.current) {
+            skipSave.current = false;
+            return;
+        }
+        saveDrawings(drawingKey, drawings);
+    }, [drawingKey, drawings]);
 
     const fromScreen = useCallback((x: number, y: number): DrawPoint | null => {
         const host = hostRef.current;
@@ -518,8 +534,10 @@ export default function ChartPane({
 
     return (
         <section
+            data-active={active || undefined}
+            onPointerDownCapture={onFocus}
             className={cn(
-                'card relative flex min-h-[320px] flex-col overflow-hidden',
+                'card chart-pane relative flex min-h-[320px] flex-col overflow-hidden',
                 // The tool palette hangs below the header, over the chart and often over the pane
                 // beneath it. While it is open this pane has to sit above its siblings and stop
                 // clipping, or the next pane's header paints over the list.
@@ -554,6 +572,14 @@ export default function ChartPane({
                                 {name}
                             </span>
                         )}
+                        {/* The pane's own timeframe, printed on the pane: with four of them open the
+                            toolbar's active pill is not enough to tell which chart is which. */}
+                        <span
+                            className="pill mono h-6 px-1.5 text-[11px] text-faint"
+                            title={tx(lang, 'chart.grid.interval')}
+                        >
+                            {tx(lang, INTERVAL_LABEL_KEYS[intervalId] ?? 'chart.tf.1d')}
+                        </span>
                         {/* The pane's drawing controls: the same tools as the symbol page, folded into
                             a row of glyphs so a grid of four panes still has room for its charts. */}
                         {status === 'ready' && !replay && (
@@ -797,8 +823,6 @@ export default function ChartPane({
                 {picking && (
                     <PaneSearch
                         lang={lang}
-                        symbols={symbols}
-                        paneIndex={paneIndex}
                         watchlist={watchlist}
                         onPick={(picked) => {
                             setPicking(false);
