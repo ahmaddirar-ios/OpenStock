@@ -75,8 +75,11 @@ Legend: ✅ shipped · 🟡 partial / weaker than TradingView · ❌ missing.
 
 ### Tier 3 — infrastructure TradingView has and we do not
 
-9. **❌ No REST API for bars and indicators** for users' own scripts (TradingView does not have one
-   either; this is a *lead*, not a gap — worth keeping in mind).
+9. **✅ REST API for bars and indicators.** Shipped: `/api/v1/candles`, `/quote`, `/indicators` and
+   `/me`, authenticated with an `rvx_` key minted on the profile page (stored only as a SHA-256 hash,
+   revocable). Included with Pro and Premium, with per-account exceptions; hourly `RateLimit-*`
+   headers and a documented `{ error: { code, message } }` envelope. The public contract lives at
+   `/api`; indicators call the chart's own maths, so a script and a pane cannot disagree.
 10. **✅ Extend, callout arrows, copy style.** Shipped: a trend line takes Extend left / Extend right
     (screen arithmetic, so it reaches the panel edge past the last bar); a callout aims at its anchor
     with an arrowhead; Copy style / Paste style carry colour, weight, dash, fill and type styling
