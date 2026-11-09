@@ -9,6 +9,7 @@ import {
     Landmark,
     LifeBuoy,
     LayoutDashboard,
+    ScanSearch,
     SlidersHorizontal,
     Star,
     Wallet,
@@ -52,6 +53,7 @@ export const PAGES: readonly PageDef[] = [
     { href: '/alerts', labelKey: 'nav.alerts', icon: BellRing, section: 'mine', keywords: ['notifications', 'تنبيهات', 'إشعارات'] },
 
     { href: '/screener', labelKey: 'nav.screener', icon: SlidersHorizontal, section: 'analysis', keywords: ['filter', 'screen', 'فلتر', 'مسح', 'فرز'] },
+    { href: '/scanner', labelKey: 'nav.scanner', icon: ScanSearch, section: 'analysis', keywords: ['pattern', 'scanner', 'wolfe', 'harmonic', 'نموذج', 'أنماط', 'مسح'] },
     { href: '/charts', labelKey: 'nav.charts', icon: CandlestickChart, section: 'analysis', keywords: ['grid', 'charts', 'شارت', 'شارتات', 'شبكة'] },
     { href: '/strategies', labelKey: 'nav.strategies', icon: FlaskConical, section: 'analysis', keywords: ['backtest', 'lab', 'استراتيجية', 'اختبار'] },
 
