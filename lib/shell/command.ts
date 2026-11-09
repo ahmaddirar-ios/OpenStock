@@ -6,7 +6,8 @@
 
 import { tx } from '@/lib/i18n';
 import { normaliseSearch, searchTools, toolById, type ToolEntry } from '@/lib/tools/catalog';
-import { PAGES, type PageDef } from './pages';
+import type { Role } from '@/lib/authz';
+import { PAGES, visiblePages, type PageDef } from './pages';
 
 /** Where a tool lands when the trader has not chosen a chart yet: Aramco, the most-read row. */
 export const DEFAULT_SYMBOL = '2222.SR';
@@ -65,11 +66,15 @@ const pageScore = (page: PageDef, needle: string): number => {
 /**
  * The pages that answer a query, best first and stable. An empty query answers every page, in the
  * shell's own order — the idle palette is a map of the terminal.
+ *
+ * With a role, only pages that role may open are offered. Omitting it keeps the whole registry,
+ * which is what the registry sanity tests want.
  */
-export function commandPages(query: string): PageDef[] {
+export function commandPages(query: string, role?: Role): PageDef[] {
+    const pages = role ? visiblePages(role) : [...PAGES];
     const needle = normaliseSearch(query);
-    if (!needle) return [...PAGES];
-    return PAGES
+    if (!needle) return pages;
+    return pages
         .map((page, order) => ({ page, order, score: pageScore(page, needle) }))
         .filter((hit) => hit.score > 0)
         .sort((a, b) => b.score - a.score || a.order - b.order)

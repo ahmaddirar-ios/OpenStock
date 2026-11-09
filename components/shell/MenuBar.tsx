@@ -21,16 +21,20 @@ import {
     Moon,
     Search,
     ScanSearch,
+    ShieldCheck,
     SlidersHorizontal,
     Star,
     Sun,
     User,
     Wallet,
+    Wrench,
     X,
 } from 'lucide-react';
 import { openSearch } from '@/components/SearchCommand';
 import { openShortcuts } from '@/components/shell/ShortcutSheet';
 import { signOut } from '@/lib/actions/auth.actions';
+import type { Role } from '@/lib/authz';
+import { canOpen, pageByHref } from '@/lib/shell/pages';
 import { langCookie, otherLang, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { applyTheme, readTheme, writeTheme } from '@/lib/theme';
 import RovexLogo from '@/components/brand/RovexLogo';
@@ -80,6 +84,7 @@ export const MENUS: MenuDef[] = [
         id: 'tools',
         labelKey: 'menu.tools',
         items: [
+            { labelKey: 'nav.tools', href: '/tools', icon: Wrench },
             { labelKey: 'menu.tools.charts', href: '/charts', icon: CandlestickChart },
             { labelKey: 'menu.tools.api', href: '/api-docs', icon: Info },
         ],
@@ -98,6 +103,8 @@ export const MENUS: MenuDef[] = [
         labelKey: 'menu.account',
         items: [
             { labelKey: 'nav.profile', href: '/profile', icon: User },
+            // Only rendered for a staff role; the filter below drops it for everyone else.
+            { labelKey: 'nav.admin', href: '/admin', icon: ShieldCheck },
             { labelKey: 'nav.signOut', action: 'signout', icon: LogOut },
         ],
     },
@@ -124,12 +131,20 @@ export const MENUS: MenuDef[] = [
 type Props = {
     lang: Lang;
     userName: string;
+    role: Role;
     onMenu: () => void;
     onCollapse: () => void;
     onFocus: () => void;
 };
 
-export default function MenuBar({ lang, userName, onMenu, onCollapse, onFocus }: Props) {
+/** Rows the role can open; an action has no page, so it always stays. */
+const allowed = (items: MenuItem[], role: Role): MenuItem[] =>
+    items.filter((item) => {
+        const page = item.href ? pageByHref(item.href) : undefined;
+        return !page || canOpen(page, role);
+    });
+
+export default function MenuBar({ lang, userName, role, onMenu, onCollapse, onFocus }: Props) {
     const router = useRouter();
     const [open, setOpen] = useState<string | null>(null);
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -182,6 +197,10 @@ export default function MenuBar({ lang, userName, onMenu, onCollapse, onFocus }:
         else void document.documentElement.requestFullscreen?.();
     };
 
+    const menus = MENUS
+        .map((menu) => ({ ...menu, items: allowed(menu.items, role) }))
+        .filter((menu) => menu.items.length > 0);
+
     return (
         <div className="menubar" ref={barRef}>
             <button type="button" onClick={onMenu} className="win-btn lg:hidden" aria-label={tx(lang, 'nav.menu')}>
@@ -193,7 +212,7 @@ export default function MenuBar({ lang, userName, onMenu, onCollapse, onFocus }:
             </Link>
 
             <nav className="menubar-menus" aria-label={tx(lang, 'menu.view')}>
-                {MENUS.map((menu) => (
+                {menus.map((menu) => (
                     <div key={menu.id} className="menubar-menu">
                         <button
                             type="button"

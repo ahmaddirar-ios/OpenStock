@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tx, type Lang } from '@/lib/i18n';
-import { PAGES, PAGE_SECTIONS, pageByHref, pagesInSection } from '@/lib/shell/pages';
+import { PAGES, PAGE_SECTIONS, pageByHref, pagesInSection, visiblePages, visiblePagesInSection } from '@/lib/shell/pages';
 import { commandPages, commandTools, toolHref, toolFromParam, DEFAULT_SYMBOL } from '@/lib/shell/command';
 import { searchTools } from '@/lib/tools/catalog';
 
@@ -33,6 +33,34 @@ describe('the shell’s one page list', () => {
     it('finds a page by its address', () => {
         expect(pageByHref('/world')?.labelKey).toBe('nav.world');
         expect(pageByHref('/nope')).toBeUndefined();
+    });
+});
+
+describe('the shell offers only what a role can open', () => {
+    it('hides the admin entry from a plain user and shows it to every staff role', () => {
+        expect(visiblePages('user').map((page) => page.href)).not.toContain('/admin');
+        for (const role of ['viewer', 'support', 'moderator', 'admin'] as const) {
+            expect(visiblePages(role).map((page) => page.href)).toContain('/admin');
+        }
+    });
+
+    it('keeps every open page for every role', () => {
+        for (const role of ['user', 'viewer', 'support', 'moderator', 'admin'] as const) {
+            const visible = new Set(visiblePages(role).map((page) => page.href));
+            for (const page of PAGES) {
+                if (!page.requires && !page.requiresStaff) expect(visible.has(page.href)).toBe(true);
+            }
+        }
+    });
+
+    it('drops the admin section for a plain user', () => {
+        expect(visiblePagesInSection('admin', 'user')).toEqual([]);
+        expect(visiblePagesInSection('admin', 'viewer').map((page) => page.href)).toEqual(['/admin']);
+    });
+
+    it('filters the command bar by role', () => {
+        expect(commandPages('', 'user').map((page) => page.href)).not.toContain('/admin');
+        expect(commandPages('admin', 'admin').map((page) => page.href)).toContain('/admin');
     });
 });
 

@@ -11,6 +11,7 @@ import { tx, type Lang, type StringKey } from "@/lib/i18n";
 import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
 import { typeLabel } from "@/lib/i18n";
 import { commandPages, commandTools, toolHref, DEFAULT_SYMBOL, LAST_SYMBOL_KEY } from "@/lib/shell/command";
+import type { Role } from "@/lib/authz";
 import type { ToolEntry } from "@/lib/tools/catalog";
 import { toolIcon } from "@/lib/tools/icons";
 
@@ -23,7 +24,7 @@ export const SearchButton = ({ children, className }: { children: React.ReactNod
     <button type="button" onClick={openSearch} className={className}>{children}</button>
 );
 
-export default function SearchCommand({ initialStocks, lang, defaultSymbol }: { initialStocks: StockWithWatchlistStatus[]; lang: Lang; defaultSymbol?: string }) {
+export default function SearchCommand({ initialStocks, lang, role, defaultSymbol }: { initialStocks: StockWithWatchlistStatus[]; lang: Lang; role: Role; defaultSymbol?: string }) {
     const router = useRouter();
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
@@ -36,7 +37,7 @@ export default function SearchCommand({ initialStocks, lang, defaultSymbol }: { 
     const isSearchMode = !!searchTerm.trim();
     const displayStocks = isSearchMode ? stocks : stocks?.slice(0, 6);
     // Pages answer an empty query (a map of the terminal); tools need something typed.
-    const pages = useMemo(() => commandPages(searchTerm), [searchTerm]);
+    const pages = useMemo(() => commandPages(searchTerm, role), [searchTerm, role]);
     const tools = useMemo(() => commandTools(searchTerm), [searchTerm]);
 
     useEffect(() => {

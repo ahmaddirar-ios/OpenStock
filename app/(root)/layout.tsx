@@ -4,6 +4,7 @@ import AppShell from "@/components/shell/AppShell";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { getUserWatchlist } from "@/lib/actions/watchlist.actions";
 import { getLang } from "@/lib/i18n-server";
+import { roleOf } from "@/lib/authz";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const session = await getSession();
@@ -15,6 +16,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
         name: session.user.name,
         email: session.user.email,
     }
+    const role = roleOf(session.user as { role?: string | null });
 
     const [initialStocks, watchlist] = await Promise.all([
         searchStocks(),
@@ -29,6 +31,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 watchlist={watchlist.map(({ symbol, company }: { symbol: string; company: string }) => ({ symbol, company }))}
                 initialStocks={initialStocks}
                 lang={lang}
+                role={role}
             >
                 {children}
             </AppShell>

@@ -11,6 +11,7 @@ import { MarketStrip, NoticeBar, StatusBar } from "@/components/shell/TerminalBa
 import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { langCookie, otherLang, tx, type Lang } from "@/lib/i18n";
+import type { Role } from "@/lib/authz";
 import { LAST_SYMBOL_KEY, isSymbolLike } from "@/lib/shell/command";
 import { shortcutFor } from "@/lib/shell/shortcuts";
 import { MotionProvider } from "@/components/motion";
@@ -20,12 +21,13 @@ type AppShellProps = {
     watchlist: { symbol: string; company: string }[];
     initialStocks: StockWithWatchlistStatus[];
     lang: Lang;
+    role: Role;
     children: React.ReactNode;
 };
 
 const COLLAPSED_KEY = 'openstock:sidebar-collapsed';
 
-const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellProps) => {
+const AppShell = ({ user, watchlist, initialStocks, lang, role, children }: AppShellProps) => {
     const pathname = usePathname();
     const router = useRouter();
     const [navOpen, setNavOpen] = useState(false);
@@ -92,6 +94,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
             <MenuBar
                 lang={lang}
                 userName={user.name ?? ''}
+                role={role}
                 onMenu={() => setNavOpen(true)}
                 onCollapse={toggleCollapsed}
                 onFocus={() => setFocus((value) => !value)}
@@ -107,7 +110,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
                         navOpen ? 'max-lg:translate-x-0' : lang === 'ar' ? 'max-lg:translate-x-full' : 'max-lg:-translate-x-full',
                     )}
                 >
-                    <Sidebar user={user} lang={lang} />
+                    <Sidebar user={user} lang={lang} role={role} />
                 </div>
                 {navOpen && (
                     <div className="fixed inset-0 z-40 bg-page/60 backdrop-blur-[2px] lg:hidden" onClick={() => setNavOpen(false)} />
@@ -115,7 +118,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
 
                 <div className="shell-container">
                     <div className="app">
-                        <TabBar onMenu={() => setNavOpen(true)} lang={lang} />
+                        <TabBar onMenu={() => setNavOpen(true)} lang={lang} role={role} />
                         <main id="main" tabIndex={-1} ref={workspaceRef} className={cn('workspace', pathname === '/dashboard' && 'is-first-tab')}>
                             <div className={cn('workspace-inner', pathname === '/dashboard' && 'is-overview')}>
                                 {children}
@@ -129,7 +132,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, children }: AppShellPr
 
             {/* The app's own alert clock: any page open and visible checks the rules once a minute. */}
             <AlertNotifier lang={lang} />
-            <SearchCommand initialStocks={initialStocks} lang={lang} defaultSymbol={watchlist[0]?.symbol} />
+            <SearchCommand initialStocks={initialStocks} lang={lang} role={role} defaultSymbol={watchlist[0]?.symbol} />
             <ShortcutSheet lang={lang} />
         </div>
         </MotionProvider>

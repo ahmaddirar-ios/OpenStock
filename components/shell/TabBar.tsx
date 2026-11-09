@@ -7,7 +7,8 @@ import { LayoutDashboard, Menu, Plus, Star, X } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { tx, type Lang, type StringKey } from "@/lib/i18n";
-import { pageByHref } from "@/lib/shell/pages";
+import type { Role } from "@/lib/authz";
+import { canOpen, pageByHref } from "@/lib/shell/pages";
 
 const PINNED = ['/dashboard', '/watchlist'];
 const STORAGE_KEY = 'openstock-tabs';
@@ -29,6 +30,12 @@ const tabLabel = (path: string, lang: Lang) => {
     return tx(lang, key);
 };
 
+/** A tab is openable when its page is, or when it is a stock page (no requirement). */
+const openable = (path: string, role: Role): boolean => {
+    const page = pageByHref(path);
+    return !page || canOpen(page, role);
+};
+
 const withTab = (tabs: string[], path: string) => {
     if (!tabKey(path) || tabs.includes(path)) return tabs;
     const next = [...tabs, path];
@@ -36,7 +43,7 @@ const withTab = (tabs: string[], path: string) => {
     return extra > 0 ? next.filter((t, i) => PINNED.includes(t) || i >= extra + PINNED.length) : next;
 };
 
-const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
+const TabBar = ({ onMenu, lang, role }: { onMenu: () => void; lang: Lang; role: Role }) => {
     const pathname = usePathname();
     const router = useRouter();
     const [tabs, setTabs] = useState(() => withTab(PINNED, pathname));
@@ -48,10 +55,10 @@ const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
         try {
             const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
             if (Array.isArray(saved)) {
-                setTabs((current) => saved.filter((p): p is string => typeof p === 'string').reduce(withTab, current));
+                setTabs((current) => saved.filter((p): p is string => typeof p === 'string' && openable(p, role)).reduce(withTab, current));
             }
         } catch { /* storage unavailable */ }
-    }, []);
+    }, [role]);
 
     useEffect(() => setTabs((current) => withTab(current, pathname)), [pathname]);
 
@@ -90,7 +97,7 @@ const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
                     <svg className="tab-glider-curve is-right" viewBox="0 0 12 12"><path d="M12 0v12H0c6.627 0 12-5.373 12-12z" /></svg>
                 </div>
 
-                {tabs.map((path) => {
+                {tabs.filter((path) => openable(path, role)).map((path) => {
                     const pinned = PINNED.includes(path);
                     const isStock = path.startsWith('/stocks/');
                     const active = path === pathname;
