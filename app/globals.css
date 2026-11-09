@@ -267,10 +267,24 @@
         padding-bottom: 12px;
     }
     .workspace-inner.is-charts .page-head { padding: 0 2px; }
-    .workspace-inner.is-charts .page-title { font-size: 21px; }
-    .workspace-inner.is-charts .page-sub { margin-top: -1px; }
+    .workspace-inner.is-charts .page-head > div {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 0;
+    }
+    .workspace-inner.is-charts .page-title { font-size: 15px; letter-spacing: -0.01em; }
+    .workspace-inner.is-charts .page-sub {
+        margin: 0;
+        font-size: 11.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
     @media (max-width: 1023px) {
         .workspace-inner.is-charts { height: auto; min-height: 100%; }
+        .workspace-inner.is-charts .page-head > div { display: block; }
+        .workspace-inner.is-charts .page-title { font-size: 21px; }
     }
 
     @media (max-width: 1023px) {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Copy, Link2, Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
+import { Copy, Link2, Minimize2, Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import ChartPane, { type CrosshairSync, type RangeSync } from '@/components/charts/ChartPane';
 import LayoutPicker from '@/components/charts/LayoutPicker';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
@@ -189,6 +189,26 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
         setMaximized((current) => (current === index ? null : index));
         setFocused(index);
     };
+
+    // Alt+1..4 enlarges a pane and Alt+0 returns to the grid: the keyboard path for a screen that
+    // is read with both hands on the chart.
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if (!event.altKey || event.metaKey || event.ctrlKey) return;
+            if (event.key === '0') {
+                event.preventDefault();
+                setMaximized(null);
+                return;
+            }
+            const slot = Number(event.key);
+            if (slot < 1 || slot > panes) return;
+            event.preventDefault();
+            setFocused(slot - 1);
+            setMaximized((current) => (current === slot - 1 ? null : slot - 1));
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [panes]);
 
     // Escape leaves the enlarged pane, like closing a maximized window.
     useEffect(() => {
@@ -396,6 +416,17 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
         <div className="chart-grid flex min-h-0 flex-1 flex-col gap-2.5">
             <div className="chart-toolbar" dir="ltr">
                 <LayoutPicker value={layout} onChange={chooseLayout} lang={lang} />
+                {isMaximized && (
+                    <button
+                        type="button"
+                        onClick={() => setMaximized(null)}
+                        className="pill is-up h-7 gap-1 px-2 text-[11.5px]"
+                        title={t('chart.grid.restore')}
+                    >
+                        <Minimize2 className="size-3.5" />
+                        {arDigits((maximized as number) + 1, lang)} · {t('chart.grid.restore')}
+                    </button>
+                )}
                 <span className="mx-1 h-4 w-px bg-line" />
                 {timeframes.map((timeframe) => (
                     <button
