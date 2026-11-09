@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectCypher, detectHarmonic, detectWolfe, retrace, within } from '@/lib/patterns';
+import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectCypher, detectHarmonic, detectHeadShoulders, detectTriangle, detectWolfe, retrace, within } from '@/lib/patterns';
 import { pointsNeeded } from '@/lib/chart-drawings';
 import type { Pivot } from '@/lib/auto-count';
 import type { Candle } from '@/lib/yahoo-candles';
@@ -125,5 +125,65 @@ describe('the extension harmonics', () => {
         expect(hit?.direction).toBe('bearish');
         expect(hit?.invalidation).toBe(227);
         expect(hit?.target).toBe(200);
+    });
+});
+
+// Closes on the pivots' own clock: bar i sits at time i + 1, so a pattern measured at times 1..5 is
+// confirmed or not by bar 5's close. The brief's `bars()` clock (1000+) is unrelated to the pivots'
+// and projects the neckline to 1638, where every close breaks it.
+const closesAt = (closes: number[]): Candle[] =>
+    closes.map((close, i) => ({ time: i + 1, open: close, high: close + 0.4, low: close - 0.4, close, volume: 10 }));
+
+// LS, N1, head, N2, RS — a completed bearish head & shoulders. The neckline through N1 (2, 100) and
+// N2 (4, 102) is 101 at the head's time and 103 at the right shoulder's.
+const hs = [pivot(1, 120, 'high'), pivot(2, 100, 'low'), pivot(3, 140, 'high'), pivot(4, 102, 'low'), pivot(5, 121, 'high')];
+const broken = closesAt([130, 120, 115, 110, 100]);
+const forming = closesAt([110, 110, 110, 110, 110]);
+
+describe('detectHeadShoulders', () => {
+    it('labels the five points the hs tool takes and measures the move off the neckline', () => {
+        const hit = detectHeadShoulders(hs, broken);
+        expect(hit?.pattern).toBe('hs');
+        expect(hit?.tool).toBe('hs');
+        expect(hit?.labels).toEqual(['LS', 'N1', 'H', 'N2', 'RS']);
+        expect(hit?.direction).toBe('bearish');
+        expect(hit?.invalidation).toBe(140);
+        // The neckline sits at 101 and the head is 39 above it, so the target is 62.
+        expect(hit?.target).toBeCloseTo(62, 0);
+        expect(hit?.confirmed).toBe(true);
+    });
+
+    it('reports the same shape as forming while the close is still above the neckline', () => {
+        expect(detectHeadShoulders(hs, forming)?.confirmed).toBe(false);
+    });
+
+    it('returns null when the second shoulder is far below the first', () => {
+        const lopsided = [hs[0], hs[1], hs[2], hs[3], pivot(5, 90, 'high')];
+        expect(detectHeadShoulders(lopsided, broken)).toBeNull();
+    });
+});
+
+describe('detectTriangle', () => {
+    it('reads falling highs over rising lows as symmetric', () => {
+        const symmetric = [pivot(1, 130, 'high'), pivot(2, 90, 'low'), pivot(3, 122, 'high'), pivot(4, 98, 'low')];
+        const hit = detectTriangle(symmetric, closesAt([110, 110, 110, 110]));
+        expect(hit?.pattern).toBe('triangle');
+        expect(hit?.tool).toBe('triangle');
+        expect(hit?.labels).toEqual(['1', '2', '3', '4']);
+    });
+
+    it('returns null when the two lines diverge', () => {
+        const diverging = [pivot(1, 120, 'high'), pivot(2, 100, 'low'), pivot(3, 132, 'high'), pivot(4, 88, 'low')];
+        expect(detectTriangle(diverging, closesAt([110, 110, 110, 110]))).toBeNull();
+    });
+
+    it('measures the breakout from the side price left, with the far side as the invalidation', () => {
+        // At t=6 the upper line is 110 and the lower 106; the first leg is 40 tall.
+        const symmetric = [pivot(1, 130, 'high'), pivot(2, 90, 'low'), pivot(3, 122, 'high'), pivot(4, 98, 'low')];
+        const hit = detectTriangle(symmetric, closesAt([110, 108, 111, 109, 112, 115]));
+        expect(hit?.direction).toBe('bullish');
+        expect(hit?.confirmed).toBe(true);
+        expect(hit?.target).toBeCloseTo(150, 0);
+        expect(hit?.invalidation).toBeCloseTo(106, 0);
     });
 });

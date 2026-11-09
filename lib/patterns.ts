@@ -233,6 +233,9 @@ export function detectCypher(pivots: readonly Pivot[], candles: readonly Candle[
 const asPoints = (pivots: readonly Pivot[]): DrawPoint[] =>
     pivots.map((pivot) => ({ time: pivot.time, price: pivot.price }));
 
+/** One pivot as a point, for the line helpers. */
+const pointOf = (pivot: Pivot): DrawPoint => ({ time: pivot.time, price: pivot.price });
+
 /** Only a finite set of pivots is a shape; a NaN anywhere would poison every ratio below. */
 const usable = (pivots: readonly Pivot[]): boolean =>
     pivots.every((pivot) => Number.isFinite(pivot.time) && Number.isFinite(pivot.price));
@@ -242,6 +245,8 @@ const usable = (pivots: readonly Pivot[]): boolean =>
  * line. The channel's own rules live in lib/wolfe.ts; this only dresses the answer as a hit. The
  * target is the 1-4 (EPA) line read where the two channel lines meet.
  */
+// The scanner calls every detector with the same two arguments; Wolfe reads only the pivots.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function detectWolfe(pivots: readonly Pivot[], _candles: readonly Candle[]): PatternHit | null {
     if (pivots.length !== 5 || !usable(pivots)) return null;
     const points = asPoints(pivots);
@@ -259,6 +264,110 @@ export function detectWolfe(pivots: readonly Pivot[], _candles: readonly Candle[
         invalidation: p5.price,
         target: apex === null ? null : lineAt(p1, p4, apex),
         confirmed: true,
+        foundAt: pivots.length,
+    };
+}
+
+/**
+ * Head & shoulders: LS, N1, head, N2, RS. The head is the middle pivot, the two inner pivots are the
+ * neckline, and the shoulders sit on the same side as the head. Bearish when the head is a high,
+ * inverse when it is a low. The measured move is the head's height above (below) the neckline, read
+ * at the head's own bar and projected from there.
+ */
+export function detectHeadShoulders(pivots: readonly Pivot[], candles: readonly Candle[]): PatternHit | null {
+    if (pivots.length !== 5 || !usable(pivots)) return null;
+    const [ls, n1, head, n2, rs] = pivots;
+    // Shoulders and head on one side, the neckline's two turns on the other. A zigzag already
+    // alternates, so this only guards against a hand-built series.
+    if (!(ls.kind === head.kind && head.kind === rs.kind)) return null;
+    if (!(n1.kind === n2.kind && n2.kind !== head.kind)) return null;
+    const bearish = head.kind === 'high';
+
+    // The head has to clear both shoulders by at least 1% of price, or the shape is a range.
+    const clears = (shoulder: number) =>
+        bearish ? head.price >= shoulder + Math.abs(shoulder) * 0.01 : head.price <= shoulder - Math.abs(shoulder) * 0.01;
+    if (!clears(ls.price) || !clears(rs.price)) return null;
+
+    const neckline = (time: number) => lineAt(pointOf(n1), pointOf(n2), time);
+    const height = Math.abs(head.price - neckline(head.time));
+    if (!(height > 0)) return null;
+    // The shoulders have to look like a pair, measured against the head's own height.
+    if (Math.abs(ls.price - rs.price) > height * 0.1) return null;
+
+    const last = candles[candles.length - 1];
+    const close = last?.close;
+    const readAt = last && Number.isFinite(last.time) ? last.time : rs.time;
+    const confirmed = typeof close === 'number' && Number.isFinite(close)
+        ? (bearish ? close < neckline(readAt) : close > neckline(readAt))
+        : false;
+
+    return {
+        pattern: 'hs',
+        direction: bearish ? 'bearish' : 'bullish',
+        tool: PATTERN_TOOL.hs,
+        points: asPoints(pivots),
+        labels: labelsFor('hs'),
+        invalidation: head.price,
+        target: bearish ? neckline(head.time) - height : neckline(head.time) + height,
+        confirmed,
+        foundAt: pivots.length,
+    };
+}
+
+/** Which side of a triangle is flat: the top (ascending), the bottom (descending) or neither. */
+type TriangleVariant = 'symmetric' | 'ascending' | 'descending';
+
+/**
+ * Triangle: four alternating pivots, two highs and two lows. The highs and the lows each define a
+ * line, and the shape is a triangle only when those lines converge to the right. The breakout side
+ * decides the direction: the newest close outside the upper line is bullish, outside the lower line
+ * bearish, and the flat side of an ascending or descending triangle supplies the lean before that.
+ * `target` is the first leg's height projected off the breakout line; `invalidation` is the far side.
+ */
+export function detectTriangle(pivots: readonly Pivot[], candles: readonly Candle[]): PatternHit | null {
+    if (pivots.length !== 4 || !usable(pivots)) return null;
+    const [p1, p2, p3, p4] = pivots;
+    if (p1.kind === p2.kind || p2.kind === p3.kind || p3.kind === p4.kind) return null;
+
+    const highs = pivots.filter((pivot) => pivot.kind === 'high');
+    const lows = pivots.filter((pivot) => pivot.kind === 'low');
+    if (highs.length !== 2 || lows.length !== 2) return null;
+    const [high1, high2] = highs;
+    const [low1, low2] = lows;
+
+    const highSlope = slopeOf(high1, high2);
+    const lowSlope = slopeOf(low1, low2);
+    // Converging to the right means the upper line rises less than the lower one; anything else is a
+    // wedge opening out, and its "apex" would sit behind the pattern.
+    if (!(highSlope < lowSlope)) return null;
+    const apex = apexOf(pointOf(high1), pointOf(high2), pointOf(low1), pointOf(low2));
+    if (apex !== null && apex <= p4.time) return null;
+
+    // A side counts as flat when it drifts less than 2% of price across the pattern.
+    const price = (Math.abs(high1.price) + Math.abs(high2.price) + Math.abs(low1.price) + Math.abs(low2.price)) / 4;
+    const flat = Math.abs(high2.price - high1.price) <= price * 0.02;
+    const base = Math.abs(low2.price - low1.price) <= price * 0.02;
+    const variant: TriangleVariant = flat && !base ? 'ascending' : base && !flat ? 'descending' : 'symmetric';
+
+    const last = candles[candles.length - 1];
+    const close = last?.close;
+    const readAt = last && Number.isFinite(last.time) ? last.time : p4.time;
+    const upper = lineAt(pointOf(high1), pointOf(high2), readAt);
+    const lower = lineAt(pointOf(low1), pointOf(low2), readAt);
+    const bullishBreak = typeof close === 'number' && Number.isFinite(close) && close > upper;
+    const bearishBreak = typeof close === 'number' && Number.isFinite(close) && close < lower;
+    const direction: PatternDirection = bullishBreak ? 'bullish' : bearishBreak ? 'bearish' : variant === 'descending' ? 'bearish' : 'bullish';
+
+    const height = Math.abs(p2.price - p1.price);
+    return {
+        pattern: 'triangle',
+        direction,
+        tool: PATTERN_TOOL.triangle,
+        points: asPoints(pivots),
+        labels: labelsFor('triangle'),
+        invalidation: direction === 'bullish' ? lower : upper,
+        target: direction === 'bullish' ? upper + height : lower - height,
+        confirmed: bullishBreak || bearishBreak,
         foundAt: pivots.length,
     };
 }
