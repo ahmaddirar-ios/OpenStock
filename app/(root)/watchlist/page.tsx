@@ -14,6 +14,7 @@ import { SearchButton } from '@/components/SearchCommand';
 import { getLang } from '@/lib/i18n-server';
 import { arDigits } from '@/lib/i18n';
 import { tx, type Lang } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 const RowsSkeleton = ({ rows = 4 }: { rows?: number }) => (
     <div className="row-list" aria-busy="true">
@@ -38,6 +39,8 @@ async function News({ symbols, lang }: { symbols: string[]; lang: Lang }) {
 
 // DB reads render first; everything from Finnhub streams in behind skeletons.
 export default async function WatchlistPage() {
+    await requireFeaturePage('page.watchlist');
+
     const [items, alerts] = await Promise.all([getUserWatchlist(), getUserAlerts()]);
     const symbols: string[] = items.map((item: { symbol: string }) => item.symbol);
     const activeAlerts = alerts.filter((a: { triggered?: boolean }) => !a.triggered).length;

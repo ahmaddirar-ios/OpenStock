@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import type { Role } from '@/lib/authz';
+import type { Feature } from '@/lib/plans';
 import { PAGE_SECTIONS, visiblePages, type PageDef } from '@/lib/shell/pages';
 
 /**
@@ -12,12 +13,12 @@ import { PAGE_SECTIONS, visiblePages, type PageDef } from '@/lib/shell/pages';
  * sections the rail uses, with one filter box. It reads `PAGES` directly, so a page added to the
  * shell appears here without a second edit.
  */
-const ToolsHub = ({ lang, role }: { lang: Lang; role: Role }) => {
+const ToolsHub = ({ lang, role, features }: { lang: Lang; role: Role; features: readonly Feature[] }) => {
     const [query, setQuery] = useState('');
 
     const groups = useMemo(() => {
         const needle = query.trim().toLowerCase();
-        const pages = visiblePages(role).filter((page) => {
+        const pages = visiblePages(role, features).filter((page) => {
             if (!needle) return true;
             const haystack = [tx(lang, page.labelKey), page.href, ...page.keywords].join(' ').toLowerCase();
             return haystack.includes(needle);
@@ -28,7 +29,7 @@ const ToolsHub = ({ lang, role }: { lang: Lang; role: Role }) => {
                 pages: pages.filter((page) => page.section === section.id),
             }))
             .filter((group) => group.pages.length > 0);
-    }, [lang, role, query]);
+    }, [lang, role, features, query]);
 
     const total = groups.reduce((sum, group) => sum + group.pages.length, 0);
 

@@ -41,6 +41,8 @@ export default async function AdminUsersPage() {
                             ban: can(user.role, 'user:ban'),
                             delete: can(user.role, 'user:delete'),
                             revoke: can(user.role, 'session:revoke'),
+                            entitlements: can(user.role, 'user:entitlements'),
+                            password: can(user.role, 'user:set-password'),
                         }}
                     />
                 </div>

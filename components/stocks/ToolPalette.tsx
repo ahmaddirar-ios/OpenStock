@@ -5,6 +5,8 @@ import { Search, X } from 'lucide-react';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { groupedTools, searchTools, toolTotal, type ToolEntry } from '@/lib/tools/catalog';
+import { canUseTool } from '@/lib/tools/access';
+import { useFeatures } from '@/components/shell/AccessContext';
 import { toolIcon } from '@/lib/tools/icons';
 
 /**
@@ -27,6 +29,7 @@ export default function ToolPalette({
     onClose: () => void;
     className?: string;
 }) {
+    const features = useFeatures();
     const [query, setQuery] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,10 +37,17 @@ export default function ToolPalette({
         inputRef.current?.focus();
     }, []);
 
-    const results = useMemo(() => searchTools(query), [query]);
+    const results = useMemo(() => searchTools(query).filter((entry) => canUseTool(features, entry)), [query, features]);
     // A search answers with a ranked flat list; an empty query answers with the catalog's sections,
     // which is the "where is everything" view.
-    const sections = useMemo(() => (query.trim() ? null : groupedTools()), [query]);
+    const sections = useMemo(
+        () => (query.trim()
+            ? null
+            : groupedTools()
+                .map((section) => ({ ...section, tools: section.tools.filter((entry) => canUseTool(features, entry)) }))
+                .filter((section) => section.tools.length > 0)),
+        [query, features],
+    );
 
     // The badge is only worth its space where families are mixed: under a section header the
     // heading already says what everything in it is.

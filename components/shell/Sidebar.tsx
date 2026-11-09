@@ -10,12 +10,14 @@ import { signOut } from "@/lib/actions/auth.actions";
 import { cn } from "@/lib/utils";
 import { tx, type Lang } from "@/lib/i18n";
 import type { Role } from "@/lib/authz";
+import type { Feature } from "@/lib/plans";
 import { PAGE_SECTIONS, visiblePagesInSection } from "@/lib/shell/pages";
 
 type SidebarProps = {
     user: User;
     lang: Lang;
     role: Role;
+    features: readonly Feature[];
 };
 
 /**
@@ -23,7 +25,7 @@ type SidebarProps = {
  * terminal: one glyph per destination, a tip on hover, and the sections separated by a hairline.
  * On a narrow screen the same markup becomes the drawer and shows its labels.
  */
-const Sidebar = ({ user, lang, role }: SidebarProps) => {
+const Sidebar = ({ user, lang, role, features }: SidebarProps) => {
     const pathname = usePathname();
     const router = useRouter();
 
@@ -35,7 +37,7 @@ const Sidebar = ({ user, lang, role }: SidebarProps) => {
     // The avatar is the account door and the drawer carries resources at the foot, so the rail's
     // body is everything else the role can open.
     const sections = PAGE_SECTIONS.filter(
-        (section) => section.id !== 'account' && section.id !== 'resources' && visiblePagesInSection(section.id, role).length > 0,
+        (section) => section.id !== 'account' && section.id !== 'resources' && visiblePagesInSection(section.id, role, features).length > 0,
     );
 
     return (
@@ -51,7 +53,7 @@ const Sidebar = ({ user, lang, role }: SidebarProps) => {
             {sections.map((section) => (
                 <div key={section.id} className="rail-group">
                     <span className="rail-sep" aria-hidden="true" />
-                    {visiblePagesInSection(section.id, role).map(({ href, labelKey, icon: Icon }) => {
+                    {visiblePagesInSection(section.id, role, features).map(({ href, labelKey, icon: Icon }) => {
                         const name = tx(lang, labelKey);
                         const active = pathname === href || pathname.startsWith(`${href}/`);
                         return (
@@ -75,7 +77,7 @@ const Sidebar = ({ user, lang, role }: SidebarProps) => {
                 carries them too instead of hiding help, docs and the legal pages on a phone. */}
             <div className="rail-group rail-res">
                 <span className="rail-sep" aria-hidden="true" />
-                {visiblePagesInSection('resources', role).map(({ href, labelKey, icon: Icon }) => {
+                {visiblePagesInSection('resources', role, features).map(({ href, labelKey, icon: Icon }) => {
                     const name = tx(lang, labelKey);
                     const active = pathname === href || pathname.startsWith(`${href}/`);
                     return (

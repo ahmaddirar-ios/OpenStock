@@ -12,6 +12,7 @@ import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { isTadawulSymbol } from '@/lib/market/yahoo';
 import { getLang } from '@/lib/i18n-server';
 import { tx, arDigits } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 // Positions are read from Mongo first; the quotes for them stream from the shared quote path,
 // the same one the watchlist uses (Finnhub for US/crypto, Yahoo for Tadawul).
@@ -19,6 +20,8 @@ import { tx, arDigits } from '@/lib/i18n';
 // Two sources feed the table: the trade ledger (replayed FIFO) and hand-entered positions. A symbol
 // the ledger knows is taken from the ledger only, so importing history never doubles a holding.
 export default async function PortfolioPage() {
+    await requireFeaturePage('page.portfolio');
+
     const [positions, trades] = await Promise.all([getUserPositions(), getUserTrades()]);
     const ledger = buildLedger(trades);
     const merged = mergePositions(positions, ledger.positions);

@@ -9,7 +9,7 @@
 
 /** A resource and the actions it carries. The first two resources are better-auth's own. */
 export const STATEMENTS = {
-    user: ['list', 'get', 'ban', 'update', 'set-password', 'set-role', 'delete'],
+    user: ['list', 'get', 'ban', 'update', 'set-password', 'set-role', 'delete', 'entitlements'],
     session: ['list', 'revoke'],
     // What the site publishes: the notice bar and the waitlist.
     content: ['view', 'manage'],
@@ -30,7 +30,7 @@ export type Role = (typeof ROLES)[number];
 // The approved matrix, written as the bundles a role carries. Later roles extend earlier ones.
 const VIEWER = ['user:list', 'user:get', 'session:list', 'content:view', 'ops:view'] as const;
 const SUPPORT = [...VIEWER, 'session:revoke', 'user:ban', 'user:update', 'user:set-password'] as const;
-const MODERATOR = [...SUPPORT, 'content:manage'] as const;
+const MODERATOR = [...SUPPORT, 'content:manage', 'user:entitlements'] as const;
 const ADMIN = [...MODERATOR, 'user:set-role', 'user:delete', 'flag:manage'] as const;
 
 export const PERMISSIONS: Record<Role, readonly Capability[]> = {

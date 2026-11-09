@@ -6,6 +6,7 @@ import { getUserWatchlist } from "@/lib/actions/watchlist.actions";
 import { getLang } from "@/lib/i18n-server";
 import { roleOf } from "@/lib/authz";
 import { getActiveNotice } from "@/lib/notice-server";
+import { accessFor } from "@/lib/entitlements-server";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const session = await getSession();
@@ -19,10 +20,11 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     }
     const role = roleOf(session.user as { role?: string | null });
 
-    const [initialStocks, watchlist, notice] = await Promise.all([
+    const [initialStocks, watchlist, notice, access] = await Promise.all([
         searchStocks(),
         getUserWatchlist(),
         getActiveNotice(),
+        accessFor(session.user.id),
     ]);
     const lang = await getLang();
 
@@ -34,6 +36,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 initialStocks={initialStocks}
                 lang={lang}
                 role={role}
+                features={access.features}
                 notice={notice}
             >
                 {children}

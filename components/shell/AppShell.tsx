@@ -12,10 +12,12 @@ import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { langCookie, otherLang, tx, type Lang } from "@/lib/i18n";
 import type { Role } from "@/lib/authz";
+import type { Feature } from "@/lib/plans";
 import type { SiteNotice } from "@/lib/notice";
 import { LAST_SYMBOL_KEY, isSymbolLike } from "@/lib/shell/command";
 import { shortcutFor } from "@/lib/shell/shortcuts";
 import { MotionProvider } from "@/components/motion";
+import { AccessProvider } from "@/components/shell/AccessContext";
 
 type AppShellProps = {
     user: User;
@@ -23,13 +25,15 @@ type AppShellProps = {
     initialStocks: StockWithWatchlistStatus[];
     lang: Lang;
     role: Role;
+    /** The account's resolved features, so locked pages never appear in the shell. */
+    features: readonly Feature[];
     notice: SiteNotice | null;
     children: React.ReactNode;
 };
 
 const COLLAPSED_KEY = 'openstock:sidebar-collapsed';
 
-const AppShell = ({ user, watchlist, initialStocks, lang, role, notice, children }: AppShellProps) => {
+const AppShell = ({ user, watchlist, initialStocks, lang, role, features, notice, children }: AppShellProps) => {
     const pathname = usePathname();
     const router = useRouter();
     const [navOpen, setNavOpen] = useState(false);
@@ -89,6 +93,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, role, notice, children
 
     return (
         <MotionProvider>
+        <AccessProvider features={features}>
         <div className={cn('desk', collapsed && 'is-collapsed', focus && 'is-focus')}>
             <a href="#main" className="skip-link">{tx(lang, 'a11y.skip')}</a>
 
@@ -112,7 +117,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, role, notice, children
                         navOpen ? 'max-lg:translate-x-0' : lang === 'ar' ? 'max-lg:translate-x-full' : 'max-lg:-translate-x-full',
                     )}
                 >
-                    <Sidebar user={user} lang={lang} role={role} />
+                    <Sidebar user={user} lang={lang} role={role} features={features} />
                 </div>
                 {navOpen && (
                     <div className="fixed inset-0 z-40 bg-page/60 backdrop-blur-[2px] lg:hidden" onClick={() => setNavOpen(false)} />
@@ -120,7 +125,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, role, notice, children
 
                 <div className="shell-container">
                     <div className="app">
-                        <TabBar onMenu={() => setNavOpen(true)} lang={lang} role={role} />
+                        <TabBar onMenu={() => setNavOpen(true)} lang={lang} role={role} features={features} />
                         <main id="main" tabIndex={-1} ref={workspaceRef} className={cn('workspace', pathname === '/dashboard' && 'is-first-tab')}>
                             <div className={cn('workspace-inner', pathname === '/dashboard' && 'is-overview')}>
                                 {children}
@@ -134,9 +139,10 @@ const AppShell = ({ user, watchlist, initialStocks, lang, role, notice, children
 
             {/* The app's own alert clock: any page open and visible checks the rules once a minute. */}
             <AlertNotifier lang={lang} />
-            <SearchCommand initialStocks={initialStocks} lang={lang} role={role} defaultSymbol={watchlist[0]?.symbol} />
+            <SearchCommand initialStocks={initialStocks} lang={lang} role={role} features={features} defaultSymbol={watchlist[0]?.symbol} />
             <ShortcutSheet lang={lang} />
         </div>
+        </AccessProvider>
         </MotionProvider>
     );
 };

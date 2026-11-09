@@ -191,6 +191,8 @@ import {
 import { STRATEGY_IDS, type StrategyId } from '@/lib/strategy/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { toolFromParam } from '@/lib/shell/command';
+import { canUseChartType, canUseDrawing, canUseTool } from '@/lib/tools/access';
+import { useFeatures } from '@/components/shell/AccessContext';
 
 type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'layout' | 'visibility' | 'fib' | 'tools' | 'tf';
 
@@ -247,6 +249,8 @@ type Props = {
  * Nothing about it depends on a paid provider or an API key.
  */
 export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, initialPattern, fill = false, quote: quoteHeader }: Props) {
+    // The account's plan, so a locked tool family is never armable — by click, hotkey or deep link.
+    const features = useFeatures();
     const showQuote = quoteHeader ?? fill;
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
     // Printing briefly retitles the document so the browser offers a sensible PDF name.
@@ -1260,14 +1264,14 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 return;
             }
             const next = toolForKey(event.key);
-            if (next) {
+            if (next && canUseDrawing(features, next as Parameters<typeof canUseDrawing>[1])) {
                 event.preventDefault();
                 setTool((current) => (current === next ? null : next));
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, []);
+    }, [features]);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
@@ -1592,11 +1596,19 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
         const params = new URLSearchParams(window.location.search);
         const entry = toolFromParam(params.get('tool'));
         if (!entry) return;
+        if (!canUseTool(features, entry)) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('tool');
+            window.history.replaceState({}, '', url.toString());
+            return;
+        }
         insertToolRef.current(entry);
         const url = new URL(window.location.href);
         url.searchParams.delete('tool');
         window.history.replaceState({}, '', url.toString());
         // Once per page load: the parameter is gone from the URL by the time this runs again.
+        // `features` only changes with the account, never inside a loaded chart.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // The Elliott flyout also keeps the degree picker and the one-shot auto count.
@@ -2646,7 +2658,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 {dropdown(
                     'type',
                     t('chart.type'),
-                    CHART_TYPES.map((type) => ({
+                    CHART_TYPES.filter((type) => canUseChartType(features, type)).map((type) => ({
                         key: type,
                         label: t(CHART_TYPE_KEYS[type]),
                         onClick: () => {
@@ -3886,7 +3898,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                                 <div>
                                     <p className="form-label">{t('chart.shortcuts.tools')}</p>
                                     <ul className="mt-2 flex flex-col gap-1.5">
-                                        {TOOL_SHORTCUTS.map((shortcut) => (
+                                        {TOOL_SHORTCUTS.filter((shortcut) => canUseDrawing(features, shortcut.tool)).map((shortcut) => (
                                             <li key={shortcut.key} className="flex items-center justify-between gap-3 text-[13px]">
                                                 <span className="text-muted-foreground">{t(`chart.tool.${shortcut.tool}` as StringKey)}</span>
                                                 <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>

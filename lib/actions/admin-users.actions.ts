@@ -9,6 +9,8 @@ import { auth } from '@/lib/better-auth/auth';
 import { connectToDatabase } from '@/database/mongoose';
 import { currentUser, requireCapability } from '@/lib/authz-server';
 import { isRole, roleOf, type Role } from '@/lib/authz';
+import { Entitlement } from '@/database/models/entitlement.model';
+import { cleanFeatures, isPlan, resolveFeatures, type Plan } from '@/lib/plans';
 
 export type AdminUser = {
     id: string;
@@ -21,6 +23,11 @@ export type AdminUser = {
     banned: boolean;
     emailVerified: boolean;
     createdAt: string | null;
+    /** The plan on the entitlement row, or the free default when the account has none. */
+    plan: Plan;
+    /** Exceptions on top of the plan, so the editor opens on what was actually chosen. */
+    allow: string[];
+    deny: string[];
 };
 
 export type AdminUserPage = {
@@ -51,6 +58,9 @@ const toAdminUser = (row: RawUser): AdminUser => ({
     banned: row.banned === true,
     emailVerified: row.emailVerified === true,
     createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
+    plan: 'free',
+    allow: [],
+    deny: [],
 });
 
 /** Escape a user's words so a search can never be read as a pattern. */
@@ -98,7 +108,28 @@ export async function listUsers(input: { search?: string; offset?: number; limit
         collection.countDocuments(filter),
     ]);
 
-    return { users: rows.map((row) => toAdminUser(row as RawUser)), total, limit, offset };
+    // One extra query for the page's accounts, not one per row.
+    const ids = rows.map((row) => String(row._id ?? (row as { id?: string }).id ?? ''));
+    const rights = ids.length > 0
+        ? await Entitlement.find({ userId: { $in: ids } }, { userId: 1, plan: 1, allow: 1, deny: 1 }).lean()
+        : [];
+    const byUser = new Map(rights.map((row) => [row.userId, row]));
+
+    return {
+        users: rows.map((row) => {
+            const user = toAdminUser(row as RawUser);
+            const right = byUser.get(user.id);
+            return {
+                ...user,
+                plan: isPlan(right?.plan) ? right.plan : 'free',
+                allow: cleanFeatures(right?.allow ?? []),
+                deny: cleanFeatures(right?.deny ?? []),
+            };
+        }),
+        total,
+        limit,
+        offset,
+    };
 }
 
 /** A client-supplied role must be one of the five, or the call is refused. */
@@ -167,4 +198,55 @@ export async function revokeUserSessions(userId: unknown): Promise<void> {
     const id = readUserId(userId);
     await refuseSelf(id);
     await auth.api.revokeUserSessions({ body: { userId: id }, headers: await headers() });
+}
+
+/** The password bounds better-auth enforces; checked here so the admin sees a clear refusal first. */
+const readPassword = (value: unknown): string => {
+    if (typeof value !== 'string' || value.length < 8 || value.length > 128) {
+        throw new Error('Password must be 8 to 128 characters');
+    }
+    return value;
+};
+
+/**
+ * Sets a customer's password directly. Staff use it when the reset email cannot reach them — for
+ * example a client who changed address. Refused on your own account: use the profile form, which
+ * asks for the current password.
+ */
+export async function setUserPasswordRecord(userId: unknown, password: unknown): Promise<void> {
+    await requireCapability('user:set-password');
+    const id = readUserId(userId);
+    const next = readPassword(password);
+    await refuseSelf(id);
+    await auth.api.setUserPassword({ body: { userId: id, newPassword: next }, headers: await headers() });
+}
+
+/** The plan and exceptions an account carries. Deny wins over allow, and both are validated here. */
+export async function setUserEntitlement(
+    userId: unknown,
+    input: { plan: unknown; allow?: unknown; deny?: unknown },
+): Promise<{ plan: Plan; allow: string[]; deny: string[]; features: string[] }> {
+    await requireCapability('user:entitlements');
+    const id = readUserId(userId);
+    if (!isPlan(input?.plan)) throw new Error('Unknown plan');
+
+    const allow = cleanFeatures(Array.isArray(input.allow) ? input.allow : []);
+    const deny = cleanFeatures(Array.isArray(input.deny) ? input.deny : []);
+    // A feature cannot be both granted and blocked, and the free plan's own bundle is not an exception.
+    const cleanAllow = allow.filter((feature) => !deny.includes(feature));
+    const cleanDeny = deny;
+    const me = await currentUser();
+
+    await Entitlement.findOneAndUpdate(
+        { userId: id },
+        { $set: { plan: input.plan, allow: cleanAllow, deny: cleanDeny, updatedBy: me?.email ?? '' } },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    return {
+        plan: input.plan,
+        allow: cleanAllow,
+        deny: cleanDeny,
+        features: resolveFeatures(input.plan, cleanAllow, cleanDeny),
+    };
 }

@@ -1,19 +1,23 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Ban, Loader2, LogOut, Search, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
+import { Ban, KeyRound, Loader2, LogOut, Search, ShieldCheck, SlidersHorizontal, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     banUserRecord,
     listUsers,
     removeUserRecord,
     revokeUserSessions,
+    setUserEntitlement,
     setUserRole,
     unbanUserRecord,
     type AdminUser,
     type AdminUserPage,
 } from '@/lib/actions/admin-users.actions';
+import UserAccessDialog from '@/components/admin/UserAccessDialog';
+import UserPasswordDialog from '@/components/admin/UserPasswordDialog';
 import { ROLES, type Role } from '@/lib/authz';
+import { PLANS, type Plan } from '@/lib/plans';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +25,14 @@ type Props = {
     lang: Lang;
     initial: AdminUserPage;
     meId: string;
-    can: { setRole: boolean; ban: boolean; delete: boolean; revoke: boolean };
+    can: {
+        setRole: boolean;
+        ban: boolean;
+        delete: boolean;
+        revoke: boolean;
+        entitlements: boolean;
+        password: boolean;
+    };
 };
 
 /**
@@ -33,6 +44,8 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
     const [page, setPage] = useState<AdminUserPage>(initial);
     const [search, setSearch] = useState('');
     const [busy, setBusy] = useState<string | null>(null);
+    const [access, setAccess] = useState<AdminUser | null>(null);
+    const [password, setPassword] = useState<AdminUser | null>(null);
     const [, startTransition] = useTransition();
 
     const load = (nextSearch: string, nextOffset: number) => {
@@ -75,6 +88,11 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
         if (!ROLES.includes(role as Role)) return;
         act(user.id, 'role', () => setUserRole(user.id, role), { role: role as Role, storedRole: role });
     };
+
+    // The plan column is the fast path: one select, no dialog. The exceptions live behind "Access",
+    // because they are the rare, deliberate case.
+    const changePlan = (user: AdminUser, plan: Plan) =>
+        act(user.id, 'plan', () => setUserEntitlement(user.id, { plan, allow: user.allow, deny: user.deny }), { plan });
 
     const ban = (user: AdminUser) => act(user.id, 'ban', () => banUserRecord(user.id, tx(lang, 'admin.users.banReason')), { banned: true });
     const unban = (user: AdminUser) => act(user.id, 'ban', () => unbanUserRecord(user.id), { banned: false });
@@ -146,6 +164,7 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
                             <tr>
                                 <th>{tx(lang, 'admin.users.name')}</th>
                                 <th>{tx(lang, 'admin.users.role')}</th>
+                                <th>{tx(lang, 'admin.users.plan')}</th>
                                 <th>{tx(lang, 'admin.users.status')}</th>
                                 <th>{tx(lang, 'admin.users.joined')}</th>
                                 <th className="text-end">{tx(lang, 'admin.users.actions')}</th>
@@ -189,6 +208,23 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
                                             )}
                                         </td>
                                         <td>
+                                            {can.entitlements ? (
+                                                <select
+                                                    className="form-input h-8 w-28 text-[12px]"
+                                                    value={user.plan}
+                                                    disabled={rowBusy}
+                                                    onChange={(event) => changePlan(user, event.target.value as Plan)}
+                                                    aria-label={tx(lang, 'admin.users.plan')}
+                                                >
+                                                    {PLANS.map((plan) => (
+                                                        <option key={plan} value={plan}>{tx(lang, `plan.${plan}` as StringKey)}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <span className="pill">{tx(lang, `plan.${user.plan}` as StringKey)}</span>
+                                            )}
+                                        </td>
+                                        <td>
                                             <span className={cn('pill', user.banned ? 'is-down' : 'is-up')}>
                                                 {tx(lang, user.banned ? 'admin.users.banned' : 'admin.users.active')}
                                             </span>
@@ -196,6 +232,25 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
                                         <td className="num text-[12px] text-faint" dir="ltr">{user.createdAt?.slice(0, 10) ?? '—'}</td>
                                         <td>
                                             <span className="flex justify-end gap-1.5">
+                                                {can.entitlements && (
+                                                    <button type="button" className="btn btn-ghost h-7 px-2 text-[11px]" disabled={rowBusy} onClick={() => setAccess(user)}>
+                                                        <SlidersHorizontal />
+                                                        {tx(lang, 'admin.users.access')}
+                                                    </button>
+                                                )}
+                                                {can.password && (
+                                                    self ? (
+                                                        <span className="pill" title={tx(lang, 'admin.password.self')}>
+                                                            <KeyRound className="size-3" />
+                                                            {tx(lang, 'admin.users.password')}
+                                                        </span>
+                                                    ) : (
+                                                        <button type="button" className="btn btn-ghost h-7 px-2 text-[11px]" disabled={rowBusy} onClick={() => setPassword(user)}>
+                                                            <KeyRound />
+                                                            {tx(lang, 'admin.users.password')}
+                                                        </button>
+                                                    )
+                                                )}
                                                 {can.revoke && !self && (
                                                     <button type="button" className="btn btn-ghost h-7 px-2 text-[11px]" disabled={rowBusy} onClick={() => signOutAll(user)}>
                                                         {busy === `revoke:${user.id}` ? <Loader2 className="animate-spin" /> : <LogOut />}
@@ -238,6 +293,29 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
                     {tx(lang, 'admin.users.next')}
                 </button>
             </div>
+
+            {access && (
+                <UserAccessDialog
+                    key={`access:${access.id}`}
+                    lang={lang}
+                    user={access}
+                    open
+                    onOpenChange={(open) => !open && setAccess(null)}
+                    onSaved={(id, change) => {
+                        patch(id, change);
+                        setAccess((current) => (current && current.id === id ? { ...current, ...change } : current));
+                    }}
+                />
+            )}
+            {password && (
+                <UserPasswordDialog
+                    key={`password:${password.id}`}
+                    lang={lang}
+                    user={password}
+                    open
+                    onOpenChange={(open) => !open && setPassword(null)}
+                />
+            )}
         </div>
     );
 };

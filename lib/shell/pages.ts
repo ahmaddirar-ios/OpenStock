@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { StringKey } from '@/lib/i18n';
 import { can, isStaff, type Capability, type Role } from '@/lib/authz';
+import { PAGE_FEATURE, hasFeature, type Feature } from '@/lib/plans';
 
 /**
  * Every destination the shell knows, in the order it offers them.
@@ -82,25 +83,27 @@ export const PAGES: readonly PageDef[] = [
 ];
 
 /** Whether a role may open a page. A page with no requirement is open to everyone signed in. */
-export const canOpen = (page: PageDef, role: Role): boolean => {
+export const canOpen = (page: PageDef, role: Role, features?: readonly Feature[]): boolean => {
     if (page.requiresStaff) return isStaff(role);
     if (page.requires) return can(role, page.requires);
-    return true;
+    const feature = PAGE_FEATURE[page.href];
+    return feature ? hasFeature(features, feature) : true;
 };
 
-/** The pages a role may open, in list order. */
-export const visiblePages = (role: Role): PageDef[] => PAGES.filter((page) => canOpen(page, role));
+/** The pages a role may open, in list order. Pass the account's features to drop locked pages. */
+export const visiblePages = (role: Role, features?: readonly Feature[]): PageDef[] =>
+    PAGES.filter((page) => canOpen(page, role, features));
 
 /** The pages a section holds, in list order. */
 export const pagesInSection = (section: PageSection): PageDef[] =>
     PAGES.filter((page) => page.section === section);
 
 /** The pages a section holds that a role may open, in list order. */
-export const visiblePagesInSection = (section: PageSection, role: Role): PageDef[] =>
-    pagesInSection(section).filter((page) => canOpen(page, role));
+export const visiblePagesInSection = (section: PageSection, role: Role, features?: readonly Feature[]): PageDef[] =>
+    pagesInSection(section).filter((page) => canOpen(page, role, features));
 
 /** The sections a role can see at least one page in. */
-export const visibleSections = (role: Role): PageSection[] =>
-    PAGE_SECTIONS.filter((section) => visiblePagesInSection(section.id, role).length > 0).map((section) => section.id);
+export const visibleSections = (role: Role, features?: readonly Feature[]): PageSection[] =>
+    PAGE_SECTIONS.filter((section) => visiblePagesInSection(section.id, role, features).length > 0).map((section) => section.id);
 
 export const pageByHref = (href: string): PageDef | undefined => PAGES.find((page) => page.href === href);

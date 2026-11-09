@@ -2,6 +2,7 @@ import { loadSaudiBoard } from '@/lib/market/saudi-board';
 import SaudiBoard from '@/components/saudi/SaudiBoard';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 export const metadata = {
     title: 'Saudi market',
@@ -11,6 +12,8 @@ export const metadata = {
 // The board is read on the server (fast first paint, works for crawlers) and then polls itself while
 // Riyadh is trading, so a tab left open follows the market without a reload.
 export default async function SaudiMarketPage() {
+    await requireFeaturePage('page.saudi');
+
     const [board, lang] = await Promise.all([loadSaudiBoard(), getLang()]);
 
     return (

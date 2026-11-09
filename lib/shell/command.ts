@@ -6,6 +6,8 @@
 
 import { tx } from '@/lib/i18n';
 import { normaliseSearch, searchTools, toolById, type ToolEntry } from '@/lib/tools/catalog';
+import { canUseTool } from '@/lib/tools/access';
+import type { Feature } from '@/lib/plans';
 import type { Role } from '@/lib/authz';
 import { PAGES, visiblePages, type PageDef } from './pages';
 
@@ -67,11 +69,11 @@ const pageScore = (page: PageDef, needle: string): number => {
  * The pages that answer a query, best first and stable. An empty query answers every page, in the
  * shell's own order — the idle palette is a map of the terminal.
  *
- * With a role, only pages that role may open are offered. Omitting it keeps the whole registry,
- * which is what the registry sanity tests want.
+ * With a role, only pages that role may open are offered. With features, locked pages drop too.
+ * Omitting both keeps the whole registry, which is what the registry sanity tests want.
  */
-export function commandPages(query: string, role?: Role): PageDef[] {
-    const pages = role ? visiblePages(role) : [...PAGES];
+export function commandPages(query: string, role?: Role, features?: readonly Feature[]): PageDef[] {
+    const pages = role ? visiblePages(role, features) : [...PAGES];
     const needle = normaliseSearch(query);
     if (!needle) return pages;
     return pages
@@ -82,9 +84,11 @@ export function commandPages(query: string, role?: Role): PageDef[] {
 }
 
 /** Tools only answer a typed query; twelve is enough to choose from and one screenful to read. */
-export function commandTools(query: string, limit = 12): ToolEntry[] {
+export function commandTools(query: string, limit = 12, features?: readonly Feature[]): ToolEntry[] {
     if (!normaliseSearch(query)) return [];
-    return searchTools(query).slice(0, limit);
+    return searchTools(query)
+        .filter((entry) => canUseTool(features, entry))
+        .slice(0, limit);
 }
 
 /** A tool is an address: the chart page with the tool named, so the link is shareable. */

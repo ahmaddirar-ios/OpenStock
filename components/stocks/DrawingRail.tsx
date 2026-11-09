@@ -28,6 +28,8 @@ import {
 import { cn } from '@/lib/utils';
 import { toolsInGroup, toolDef, type ShapeTool, type ToolGroup } from '@/lib/chart/drawings';
 import { TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/chart/drawing-groups';
+import { canUseDrawing } from '@/lib/tools/access';
+import { useFeatures } from '@/components/shell/AccessContext';
 import { hotkeyForTool, MEASURE_KEY } from '@/lib/chart/hotkeys';
 import type { ActiveTool } from '@/components/stocks/ChartDrawings';
 import type { StringKey } from '@/lib/i18n';
@@ -115,6 +117,12 @@ export default function DrawingRail({
     label,
     renderGroupExtra,
 }: Props) {
+    const features = useFeatures();
+    // Only the groups this account may use: a locked family never gets a button, so it cannot be
+    // armed by a stray hotkey either.
+    const groups = railGroupsWithTools().filter(({ group }) =>
+        toolsInGroup(group).some((entry) => canUseDrawing(features, entry.tool)),
+    );
     const [open, setOpen] = useState<RailPanel | null>(null);
     const [flyoutTop, setFlyoutTop] = useState(4);
     const rootRef = useRef<HTMLDivElement>(null);
@@ -251,9 +259,9 @@ export default function DrawingRail({
 
                 <span className="draw-rail-sep" />
 
-                {railGroupsWithTools().map(({ group, label: groupLabel }) => {
+                {groups.map(({ group, label: groupLabel }) => {
                     const Icon = GROUP_ICONS[group];
-                    const groupActive = tool != null && toolsInGroup(group).some((d) => d.tool === tool);
+                    const groupActive = tool != null && toolsInGroup(group).some((d) => d.tool === tool && canUseDrawing(features, d.tool));
                     return stripBtn(group, label(groupLabel), Icon, { active: groupActive });
                 })}
 
@@ -271,7 +279,7 @@ export default function DrawingRail({
                     <div
                         ref={flyoutRef}
                         role="menu"
-                        aria-label={open === 'cursor' ? label('chart.group.cursor') : label(railGroupsWithTools().find((g) => g.group === open)?.label ?? 'chart.group.lines')}
+                        aria-label={open === 'cursor' ? label('chart.group.cursor') : label(groups.find((g) => g.group === open)?.label ?? 'chart.group.lines')}
                         className="draw-rail-flyout"
                         style={{ top: flyoutTop }}
                     >
@@ -302,7 +310,7 @@ export default function DrawingRail({
                             </>
                         ) : (
                             <>
-                                {toolsInGroup(open).map((d) => {
+                                {toolsInGroup(open).filter((d) => canUseDrawing(features, d.tool)).map((d) => {
                                     const value = d.tool as ActiveTool;
                                     return row(
                                         d.tool,

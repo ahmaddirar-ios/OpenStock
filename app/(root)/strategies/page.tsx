@@ -4,10 +4,13 @@ import StrategyIndex from '@/components/strategies/StrategyIndex';
 import SavedStrategies from '@/components/strategies/SavedStrategies';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 // The library is content plus pure logic, so the index needs no data of its own: the filters and the
 // cards run in the browser, and every strategy's numbers are computed only when a lab is asked to run.
 export default async function StrategiesPage() {
+    await requireFeaturePage('page.strategies');
+
     const lang = await getLang();
 
     return (

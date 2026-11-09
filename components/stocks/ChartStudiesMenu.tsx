@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { checkFormula, describeFormulaError } from '@/lib/formula/formula';
 import { addSavedFormula, loadSavedFormulas, removeSavedFormula, saveSavedFormulas, type SavedFormula } from '@/lib/formula/library';
 import FormulaStudio from '@/components/stocks/FormulaStudio';
+import { canUseStudy } from '@/lib/tools/access';
+import { useFeatures } from '@/components/shell/AccessContext';
 
 // The indicators menu: search a study, add it, tune its parameters, remove it. It owns no state of
 // its own beyond what is being typed — the list belongs to the page (and through it, the browser),
@@ -21,6 +23,7 @@ type Props = {
 };
 
 export default function ChartStudiesMenu({ lang, studies, onChange, className }: Props) {
+    const features = useFeatures();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     // Text being typed in a parameter box, kept per input so the box shows exactly what was typed
@@ -162,13 +165,15 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
 
 
     const filtered = useMemo(() => {
+        // The account's studies first: a locked family is never offered, and a search cannot conjure it.
+        const allowed = STUDY_IDS.filter((id) => canUseStudy(features, id));
         const needle = query.trim().toLowerCase();
-        if (!needle) return STUDY_IDS;
-        return STUDY_IDS.filter((id) => {
+        if (!needle) return allowed;
+        return allowed.filter((id) => {
             const label = tx(lang, STUDIES[id].label).toLowerCase();
             return label.includes(needle) || id.includes(needle);
         });
-    }, [query, lang]);
+    }, [query, lang, features]);
 
     return (
         <div ref={box} className={cn('relative', className)}>
