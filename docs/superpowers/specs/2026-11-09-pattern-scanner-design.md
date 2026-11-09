@@ -62,8 +62,10 @@ export type PatternId =
 export type PatternHit = {
     pattern: PatternId;
     direction: 'bullish' | 'bearish';
+    /** The existing drawing tool this hit is painted with (see the table below). */
+    tool: ShapeTool;
     points: DrawPoint[];          // the pivots, oldest first
-    labels: string[];             // X A B C D / 1..5 / LS H RS / 0..5
+    labels: string[];             // the tool's own point labels: X A B C D / 1..5 / 0..5
     /** The price that voids the pattern: the level a trader would put the stop beyond. */
     invalidation: number;
     /** Where the pattern projects to, when it has a target. Null for shapes without one. */
@@ -74,6 +76,22 @@ export type PatternHit = {
     foundAt: number;
 };
 ```
+
+### Pattern → drawing tool
+
+Every hit is painted with a tool the chart already ships, so the hand-off never invents a shape.
+The point counts are the tools' own, which fixes how many pivots each detector returns:
+
+| Pattern | Tool | Points |
+|---|---|---|
+| Wolfe | `wolfe` | 5 (1–5) |
+| Gartley / Bat / Butterfly / Crab | `xabcd` | 5 (X A B C D) |
+| Cypher | `cypher` | 5 (X A B C D) |
+| Head & shoulders | `hs` | 5 (LS N1 H N2 RS) |
+| Triangle | `triangle` | 4 (H L H L) |
+| Three drives | `polyline` | 6 (the three drives and their pullbacks) |
+| Elliott impulse | `ew-impulse` | 6 (0–5) |
+| Elliott ABC | `ew-abc` | 4 (0 A B C) |
 
 ### Shared helpers
 
@@ -111,8 +129,9 @@ Five pivots. B = 0.382–0.618 of XA; C = 1.13–1.414 of XA (it overshoots A); 
 
 ### Head & shoulders
 
-Five pivots: LS, head, RS, with the two lows between them forming the neckline. Bearish when the
-middle pivot is the highest; inverse when it is the lowest.
+Five pivots: LS, N1, head, N2, RS — the two lows (or highs, inverted) between the shoulders are the
+neckline's two points, and they are part of the drawing because the `hs` tool takes five.
+Bearish when the middle pivot is the highest; inverse when it is the lowest.
 
 - head beyond both shoulders by at least 1% of price;
 - the two shoulders within 10% of each other (measured against the head-to-neckline height);
@@ -123,8 +142,9 @@ middle pivot is the highest; inverse when it is the lowest.
 
 ### Triangle
 
-The last five pivots (H-L-H-L-H, or the mirror), so the shape has two highs and two lows and a
-final leg to test the breakout with. Fit a line through the highs and one through the lows:
+The last four pivots, alternating high and low (H-L-H-L, or the mirror), so the shape has two highs
+and two lows and matches the `triangle` tool's four points. Fit a line through the highs and one
+through the lows:
 
 - symmetric: highs falling and lows rising;
 - ascending: highs flat (within 2% of price) and lows rising;
@@ -138,7 +158,9 @@ outside the triangle.
 
 Six pivots: three impulses in one direction, each followed by a pullback of 0.5–0.786 of the drive
 before it. Bearish when the three drives are up (the trade is the reversal down), bullish when they
-are down. `invalidation` = the third drive's extreme; `target` = the start of the first drive.
+are down. `invalidation` = the third drive's extreme; `target` = the start of the first drive. The
+six pivots go to the open-ended `polyline` tool, because the `drives3` tool only holds the three
+extremes and would draw a triangle instead of the zigzag.
 
 ### Elliott impulse
 
@@ -229,14 +251,18 @@ The page is added to the sidebar under Screener and to the command bar's tool li
 A hit becomes a URL token, base64url of:
 
 ```json
-{ "v": 1, "p": "wolfe", "d": "bullish", "pts": [[1730000000, 26.1], ...] }
+{ "v": 1, "p": "wolfe", "d": "bullish", "i": "1d", "pts": [[1730000000, 26.1], ...] }
 ```
 
 - `encodePatternLink(hit)` / `decodePatternLink(token)`.
-- Decoding validates: known pattern id, 4–6 points, strictly increasing times, finite prices, token
-  under 2 KB. Anything else returns null and the chart opens normally.
+- `i` is the interval the scan ran on. It is part of the token because a Wolfe found on the hour is a
+  different shape on the daily, and the chart has to open on the bars the pattern was measured from.
+- Decoding validates: known pattern id, exactly `PATTERN_POINTS[pattern]` points, strictly increasing
+  times, finite prices, a known `CANDLE_INTERVALS` id, token under 2 KB. Anything else returns null
+  and the chart opens normally.
 - `app/(root)/stocks/[symbol]/page.tsx` reads `searchParams.pattern`, decodes it, and passes
-  `initialPattern` to `YahooChart`.
+  `initialPattern` to `YahooChart`; the chart also opens on the token's interval via the existing
+  `preferredInterval` prop.
 - `YahooChart` commits it once, after the candles load, through the same `commit()` the auto-detect
   uses, then clears the query param with `history.replaceState` so a refresh does not duplicate it.
 - The drawing is an ordinary one: draggable, recolourable, deletable, alertable.
