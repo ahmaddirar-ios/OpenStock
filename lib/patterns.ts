@@ -85,8 +85,11 @@ export const PATTERN_LABEL_KEY: Record<PatternId, StringKey> = {
     abc: 'scan.pattern.abc',
 };
 
-/** The glyphs the tool prints beside a hit's points; an open-ended tool prints none. */
-export const labelsFor = (pattern: PatternId): string[] => toolDef(PATTERN_TOOL[pattern]).pointLabels ?? [];
+/** The glyphs the tool prints beside a hit's points; an open-ended tool prints the point numbers. */
+export const labelsFor = (pattern: PatternId): string[] => {
+    const labels = toolDef(PATTERN_TOOL[pattern]).pointLabels;
+    return labels ?? Array.from({ length: PATTERN_POINTS[pattern] }, (_, i) => String(i + 1));
+};
 
 /** How far `at` has travelled from `from` toward `to`, as a fraction of the leg. */
 export function retrace(from: number, to: number, at: number): number {
@@ -371,3 +374,136 @@ export function detectTriangle(pivots: readonly Pivot[], candles: readonly Candl
         foundAt: pivots.length,
     };
 }
+
+/** True when the pivots alternate high/low, which every multi-leg shape below needs. */
+const alternates = (pivots: readonly Pivot[]): boolean =>
+    pivots.every((pivot, i) => i === 0 || pivot.kind !== pivots[i - 1].kind);
+
+/** The newest close, or null when the series is empty or the last bar is not a number. */
+const newestClose = (candles: readonly Candle[]): number | null => {
+    const close = candles[candles.length - 1]?.close;
+    return typeof close === 'number' && Number.isFinite(close) ? close : null;
+};
+
+/**
+ * Three drives: three impulses in one direction, each followed by a pullback of 0.5–0.786 of the
+ * drive before it. The six pivots are the three extremes and the two pullbacks between them, plus
+ * the third drive's end. Drives down are a bullish reversal, drives up a bearish one; the target is
+ * the start of the first drive and the invalidation is the third drive's extreme.
+ */
+// The scanner calls every detector with the same two arguments; drives read only the pivots.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function detectThreeDrives(pivots: readonly Pivot[], _candles: readonly Candle[]): PatternHit | null {
+    if (pivots.length !== 6 || !usable(pivots) || !alternates(pivots)) return null;
+    const [p1, p2, p3, p4, p5, p6] = pivots;
+
+    const down = p1.price > p3.price && p3.price > p5.price;
+    const up = p1.price < p3.price && p3.price < p5.price;
+    if (!down && !up) return null;
+    // The third drive has to finish the sequence, not turn back inside it.
+    if (down ? !(p6.price < p5.price) : !(p6.price > p5.price)) return null;
+
+    const pullback = (from: Pivot, to: Pivot, back: Pivot): number => {
+        const drive = Math.abs(to.price - from.price);
+        return drive === 0 ? 0 : Math.abs(back.price - to.price) / drive;
+    };
+    if (!within(pullback(p1, p2, p3), 0.5, 0.786)) return null;
+    if (!within(pullback(p3, p4, p5), 0.5, 0.786)) return null;
+
+    return {
+        pattern: 'drives3',
+        direction: down ? 'bullish' : 'bearish',
+        tool: PATTERN_TOOL.drives3,
+        points: asPoints(pivots),
+        labels: labelsFor('drives3'),
+        invalidation: p6.price,
+        target: p1.price,
+        confirmed: true,
+        foundAt: pivots.length,
+    };
+}
+
+/**
+ * Elliott impulse: six pivots 0–5 and the published rules, all of them. The count is void at point 4,
+ * and the target is wave 1's 1.618 extension measured from point 2.
+ */
+export function detectImpulse(pivots: readonly Pivot[], candles: readonly Candle[]): PatternHit | null {
+    if (pivots.length !== 6 || !usable(pivots) || !alternates(pivots)) return null;
+    const [p0, p1, p2, p3, p4, p5] = pivots;
+    const bullish = p0.kind === 'low';
+    const sign = bullish ? 1 : -1;
+    /** True when `a` is beyond `b` in the trend's direction. */
+    const beyond = (a: number, b: number) => sign * (a - b) > 0;
+
+    if (!beyond(p2.price, p0.price)) return null; // 2 does not pass 0
+    if (!beyond(p3.price, p1.price)) return null; // 3 passes 1
+    if (!beyond(p4.price, p1.price)) return null; // 4 does not overlap 1
+    if (!beyond(p5.price, p3.price)) return null; // 5 passes 3
+
+    // One correction is deep, the other shallow; two deep legs are a different count.
+    const retrace2 = Math.abs(p1.price - p2.price) / Math.abs(p1.price - p0.price);
+    const retrace4 = Math.abs(p3.price - p4.price) / Math.abs(p3.price - p2.price);
+    if ((retrace2 > 0.5) === (retrace4 > 0.5)) return null;
+
+    const wave1 = Math.abs(p1.price - p0.price);
+    const wave3 = Math.abs(p3.price - p2.price);
+    const wave5 = Math.abs(p5.price - p4.price);
+    if (wave3 <= wave1 && wave3 <= wave5) return null; // 3 is not the shortest
+
+    const close = newestClose(candles);
+    return {
+        pattern: 'impulse',
+        direction: bullish ? 'bullish' : 'bearish',
+        tool: PATTERN_TOOL.impulse,
+        points: asPoints(pivots),
+        labels: labelsFor('impulse'),
+        invalidation: p4.price,
+        target: p2.price + sign * wave1 * 1.618,
+        confirmed: close === null ? false : beyond(close, p5.price),
+        foundAt: pivots.length,
+    };
+}
+
+/**
+ * Elliott correction (ABC): B retraces 0.382–0.886 of 0→A and C passes A. The count is void at B,
+ * and the target is A's 1.272 extension measured from B.
+ */
+// The scanner calls every detector with the same two arguments; ABC reads only the pivots.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function detectAbc(pivots: readonly Pivot[], _candles: readonly Candle[]): PatternHit | null {
+    if (pivots.length !== 4 || !usable(pivots) || !alternates(pivots)) return null;
+    const [p0, a, b, c] = pivots;
+    const bearish = p0.kind === 'high';
+
+    const retrace = Math.abs(b.price - a.price) / Math.abs(a.price - p0.price);
+    if (!within(retrace, 0.382, 0.886)) return null;
+    if (bearish ? !(c.price < a.price) : !(c.price > a.price)) return null;
+
+    const leg = Math.abs(b.price - a.price);
+    return {
+        pattern: 'abc',
+        direction: bearish ? 'bearish' : 'bullish',
+        tool: PATTERN_TOOL.abc,
+        points: asPoints(pivots),
+        labels: labelsFor('abc'),
+        invalidation: b.price,
+        target: bearish ? b.price - leg * 1.272 : b.price + leg * 1.272,
+        confirmed: true,
+        foundAt: pivots.length,
+    };
+}
+
+/** Every pattern id and the function that finds it, so the scan never switches on the id. */
+export const DETECTORS: Record<PatternId, (pivots: readonly Pivot[], candles: readonly Candle[]) => PatternHit | null> = {
+    wolfe: detectWolfe,
+    gartley: detectHarmonic,
+    bat: detectHarmonic,
+    butterfly: detectHarmonic,
+    crab: detectHarmonic,
+    cypher: detectCypher,
+    hs: detectHeadShoulders,
+    triangle: detectTriangle,
+    drives3: detectThreeDrives,
+    impulse: detectImpulse,
+    abc: detectAbc,
+};

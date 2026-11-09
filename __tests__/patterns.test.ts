@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectCypher, detectHarmonic, detectHeadShoulders, detectTriangle, detectWolfe, retrace, within } from '@/lib/patterns';
+import { DETECTORS, PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, detectAbc, detectCypher, detectHarmonic, detectHeadShoulders, detectImpulse, detectThreeDrives, detectTriangle, detectWolfe, retrace, within } from '@/lib/patterns';
 import { pointsNeeded } from '@/lib/chart-drawings';
 import type { Pivot } from '@/lib/auto-count';
 import type { Candle } from '@/lib/yahoo-candles';
@@ -185,5 +185,74 @@ describe('detectTriangle', () => {
         expect(hit?.confirmed).toBe(true);
         expect(hit?.target).toBeCloseTo(150, 0);
         expect(hit?.invalidation).toBeCloseTo(106, 0);
+    });
+});
+
+// Three drives down, each pullback retracing about 0.6 of the drive before it.
+const drives = [pivot(1, 200, 'high'), pivot(2, 150, 'low'), pivot(3, 180, 'high'), pivot(4, 130, 'low'), pivot(5, 160, 'high'), pivot(6, 110, 'low')];
+
+describe('detectThreeDrives', () => {
+    it('labels six points and targets the start of the first drive', () => {
+        const hit = detectThreeDrives(drives, bars(10, (i) => 110 + i));
+        expect(hit?.pattern).toBe('drives3');
+        expect(hit?.tool).toBe('polyline');
+        expect(hit?.labels).toHaveLength(6);
+        expect(hit?.invalidation).toBe(110);
+        expect(hit?.target).toBe(200);
+    });
+
+    it('returns null when a pullback retraces only a sliver of its drive', () => {
+        const broken = [drives[0], drives[1], drives[2], drives[3], pivot(5, 137, 'high'), drives[5]];
+        expect(detectThreeDrives(broken, bars(10, (i) => 110 + i))).toBeNull();
+    });
+});
+
+// A textbook impulse: 2 holds above 0, 3 clears 1, 4 stays above 1, 5 clears 3. Wave 2 retraces a
+// quarter of wave 1 and wave 4 four fifths of wave 3, so the two corrections alternate.
+const impulse = [pivot(1, 100, 'low'), pivot(2, 140, 'high'), pivot(3, 130, 'low'), pivot(4, 190, 'high'), pivot(5, 150, 'low'), pivot(6, 220, 'high')];
+
+describe('detectImpulse', () => {
+    it('accepts the wave and voids the count at point 4', () => {
+        const hit = detectImpulse(impulse, bars(10, (i) => 100 + i));
+        expect(hit?.pattern).toBe('impulse');
+        expect(hit?.tool).toBe('ew-impulse');
+        expect(hit?.labels).toEqual(['0', '1', '2', '3', '4', '5']);
+        expect(hit?.invalidation).toBe(150);
+    });
+
+    it('returns null when wave 4 overlaps wave 1', () => {
+        const overlapping = [impulse[0], impulse[1], impulse[2], impulse[3], pivot(4, 130, 'low'), impulse[5]];
+        expect(detectImpulse(overlapping, bars(10, (i) => 100 + i))).toBeNull();
+    });
+
+    it('returns null when wave 3 is the shortest of the three impulses', () => {
+        const short = [impulse[0], impulse[1], impulse[2], pivot(3, 145, 'high'), pivot(4, 142, 'low'), impulse[5]];
+        expect(detectImpulse(short, bars(10, (i) => 100 + i))).toBeNull();
+    });
+});
+
+describe('detectAbc', () => {
+    const abc = [pivot(1, 200, 'high'), pivot(2, 150, 'low'), pivot(3, 180, 'high'), pivot(4, 130, 'low')];
+
+    it('accepts a zigzag whose C clears A', () => {
+        const hit = detectAbc(abc, bars(10, (i) => 100 + i));
+        expect(hit?.pattern).toBe('abc');
+        expect(hit?.tool).toBe('ew-abc');
+        expect(hit?.labels).toEqual(['0', 'A', 'B', 'C']);
+        expect(hit?.invalidation).toBe(180);
+    });
+
+    it('returns null when B retraces more than 0.886 of A', () => {
+        // 0.92 sits inside `within`'s ±0.05 band, so the fixture has to clear 0.936 to fail.
+        const broken = [abc[0], abc[1], pivot(3, 199, 'high'), abc[3]];
+        expect(detectAbc(broken, bars(10, (i) => 100 + i))).toBeNull();
+    });
+});
+
+describe('DETECTORS', () => {
+    it('has one entry per pattern id, and each is the function the id names', () => {
+        expect(Object.keys(DETECTORS).sort()).toEqual([...PATTERN_ORDER].sort());
+        expect(DETECTORS.wolfe).toBe(detectWolfe);
+        expect(DETECTORS.impulse).toBe(detectImpulse);
     });
 });
