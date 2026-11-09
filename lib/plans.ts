@@ -34,6 +34,8 @@ export const FEATURES = [
     'tool.study.oscillator',
     'tool.chartType',
     'tool.formula',
+    // Account-level products that are not a page or a chart tool.
+    'api.rest',
 ] as const;
 
 export type Feature = (typeof FEATURES)[number];
@@ -43,7 +45,7 @@ export type Plan = (typeof PLANS)[number];
 export const DEFAULT_PLAN: Plan = 'free';
 
 /** The human name of each feature, grouped the way the admin panel prints it. */
-export const FEATURE_GROUPS: readonly { id: string; labelKey: 'access.pages' | 'access.tools'; features: readonly Feature[] }[] = [
+export const FEATURE_GROUPS: readonly { id: string; labelKey: 'access.pages' | 'access.tools' | 'access.api'; features: readonly Feature[] }[] = [
     {
         id: 'pages',
         labelKey: 'access.pages',
@@ -53,6 +55,11 @@ export const FEATURE_GROUPS: readonly { id: string; labelKey: 'access.pages' | '
         id: 'tools',
         labelKey: 'access.tools',
         features: FEATURES.filter((feature) => feature.startsWith('tool.')),
+    },
+    {
+        id: 'api',
+        labelKey: 'access.api',
+        features: FEATURES.filter((feature) => feature.startsWith('api.')),
     },
 ];
 
@@ -96,6 +103,7 @@ export const PLAN_FEATURES: Record<Plan, readonly Feature[]> = {
         'tool.study.oscillator',
         'tool.chartType',
         'tool.formula',
+        'api.rest',
     ],
     // Premium is the whole catalogue. Written out rather than derived, so adding a feature forces a
     // deliberate decision about which plan first sees it.

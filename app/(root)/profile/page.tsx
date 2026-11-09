@@ -4,10 +4,12 @@ import { Bell, KeyRound, ShieldCheck, Star } from "lucide-react";
 import Panel from "@/components/Panel";
 import ProfileForm from "@/components/profile/ProfileForm";
 import PasswordForm from "@/components/profile/PasswordForm";
+import ApiKeysPanel from "@/components/profile/ApiKeysPanel";
 import { auth, getSession } from "@/lib/better-auth/auth";
 import { accessFor } from "@/lib/entitlements-server";
 import { getUserWatchlist } from "@/lib/actions/watchlist.actions";
 import { getUserAlerts } from "@/lib/actions/alert.actions";
+import { listApiKeys } from "@/lib/actions/api-key.actions";
 import { getLang } from "@/lib/i18n-server";
 import { methodLabel, tx, type Lang, type StringKey } from "@/lib/i18n";
 import { arNumberDigits } from '@/lib/i18n';
@@ -30,10 +32,11 @@ export default async function ProfilePage() {
     if (!session?.user) redirect('/sign-in');
     const { user } = session;
 
-    const [accounts, watchlist, alerts] = await Promise.all([
+    const [accounts, watchlist, alerts, apiKeys] = await Promise.all([
         auth.api.listUserAccounts({ headers: await headers() }).catch(() => []),
         getUserWatchlist(),
         getUserAlerts(),
+        listApiKeys().catch(() => []),
     ]);
     const linked = new Set(accounts.map((a: { providerId: string }) => a.providerId));
     const activeAlerts = alerts.filter((a: { triggered?: boolean }) => !a.triggered).length;
@@ -106,6 +109,15 @@ export default async function ProfilePage() {
                     )}
                 </div>
             </div>
+
+            <Panel title={tx(lang, 'profile.api')} sub={tx(lang, 'profile.apiSub')}>
+                <ApiKeysPanel
+                    lang={lang}
+                    initialKeys={apiKeys}
+                    plan={access.plan}
+                    locked={!access.features.includes('api.rest')}
+                />
+            </Panel>
         </>
     );
 }

@@ -80,7 +80,7 @@ export const PAGES: readonly PageDef[] = [
     { href: '/profile', labelKey: 'nav.profile', icon: LayoutDashboard, section: 'account', keywords: ['account', 'settings', 'حساب', 'إعدادات'] },
 
     { href: '/help', labelKey: 'nav.help', icon: LifeBuoy, section: 'resources', keywords: ['support', 'مساعدة', 'دعم'] },
-    { href: '/api-docs', labelKey: 'nav.apiDocs', icon: Code2, section: 'resources', keywords: ['developers', 'api', 'توثيق'] },
+    { href: '/api', labelKey: 'nav.apiDocs', icon: Code2, section: 'resources', keywords: ['developers', 'api', 'rest', 'keys', 'توثيق'] },
     { href: '/about', labelKey: 'nav.about', icon: Info, section: 'resources', keywords: ['about', 'عن التطبيق'] },
     { href: '/terms', labelKey: 'nav.terms', icon: BookOpen, section: 'resources', keywords: ['terms', 'privacy', 'الشروط'] },
 
