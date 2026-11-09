@@ -15,6 +15,7 @@ import {
     Pencil,
     Redo2,
     RefreshCw,
+    Sparkles,
     Trash2,
     Undo2,
     Unlock,
@@ -33,6 +34,9 @@ import { getCompareCandles, getStrategyCandles, getSymbolCandles } from '@/lib/a
 import { CANDLE_INTERVALS, type Candle, type CandleSet } from '@/lib/market/yahoo-candles';
 import Price from '@/components/Price';
 import PaneSearch from '@/components/charts/PaneSearch';
+import AutoAnalysisPanel from '@/components/charts/AutoAnalysisPanel';
+import { analyzeSymbol } from '@/lib/actions/auto-analysis.actions';
+import type { AutoAnalysis } from '@/lib/chart/auto-analysis';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import ChartLegend from '@/components/stocks/ChartLegend';
@@ -165,6 +169,11 @@ export default function ChartPane({
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [listOpen, setListOpen] = useState(false);
     const [timeframeOpen, setTimeframeOpen] = useState(false);
+    // The auto analysis belongs to a symbol on a timeframe, so it is dropped whenever either moves
+    // and read again the next time the panel opens.
+    const [analysisOpen, setAnalysisOpen] = useState(false);
+    const [analysis, setAnalysis] = useState<AutoAnalysis | null>(null);
+    const [analysisLoading, setAnalysisLoading] = useState(false);
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [drawingsHidden, setDrawingsHidden] = useState(false);
     // A resize moves the chart's coordinates without changing its visible range; this counter is
@@ -172,6 +181,36 @@ export default function ChartPane({
     const [, setFrame] = useState(0);
     const gestureStart = useRef<Drawing[] | null>(null);
     const bodyAnchor = useRef<Map<string, DrawPoint[]> | null>(null);
+    /** Bumped per request so a slow read for the old symbol cannot land on the new one. */
+    const analysisRequest = useRef(0);
+
+    /**
+     * Read the chart. The action fetches the same cached candles the pane draws, so opening the
+     * panel on a chart that is already up costs a lookup rather than a second trip to the feed.
+     */
+    const runAnalysis = useCallback(() => {
+        if (!symbol) return;
+        const request = analysisRequest.current + 1;
+        analysisRequest.current = request;
+        setAnalysis(null);
+        setAnalysisLoading(true);
+        analyzeSymbol(symbol, intervalId)
+            .then((result) => {
+                if (analysisRequest.current === request) setAnalysis(result);
+            })
+            .catch(() => {
+                if (analysisRequest.current === request) setAnalysis(null);
+            })
+            .finally(() => {
+                if (analysisRequest.current === request) setAnalysisLoading(false);
+            });
+    }, [symbol, intervalId]);
+
+    // An open panel follows the chart: change the symbol or the timeframe and it reads again, rather
+    // than showing the previous question's answer.
+    useEffect(() => {
+        if (analysisOpen) runAnalysis();
+    }, [analysisOpen, runAnalysis]);
 
     const setDrawings = useCallback((updater: Drawing[] | ((list: Drawing[]) => Drawing[])) => {
         setTimeline((history) => applyHistory(history, typeof updater === 'function' ? updater(history.present) : updater));
@@ -591,6 +630,17 @@ export default function ChartPane({
                                 {name}
                             </span>
                         )}
+                        {/* The auto analysis: one click and the pane's own candles are read. */}
+                        <button
+                            type="button"
+                            onClick={() => setAnalysisOpen((value) => !value)}
+                            aria-expanded={analysisOpen}
+                            aria-label={tx(lang, 'auto.title')}
+                            title={tx(lang, 'auto.title')}
+                            className={cn('icon-btn size-6', analysisOpen && 'is-up')}
+                        >
+                            <Sparkles className="size-3.5" />
+                        </button>
                         {/* The pane's own timeframe, changed here: with four charts open, walking to
                             the toolbar and back for every pane is the slow path. */}
                         <div className="relative flex items-center">
@@ -927,6 +977,17 @@ export default function ChartPane({
                 )}
 
                 {symbol && status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
+
+                {analysisOpen && symbol && (
+                    <AutoAnalysisPanel
+                        lang={lang}
+                        symbol={symbol}
+                        analysis={analysis}
+                        loading={analysisLoading}
+                        onRefresh={runAnalysis}
+                        onClose={() => setAnalysisOpen(false)}
+                    />
+                )}
 
                 {!symbol && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-card/80 p-4 text-center backdrop-blur-[1px]">
