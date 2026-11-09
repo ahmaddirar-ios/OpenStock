@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Check, Copy, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { createApiKey, listApiKeys, revokeApiKey } from '@/lib/actions/api-key.actions';
 import { apiQuotaForPlan, MAX_ACTIVE_KEYS } from '@/lib/api/limits';
 import type { ApiKeyView } from '@/lib/api/keys';
@@ -114,7 +115,7 @@ const ApiKeysPanel = ({ lang, initialKeys, plan, locked }: Props) => {
             <div className="flex flex-wrap items-end gap-2">
                 <label className="min-w-0 flex-1">
                     <span className="mb-1 block text-[12px] font-semibold">{tx(lang, 'profile.apiName')}</span>
-                    <input
+                    <Input
                         value={name}
                         onChange={(event) => setName(event.target.value)}
                         placeholder={tx(lang, 'profile.apiNamePh')}
