@@ -103,6 +103,18 @@ const createAuth = (database: MongoDb) => betterAuth({
         // new session row exists, so a failed insert never signs the user out everywhere. The error is
         // caught: a policy hiccup must not break sign-in.
         databaseHooks: {
+            // The allowlist is also re-checked when the account is created. `getAuth` syncs it once per
+            // server instance, and on a serverless host the very first sign-up can land on an instance
+            // that synced before the row existed — so the owner would sign up and find no admin panel.
+            // Syncing again right after the insert makes the promotion immediate, on any host.
+            user: {
+                create: {
+                    after: async () => {
+                        if (!database) return;
+                        await syncAdminEmails(database);
+                    },
+                },
+            },
             session: {
                 create: {
                     after: async (session) => {
