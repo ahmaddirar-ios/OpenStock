@@ -135,13 +135,15 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
         setRunning(false);
     };
 
-    // A result belongs to the settings that produced it. Changing any control makes the table stale,
-    // so it is cleared rather than left to look like an answer to the new question.
+    // A result belongs to the settings that produced it. Changing any control clears the table and
+    // stops any walk still in flight, so a late batch cannot repaint rows for the old settings.
     useEffect(() => {
+        runRef.current += 1;
+        setRunning(false);
+        setCancelled(false);
         setRows([]);
         setAnswered(0);
         setProgress({ done: 0, total: 0 });
-        setCancelled(false);
     }, [scope, patterns, intervalId, sensitivity]);
 
     const intervalLabel = (id: string): string => {
