@@ -123,6 +123,7 @@ import { addChartTemplate, chartTemplateCounts, instantiateChartTemplate, loadCh
 import { candlesToCsv, csvFileName } from '@/lib/chart-export';
 import { BAR_SECONDS } from '@/lib/chart-countdown';
 import { decodeChartShare, sharePath } from '@/lib/chart-share';
+import { decodePatternLink, drawingFromLink } from '@/lib/pattern-link';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
 import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
 import { findWolfe } from '@/lib/wolfe';
@@ -224,6 +225,12 @@ type Props = {
     lang: Lang;
     /** Interval the page opens on, for a symbol whose usual default has no data (the Saudi index). */
     preferredInterval?: string;
+    /**
+     * A pattern link from the scanner, as the raw token. The chart decodes it, draws it once the
+     * candles and the account's setup have settled, and clears the parameter — a link carries a
+     * shape, not a portfolio.
+     */
+    initialPattern?: string;
     /** Fill the container instead of standing 420px tall — the overview's pane owns the height. */
     fill?: boolean;
     /**
@@ -239,7 +246,7 @@ type Props = {
  * Saudi quotes use), the indicators are computed here, and the drawings are kept in this browser.
  * Nothing about it depends on a paid provider or an API key.
  */
-export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, fill = false, quote: quoteHeader }: Props) {
+export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, initialPattern, fill = false, quote: quoteHeader }: Props) {
     const showQuote = quoteHeader ?? fill;
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
     // Printing briefly retitles the document so the browser offers a sensible PDF name.
@@ -1424,6 +1431,29 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
     };
 
     const commit = (drawing: Drawing) => setDrawings((list) => [...list, { ...styleFor(drawing.tool, drawingStyles), ...drawing }]);
+
+    // A scanner link: one pattern, drawn once. It waits for both the candles and the account's setup,
+    // because the setup merge replaces the whole list and would erase a shape committed while it was
+    // still loading. A spent or broken token draws nothing; either way the parameter goes, so a reload
+    // keeps whatever the trader changes from here on.
+    const patternApplied = useRef(false);
+    useEffect(() => {
+        if (patternApplied.current || !initialPattern) return;
+        if (status !== 'ready' || syncState === 'loading') return;
+        patternApplied.current = true;
+        const link = decodePatternLink(initialPattern);
+        const drawing = link ? drawingFromLink(link) : null;
+        if (drawing) {
+            commit(drawing);
+            setSelectedId([drawing.id]);
+            toast.success(t('scan.added'));
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.delete('pattern');
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+        // `commit` and `t` are stable enough for a one-shot; the guard makes a re-run harmless.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialPattern, status, syncState]);
 
     /**
      * Numbers the waves on the candles that are loaded. One shot, like a normal tool: the result is

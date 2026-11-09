@@ -23,6 +23,7 @@ import { isIndexSymbol, isTadawulSymbol } from '@/lib/yahoo';
 import { fetchSaudiFundamentals } from '@/lib/saudi-fundamentals';
 import SaudiFundamentalsPanel from '@/components/stocks/SaudiFundamentals';
 import { yahooCandleSymbol } from '@/lib/yahoo-candles';
+import { decodePatternLink } from '@/lib/pattern-link';
 import { getLang } from '@/lib/i18n-server';
 import { tx, type Lang } from '@/lib/i18n';
 import { arDigits } from "@/lib/i18n";
@@ -79,11 +80,16 @@ async function DividendYield({ symbol, lang }: { symbol: string; lang: Lang }) {
 }
 
 // Charts come straight from TradingView (live, no quota); only the header waits on Finnhub, and it streams.
-export default async function StockDetails({ params }: StockDetailsPageProps) {
+export default async function StockDetails({ params, searchParams }: StockDetailsPageProps) {
     const { symbol: rawSymbol } = await params;
     const symbol = decodeURIComponent(rawSymbol).toUpperCase();
     const tvSymbol = formatSymbolForTradingView(symbol);
-    const lang = await getLang();
+    const [lang, query] = await Promise.all([getLang(), searchParams]);
+    // The scanner's token names the bars it measured on, so the chart opens on them; every other
+    // visit keeps the page's own preference (the index has no daily series in this feed).
+    const patternToken = typeof query?.pattern === 'string' ? query.pattern : undefined;
+    const patternLink = decodePatternLink(patternToken);
+    const patternInterval = patternLink?.intervalId;
     // The Tadawul All Shares Index is the one symbol here that is not a company.
     const isIndex = isIndexSymbol(symbol);
     const isTadawul = isTadawulSymbol(symbol);
@@ -108,7 +114,8 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                                 symbol={symbol}
                                 tvSymbol={tvSymbol}
                                 lang={lang}
-                                preferredInterval={isIndex ? '60m' : undefined}
+                                preferredInterval={patternInterval ?? (isIndex ? '60m' : undefined)}
+                                initialPattern={patternToken}
                                 fill
                                 quote={false}
                             />
