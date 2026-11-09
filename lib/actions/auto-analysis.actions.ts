@@ -10,8 +10,6 @@
 import { analyzeCandles, type AutoAnalysis } from '@/lib/chart/auto-analysis';
 import { getSymbolCandles } from '@/lib/actions/yahoo-candles.actions';
 
-export type { AutoAnalysis };
-
 /** The read for one symbol on one timeframe, or null when the feed has nothing to say. */
 export async function analyzeSymbol(symbol: string, intervalId: string): Promise<AutoAnalysis | null> {
     const name = typeof symbol === 'string' ? symbol.trim() : '';
