@@ -96,22 +96,6 @@ export default async function Overview() {
 
     return (
         <div className="overview">
-            {/* The trader's own cards, above the chart. Each streams inside its own boundary, so a
-                slow account read never holds up the chart. The whole board is a feature flag. */}
-            {boardOn && layout && (
-                <DashboardBoard
-                    lang={lang}
-                    layout={layout}
-                    widgets={{
-                        portfolio: <Suspense fallback={<BoardCardSkeleton />}><PortfolioCard lang={lang} /></Suspense>,
-                        watchlist: <Suspense fallback={<BoardCardSkeleton />}><WatchlistCard lang={lang} /></Suspense>,
-                        alerts: <Suspense fallback={<BoardCardSkeleton />}><AlertsCard lang={lang} /></Suspense>,
-                        scanner: <Suspense fallback={<BoardCardSkeleton />}><ScannerCard lang={lang} /></Suspense>,
-                        strategies: <Suspense fallback={<BoardCardSkeleton />}><StrategiesCard lang={lang} /></Suspense>,
-                        screeners: <Suspense fallback={<BoardCardSkeleton />}><ScreenersCard lang={lang} /></Suspense>,
-                    }}
-                />
-            )}
             {/* The day, in one line, before the work: indices and totals. It streams, so the chart
                 never waits on a scanner call — and it keeps its height while it does. */}
             <Suspense fallback={<div className="terminal-ribbon is-empty" aria-hidden />}>
@@ -165,6 +149,24 @@ export default async function Overview() {
                     </Suspense>
                 </div>
             </div>
+
+            {/* The trader's own cards, under the chart. The chart is the page; the board is the
+                glance you take after it. Cards stream inside their own boundaries, so a slow
+                account read never holds up the chart. The whole board is a feature flag. */}
+            {boardOn && layout && (
+                <DashboardBoard
+                    lang={lang}
+                    layout={layout}
+                    widgets={{
+                        portfolio: <Suspense fallback={<BoardCardSkeleton />}><PortfolioCard lang={lang} /></Suspense>,
+                        watchlist: <Suspense fallback={<BoardCardSkeleton />}><WatchlistCard lang={lang} /></Suspense>,
+                        alerts: <Suspense fallback={<BoardCardSkeleton />}><AlertsCard lang={lang} /></Suspense>,
+                        scanner: <Suspense fallback={<BoardCardSkeleton />}><ScannerCard lang={lang} /></Suspense>,
+                        strategies: <Suspense fallback={<BoardCardSkeleton />}><StrategiesCard lang={lang} /></Suspense>,
+                        screeners: <Suspense fallback={<BoardCardSkeleton />}><ScreenersCard lang={lang} /></Suspense>,
+                    }}
+                />
+            )}
 
             <Suspense fallback={null}>
                 <MarketNews lang={lang} />

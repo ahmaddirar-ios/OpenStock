@@ -1279,7 +1279,9 @@
         flex: 1;
         grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
         gap: 8px;
-        min-height: 0;
+        /* The chart is the page, so it claims most of the window instead of shrinking to whatever
+           is left after the board. Anything below it scrolls. */
+        min-height: clamp(520px, calc(100dvh - 250px), 900px);
     }
 
     /* The board: the trader's own row of cards above the chart. Compact on purpose — it is a
