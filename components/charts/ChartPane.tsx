@@ -604,7 +604,7 @@ export default function ChartPane({
             )}
 
             <header
-                className="relative z-20 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2.5 py-1.5"
+                className="relative z-40 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2.5 py-1.5"
                 // Double-clicking the bar maximizes the pane, the way a desktop window behaves; the
                 // buttons inside it keep their own click.
                 onDoubleClick={(event) => {
@@ -661,7 +661,7 @@ export default function ChartPane({
                                     <div className="fixed inset-0 z-20" onClick={() => setTimeframeOpen(false)} />
                                     <div
                                         role="menu"
-                                        className="absolute start-0 top-full z-30 mt-1 grid w-28 grid-cols-2 gap-0.5 rounded-[10px] border border-line bg-card p-1 shadow-[0_12px_32px_oklch(0_0_0/0.45)]"
+                                        className="absolute start-0 top-full z-40 mt-1 grid w-28 grid-cols-2 gap-0.5 rounded-[10px] border border-line bg-card p-1 shadow-[0_12px_32px_oklch(0_0_0/0.45)]"
                                     >
                                         {CANDLE_INTERVALS.map((item) => (
                                             <button

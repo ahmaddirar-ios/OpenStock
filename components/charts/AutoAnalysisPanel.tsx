@@ -30,7 +30,7 @@ const biasClass = (bias: AutoAnalysis['bias']) =>
         ? 'bg-up-soft text-up'
         : bias === 'bearish'
           ? 'bg-down-soft text-down'
-          : 'bg-hover text-muted';
+          : 'bg-hover text-muted-foreground';
 
 const biasKey = (bias: AutoAnalysis['bias']) =>
     bias === 'bullish' ? 'auto.bias.bullish' : bias === 'bearish' ? 'auto.bias.bearish' : 'auto.bias.neutral';
@@ -41,7 +41,7 @@ function FactorRow({ lang, factor }: { lang: Lang; factor: AnalysisFactor }) {
     return (
         <li className="flex items-center gap-2 py-1">
             <span className="w-20 shrink-0 text-[11.5px] text-faint">{tx(lang, FACTOR_KEY[factor.id])}</span>
-            <span className="mono num w-24 shrink-0 text-[11.5px] text-muted" dir="ltr">
+            <span className="mono num w-24 shrink-0 text-[11.5px] text-muted-foreground" dir="ltr">
                 {factor.value}
             </span>
             <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-line" aria-hidden="true">
@@ -76,7 +76,7 @@ function FactorRow({ lang, factor }: { lang: Lang; factor: AnalysisFactor }) {
 export default function AutoAnalysisPanel({ lang, symbol, analysis, loading, onRefresh, onClose }: Props) {
     return (
         <section
-            className="absolute inset-x-2 bottom-2 top-11 z-30 flex flex-col overflow-hidden rounded-[12px] border border-line bg-card shadow-[0_18px_48px_oklch(0_0_0/0.5)]"
+            className="absolute inset-x-2 top-11 z-30 flex max-h-[calc(100%-3.25rem)] flex-col overflow-hidden rounded-[12px] border border-line bg-card shadow-[0_18px_48px_oklch(0_0_0/0.5)]"
             aria-label={tx(lang, 'auto.title')}
         >
             <header className="flex items-center gap-2 border-b border-line px-2.5 py-1.5">
@@ -141,25 +141,29 @@ export default function AutoAnalysisPanel({ lang, symbol, analysis, loading, onR
                                     'absolute inset-y-0 start-0 rounded-full',
                                     analysis.bias === 'bullish' && 'bg-up',
                                     analysis.bias === 'bearish' && 'bg-down',
-                                    analysis.bias === 'neutral' && 'bg-line-strong',
+                                    analysis.bias === 'neutral' && 'bg-faint',
                                 )}
                                 style={{ width: `${analysis.score}%` }}
                             />
                             <span className="absolute inset-y-0 start-1/2 w-px bg-line-strong" />
                         </div>
 
-                        <p className="text-[12.5px] leading-snug text-muted">{tx(lang, analysis.headline)}</p>
+                        <p className="text-[12.5px] leading-snug text-muted-foreground">{tx(lang, analysis.headline)}</p>
 
-                        <ul className="flex flex-col border-y border-line py-1">
-                            {analysis.factors.map((factor) => (
-                                <FactorRow key={factor.id} lang={lang} factor={factor} />
-                            ))}
-                        </ul>
+                        {/* One column in a quarter pane, two once the pane is maximised: the same
+                            read, laid out for the space it is actually given. */}
+                        <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))]">
+                            <ul className="flex flex-col border-y border-line py-1">
+                                {analysis.factors.map((factor) => (
+                                    <FactorRow key={factor.id} lang={lang} factor={factor} />
+                                ))}
+                            </ul>
 
+                            <div className="flex flex-col gap-2.5">
                         {analysis.levels.length > 0 && (
                             <div className="flex flex-col gap-1">
                                 <span className="text-[11px] font-semibold text-faint">{tx(lang, 'auto.levels')}</span>
-                                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                                <div className="grid w-fit grid-cols-2 gap-x-6 gap-y-0.5">
                                     {analysis.levels.map((level) => (
                                         <div
                                             key={`${level.kind}-${level.price}`}
@@ -200,13 +204,15 @@ export default function AutoAnalysisPanel({ lang, symbol, analysis, loading, onR
                             </div>
                         )}
 
-                        <p className="text-[11px] text-faint" dir="ltr">
+                        <p className="text-[11px] text-faint">
                             {tx(lang, 'auto.meta')
                                 .replace('{bars}', arDigits(analysis.bars, lang))
                                 .replace('{atr}', arDigits(analysis.atrPercent.toFixed(2), lang))
                                 .replace('{adx}', arDigits(Math.round(analysis.trendStrength), lang))}
                         </p>
-                        <p className="text-[10.5px] leading-snug text-faint">{tx(lang, 'auto.disclaimer')}</p>
+                        <p className="max-w-[52ch] text-[10.5px] leading-snug text-faint">{tx(lang, 'auto.disclaimer')}</p>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
