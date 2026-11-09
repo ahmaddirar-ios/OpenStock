@@ -21,13 +21,16 @@ const ToolsHub = ({ lang, role, features }: { lang: Lang; role: Role; features: 
         // The hub indexes destinations; it is not one of them. Listing itself under a "Tools"
         // heading only ever read as a duplicate of the page the reader is standing on.
         const pages = visiblePages(role, features)
-            .filter((page) => page.href !== '/tools')
+            .filter((page) => page.href !== '/tools' && !page.subpage)
             .filter((page) => {
                 if (!needle) return true;
                 const haystack = [tx(lang, page.labelKey), page.href, ...page.keywords].join(' ').toLowerCase();
                 return haystack.includes(needle);
             });
         return PAGE_SECTIONS
+            // Administration is not a tool: it belongs to the account door in the menu bar, and
+            // repeating it here was the main reason this page read as an unlabelled dumping ground.
+            .filter((section) => section.id !== 'admin')
             .map((section) => ({
                 section,
                 pages: pages.filter((page) => page.section === section.id),

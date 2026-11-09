@@ -44,6 +44,11 @@ export type PageDef = {
     requires?: Capability;
     /** Any staff role opens this page — used for the admin home, which has no single capability. */
     requiresStaff?: boolean;
+    /**
+     * A child of a hub: reachable by URL and by the command palette, but not a tile in the rail or
+     * the tools index. The admin console is one destination with four tabs, not five peers.
+     */
+    subpage?: boolean;
 };
 
 export const PAGE_SECTIONS: readonly { id: PageSection; labelKey: StringKey; label?: StringKey }[] = [
@@ -80,6 +85,10 @@ export const PAGES: readonly PageDef[] = [
     { href: '/terms', labelKey: 'nav.terms', icon: BookOpen, section: 'resources', keywords: ['terms', 'privacy', 'الشروط'] },
 
     { href: '/admin', labelKey: 'nav.admin', icon: ShieldCheck, section: 'admin', keywords: ['staff', 'control', 'management', 'إدارة', 'لوحة'], requiresStaff: true },
+    { href: '/admin/users', labelKey: 'admin.nav.users', icon: ShieldCheck, section: 'admin', keywords: ['accounts', 'roles', 'مستخدمين', 'صلاحيات'], requiresStaff: true, subpage: true },
+    { href: '/admin/content', labelKey: 'admin.nav.content', icon: BookOpen, section: 'admin', keywords: ['editorial', 'content', 'محتوى'], requiresStaff: true, subpage: true },
+    { href: '/admin/flags', labelKey: 'admin.nav.flags', icon: SlidersHorizontal, section: 'admin', keywords: ['features', 'toggles', 'ميزات'], requiresStaff: true, subpage: true },
+    { href: '/admin/ops', labelKey: 'admin.nav.ops', icon: ShieldCheck, section: 'admin', keywords: ['operations', 'health', 'عمليات'], requiresStaff: true, subpage: true },
 ];
 
 /** Whether a role may open a page. A page with no requirement is open to everyone signed in. */
@@ -94,9 +103,9 @@ export const canOpen = (page: PageDef, role: Role, features?: readonly Feature[]
 export const visiblePages = (role: Role, features?: readonly Feature[]): PageDef[] =>
     PAGES.filter((page) => canOpen(page, role, features));
 
-/** The pages a section holds, in list order. */
+/** The pages a section holds, in list order. Sub-pages belong to their hub, not to the rail. */
 export const pagesInSection = (section: PageSection): PageDef[] =>
-    PAGES.filter((page) => page.section === section);
+    PAGES.filter((page) => page.section === section && !page.subpage);
 
 /** The pages a section holds that a role may open, in list order. */
 export const visiblePagesInSection = (section: PageSection, role: Role, features?: readonly Feature[]): PageDef[] =>

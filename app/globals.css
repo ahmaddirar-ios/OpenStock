@@ -349,6 +349,32 @@
     }
     .menubar-item:hover,
     .menubar-item.is-open { background: color-mix(in oklab, var(--text) 9%, transparent); color: var(--text); }
+    /* The section that owns the current page, marked on the bar itself: TakeProfit and Lightspeed
+       both show where you are rather than making you open each menu to find out. */
+    .menubar-item.is-current { color: var(--text); }
+    .menubar-item.is-current::after {
+        content: '';
+        width: 4px;
+        height: 4px;
+        margin-inline-start: 1px;
+        border-radius: 50%;
+        background: var(--brand-ink);
+        opacity: 0.85;
+    }
+
+    .menubar-account { gap: 6px; padding-inline-end: 6px; }
+    .menubar-avatar {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--brand-soft);
+        color: var(--brand-ink);
+        font-size: 10.5px;
+        font-weight: 700;
+    }
 
     .menubar-drop {
         position: absolute;
@@ -375,6 +401,10 @@
         text-align: start;
     }
     .menubar-row:hover { background: var(--hover); color: var(--text); }
+    /* Pinned to the far edge (the account door), the drop must open inward on both sides. */
+    .menubar-drop.is-end { inset-inline-start: auto; inset-inline-end: 0; min-width: 224px; }
+    .menubar-sep { display: block; height: 1px; margin: 4px 6px; background: var(--line); }
+    .menubar-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--brand-ink); }
 
     .menubar-end {
         display: flex;
@@ -403,18 +433,6 @@
     .menubar-search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .menubar-search .kbd { flex: none; }
 
-    .menubar-user {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 0 6px;
-        height: 28px;
-        border-radius: 6px;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 600;
-    }
-    .menubar-user:hover { background: color-mix(in oklab, var(--text) 8%, transparent); color: var(--text); }
     .menubar-user-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .win-controls { display: flex; align-items: center; gap: 2px; flex: none; margin-inline-start: 4px; }
@@ -495,8 +513,15 @@
         .menubar-search { width: 28px; justify-content: center; padding: 0; }
         .menubar-user-name { display: none; }
     }
-    @media (max-width: 900px) {
-        .menubar-menus { display: none; }
+    /* The top menu is the site, so it holds its ground: it only folds on a phone, where the
+       drawer is the navigation. It used to vanish below 900px, which is a normal laptop window
+       and left the strip looking empty. */
+    @media (max-width: 1040px) {
+        .menubar-item { padding: 0 7px; font-size: 12px; }
+    }
+    @media (max-width: 640px) {
+        .menubar > .menubar-menus { display: none; }
+        .menubar-end .menubar-menus .menubar-item { padding: 0 6px; }
     }
     @media (max-width: 720px) {
         .noticebar { font-size: 10.5px; }

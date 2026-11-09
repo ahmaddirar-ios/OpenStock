@@ -35,9 +35,15 @@ const Sidebar = ({ user, lang, role, features }: SidebarProps) => {
     };
 
     // The avatar is the account door and the drawer carries resources at the foot, so the rail's
-    // body is everything else the role can open.
+    // body is everything else the role can open. The Tools hub is an index of these very icons,
+    // not a destination of its own, so it stays out of the rail too — it lives in the menu bar
+    // and the command palette, where an index belongs.
     const sections = PAGE_SECTIONS.filter(
-        (section) => section.id !== 'account' && section.id !== 'resources' && visiblePagesInSection(section.id, role, features).length > 0,
+        (section) =>
+            section.id !== 'account' &&
+            section.id !== 'resources' &&
+            section.id !== 'tools' &&
+            visiblePagesInSection(section.id, role, features).length > 0,
     );
 
     return (
