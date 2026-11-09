@@ -15,13 +15,21 @@ export function useLiveQuotes(symbols: string[], intervalMs?: number) {
         const list = key ? key.split(",") : [];
         if (!list.length || !isQuoteLive(list)) return;
         let cancelled = false;
+        let authRetry: ReturnType<typeof setTimeout> | undefined;
         // Ask exactly as often as the server is willing to refresh, so a poll never returns the same number.
         const every = intervalMs ?? quoteTtlSeconds(list) * 1000;
 
-        const load = async () => {
+        const load = async (retryOnAuth = true) => {
             if (document.visibilityState !== "visible") return;
             try {
                 const res = await fetch(`/api/quotes?symbols=${encodeURIComponent(key)}`);
+                // A page that mounts in the same tick as the sign-in response can poll before the
+                // session cookie is applied, which logged a 401 per symbol. Ask once more shortly
+                // after instead of surfacing the race as an error.
+                if (res.status === 401 && retryOnAuth && !cancelled) {
+                    authRetry = setTimeout(() => { void load(false); }, 1200);
+                    return;
+                }
                 if (res.ok && !cancelled) setQuotes(await res.json());
             } catch { /* keep the last good prices */ }
         };
@@ -33,6 +41,7 @@ export function useLiveQuotes(symbols: string[], intervalMs?: number) {
         return () => {
             cancelled = true;
             clearInterval(interval);
+            if (authRetry) clearTimeout(authRetry);
             document.removeEventListener("visibilitychange", onVisibility);
         };
     }, [key, intervalMs]);

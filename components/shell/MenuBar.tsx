@@ -84,7 +84,7 @@ export const MENUS: MenuDef[] = [
         id: 'tools',
         labelKey: 'menu.tools',
         items: [
-            { labelKey: 'nav.tools', href: '/tools', icon: Wrench },
+            { labelKey: 'menu.tools.all', href: '/tools', icon: Wrench },
             { labelKey: 'menu.tools.charts', href: '/charts', icon: CandlestickChart },
             { labelKey: 'menu.tools.api', href: '/api-docs', icon: Info },
         ],

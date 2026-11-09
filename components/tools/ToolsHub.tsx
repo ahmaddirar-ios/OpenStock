@@ -18,11 +18,15 @@ const ToolsHub = ({ lang, role, features }: { lang: Lang; role: Role; features: 
 
     const groups = useMemo(() => {
         const needle = query.trim().toLowerCase();
-        const pages = visiblePages(role, features).filter((page) => {
-            if (!needle) return true;
-            const haystack = [tx(lang, page.labelKey), page.href, ...page.keywords].join(' ').toLowerCase();
-            return haystack.includes(needle);
-        });
+        // The hub indexes destinations; it is not one of them. Listing itself under a "Tools"
+        // heading only ever read as a duplicate of the page the reader is standing on.
+        const pages = visiblePages(role, features)
+            .filter((page) => page.href !== '/tools')
+            .filter((page) => {
+                if (!needle) return true;
+                const haystack = [tx(lang, page.labelKey), page.href, ...page.keywords].join(' ').toLowerCase();
+                return haystack.includes(needle);
+            });
         return PAGE_SECTIONS
             .map((section) => ({
                 section,

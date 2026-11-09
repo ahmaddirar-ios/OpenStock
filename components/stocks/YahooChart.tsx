@@ -47,7 +47,6 @@ import {
     RefreshCw,
     Repeat,
     Share2,
-    Search,
     SendToBack,
     Trash2,
     Upload,
@@ -130,7 +129,6 @@ import { findWolfe } from '@/lib/wolfe';
 import { createCandleHost, token, type CandleHost } from '@/lib/chart/candle-host';
 import CandleTooltip from '@/components/stocks/CandleTooltip';
 import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart/studies';
-import ToolPalette from '@/components/stocks/ToolPalette';
 import ChartToolbarMore from '@/components/stocks/ChartToolbarMore';
 import type { ToolEntry } from '@/lib/tools/catalog';
 import { readStudies, writeStudies } from '@/lib/chart/studies-storage';
@@ -194,7 +192,7 @@ import { toolFromParam } from '@/lib/shell/command';
 import { canUseChartType, canUseDrawing, canUseTool } from '@/lib/tools/access';
 import { useFeatures } from '@/components/shell/AccessContext';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'layout' | 'visibility' | 'fib' | 'tools' | 'tf';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'layout' | 'visibility' | 'fib' | 'tf';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -2546,24 +2544,10 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     undefined,
                     'chart-tf-pick keep-mobile',
                 )}
-                {/* One field over every drawing, indicator, chart type and formula function. */}
-                <div className="relative keep-mobile">
-                    <button
-                        type="button"
-                        onClick={() => setMenu((current) => (current === 'tools' ? null : 'tools'))}
-                        aria-expanded={menu === 'tools'}
-                        className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', menu === 'tools' && 'is-up')}
-                        title={t('tools.palette')}
-                    >
-                        <Search className="size-3.5" /> {t('tools.palette')}
-                    </button>
-                    {menu === 'tools' && (
-                        <>
-                            <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
-                            <ToolPalette lang={lang} onInsert={insertTool} onClose={() => setMenu(null)} />
-                        </>
-                    )}
-                </div>
+                {/* The chart keeps its tools on the floating drawing rail and behind the two
+                    dedicated menus below. The all-in-one "Tools" search pill sat between them and
+                    read as a third, competing entry point for the same things, so it is gone: one
+                    place per job. The shell's own Tools page remains the index of the whole app. */}
                 <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
                 {chartType === 'linebreak' && (
                     <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
