@@ -12,6 +12,11 @@ import { FeatureFlag } from '@/database/models/feature-flag.model';
 export const FLAG_KEYS = ['dashboard.board'] as const;
 export type FlagKey = (typeof FLAG_KEYS)[number];
 
+/** What each flag does when no row exists — the code owns the default. */
+export const FLAG_DEFAULTS: Record<FlagKey, boolean> = {
+    'dashboard.board': true,
+};
+
 export const isFlagKey = (value: unknown): value is FlagKey =>
     typeof value === 'string' && (FLAG_KEYS as readonly string[]).includes(value);
 

@@ -281,6 +281,19 @@
         font-size: 11.5px;
         font-weight: 600;
     }
+    /* Staff notices colour the bar by what they mean: a quiet note, a caution, or a stop. */
+    .noticebar.is-info {
+        background: color-mix(in oklab, var(--brand) 16%, var(--page));
+        border-bottom-color: color-mix(in oklab, var(--brand) 32%, transparent);
+        color: color-mix(in oklab, var(--text) 80%, var(--brand));
+    }
+    .noticebar.is-info .noticebar-link { background: color-mix(in oklab, var(--brand) 28%, transparent); }
+    .noticebar.is-warning {
+        background: color-mix(in oklab, var(--warn, oklch(0.82 0.16 84)) 18%, var(--page));
+        border-bottom-color: color-mix(in oklab, var(--warn, oklch(0.82 0.16 84)) 34%, transparent);
+        color: color-mix(in oklab, var(--text) 80%, var(--warn, oklch(0.82 0.16 84)));
+    }
+    .noticebar.is-warning .noticebar-link { background: color-mix(in oklab, var(--warn, oklch(0.82 0.16 84)) 30%, transparent); }
     .noticebar-link {
         display: inline-flex;
         align-items: center;

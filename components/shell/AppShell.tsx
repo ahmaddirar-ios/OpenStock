@@ -12,6 +12,7 @@ import SearchCommand from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { langCookie, otherLang, tx, type Lang } from "@/lib/i18n";
 import type { Role } from "@/lib/authz";
+import type { SiteNotice } from "@/lib/notice";
 import { LAST_SYMBOL_KEY, isSymbolLike } from "@/lib/shell/command";
 import { shortcutFor } from "@/lib/shell/shortcuts";
 import { MotionProvider } from "@/components/motion";
@@ -22,12 +23,13 @@ type AppShellProps = {
     initialStocks: StockWithWatchlistStatus[];
     lang: Lang;
     role: Role;
+    notice: SiteNotice | null;
     children: React.ReactNode;
 };
 
 const COLLAPSED_KEY = 'openstock:sidebar-collapsed';
 
-const AppShell = ({ user, watchlist, initialStocks, lang, role, children }: AppShellProps) => {
+const AppShell = ({ user, watchlist, initialStocks, lang, role, notice, children }: AppShellProps) => {
     const pathname = usePathname();
     const router = useRouter();
     const [navOpen, setNavOpen] = useState(false);
@@ -90,7 +92,7 @@ const AppShell = ({ user, watchlist, initialStocks, lang, role, children }: AppS
         <div className={cn('desk', collapsed && 'is-collapsed', focus && 'is-focus')}>
             <a href="#main" className="skip-link">{tx(lang, 'a11y.skip')}</a>
 
-            <NoticeBar lang={lang} />
+            <NoticeBar lang={lang} notice={notice} />
             <MenuBar
                 lang={lang}
                 userName={user.name ?? ''}

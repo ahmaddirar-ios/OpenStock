@@ -6,9 +6,31 @@ import { ArrowUpRight, CircleDot, Clock3, Info, Wifi } from 'lucide-react';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { WorldBoardPayload } from '@/lib/world-board';
+import type { SiteNotice } from '@/lib/notice';
 
-/** The red line a terminal opens with: what the feed is, and where the live one would be. */
-export function NoticeBar({ lang }: { lang: Lang }) {
+/**
+ * The line a terminal opens with. When staff have published a notice it carries their words, in the
+ * reader's language (falling back to the other one rather than showing an empty bar); otherwise it
+ * says what the feed is, and where the live one would be.
+ */
+export function NoticeBar({ lang, notice }: { lang: Lang; notice?: SiteNotice | null }) {
+    if (notice) {
+        const message = lang === 'ar' ? notice.messageAr || notice.messageEn : notice.messageEn || notice.messageAr;
+        const linkLabel = lang === 'ar' ? notice.linkLabelAr || notice.linkLabelEn : notice.linkLabelEn || notice.linkLabelAr;
+        return (
+            <div className={cn('noticebar', `is-${notice.level}`)} role="status">
+                <Info className="size-3.5 shrink-0" />
+                <span className="truncate">{message}</span>
+                {notice.href && linkLabel && (
+                    <Link href={notice.href} className="noticebar-link">
+                        {linkLabel}
+                        <ArrowUpRight className="size-3" />
+                    </Link>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="noticebar" role="status">
             <Info className="size-3.5 shrink-0" />

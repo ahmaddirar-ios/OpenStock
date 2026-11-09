@@ -5,6 +5,7 @@ import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { getUserWatchlist } from "@/lib/actions/watchlist.actions";
 import { getLang } from "@/lib/i18n-server";
 import { roleOf } from "@/lib/authz";
+import { getActiveNotice } from "@/lib/notice-server";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const session = await getSession();
@@ -18,9 +19,10 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     }
     const role = roleOf(session.user as { role?: string | null });
 
-    const [initialStocks, watchlist] = await Promise.all([
+    const [initialStocks, watchlist, notice] = await Promise.all([
         searchStocks(),
         getUserWatchlist(),
+        getActiveNotice(),
     ]);
     const lang = await getLang();
 
@@ -32,6 +34,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 initialStocks={initialStocks}
                 lang={lang}
                 role={role}
+                notice={notice}
             >
                 {children}
             </AppShell>
