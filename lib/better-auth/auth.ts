@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import {mongodbAdapter} from "better-auth/adapters/mongodb";
-import {connectToDatabase} from "@/database/mongoose";
+import { ObjectId } from "mongodb";
+import { connectToDatabase} from "@/database/mongoose";
 import {nextCookies} from "better-auth/next-js";
 import { headers } from "next/headers";
 import { cache } from "react";
@@ -8,6 +9,7 @@ import { admin } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import { sendPasswordResetEmail } from "@/lib/nodemailer/reset-password";
 import { ROLES, STATEMENTS, groupByResource, type Role } from "@/lib/authz";
+import { sessionsToRevoke } from "@/lib/better-auth/device-policy";
 
 
 type MongoDb = Parameters<typeof mongodbAdapter>[0];
@@ -91,10 +93,51 @@ const createAuth = (database: MongoDb) => betterAuth({
                 });
             },
         },
-        // Signed session cookie for 5 min: pages stop paying a MongoDB round trip per request.
-        // Trade-off: a revoked session can stay valid for up to 5 minutes.
+        // Signed session cookie for 1 min: pages skip a MongoDB round trip per request, while a
+        // revoked session (another device signed in, or an admin kicked it) dies within that minute.
+        // Trade-off: one extra session read per user per minute, and a stale window of up to 60s.
         session: {
-            cookieCache: { enabled: true, maxAge: 5 * 60 },
+            cookieCache: { enabled: true, maxAge: 60 },
+        },
+        // One active device per account (see `lib/better-auth/device-policy.ts`). This runs after the
+        // new session row exists, so a failed insert never signs the user out everywhere. The error is
+        // caught: a policy hiccup must not break sign-in.
+        databaseHooks: {
+            session: {
+                create: {
+                    after: async (session) => {
+                        if (!database) return;
+                        const userId = session.userId ? String(session.userId) : '';
+                        const keepId = session.id ? String(session.id) : '';
+                        if (!userId || !keepId) return;
+                        try {
+                            const sessions = database.collection('session');
+                            // The adapter may store `userId` as an ObjectId or as the id string depending
+                            // on the deployment; match both so the policy never silently no-ops.
+                            const owners: (string | ObjectId)[] = [userId];
+                            if (/^[a-fA-F0-9]{24}$/.test(userId)) owners.push(new ObjectId(userId));
+                            const rows = await sessions
+                                .find({ userId: { $in: owners } }, { projection: { _id: 1, token: 1, createdAt: 1 } })
+                                .toArray();
+                            const revoke = sessionsToRevoke(
+                                rows.map((row) => ({
+                                    id: String(row._id),
+                                    token: String(row.token),
+                                    createdAt: row.createdAt as Date,
+                                })),
+                                keepId,
+                            );
+                            if (revoke.length > 0) {
+                                // Delete by token, not `_id`: the driver types `_id` as an ObjectId while
+                                // both adapters here store the session id as a string.
+                                await sessions.deleteMany({ token: { $in: revoke.map((row) => row.token) } });
+                            }
+                        } catch (error) {
+                            console.error('Session device policy failed:', error);
+                        }
+                    },
+                },
+            },
         },
         // No account linking. Sign-up doesn't verify emails, so linking a Google/GitHub identity to an
         // existing account with the same email would let someone pre-register a victim's address and

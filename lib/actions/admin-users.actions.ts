@@ -156,3 +156,15 @@ export async function removeUserRecord(userId: unknown): Promise<void> {
     await refuseSelf(id);
     await auth.api.removeUser({ body: { userId: id }, headers: await headers() });
 }
+
+/**
+ * Sign an account out of every device. The per-user device policy already allows only one active
+ * session, so this is how staff act on "my account was sold / stolen" without waiting for the
+ * owner to sign in again. Refused on your own account, like the other destructive actions.
+ */
+export async function revokeUserSessions(userId: unknown): Promise<void> {
+    await requireCapability('session:revoke');
+    const id = readUserId(userId);
+    await refuseSelf(id);
+    await auth.api.revokeUserSessions({ body: { userId: id }, headers: await headers() });
+}

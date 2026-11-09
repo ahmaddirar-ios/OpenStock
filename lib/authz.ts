@@ -29,7 +29,7 @@ export type Role = (typeof ROLES)[number];
 
 // The approved matrix, written as the bundles a role carries. Later roles extend earlier ones.
 const VIEWER = ['user:list', 'user:get', 'session:list', 'content:view', 'ops:view'] as const;
-const SUPPORT = [...VIEWER, 'user:ban', 'user:update', 'user:set-password'] as const;
+const SUPPORT = [...VIEWER, 'session:revoke', 'user:ban', 'user:update', 'user:set-password'] as const;
 const MODERATOR = [...SUPPORT, 'content:manage'] as const;
 const ADMIN = [...MODERATOR, 'user:set-role', 'user:delete', 'flag:manage'] as const;
 

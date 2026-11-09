@@ -40,6 +40,7 @@ export default async function AdminUsersPage() {
                             setRole: can(user.role, 'user:set-role'),
                             ban: can(user.role, 'user:ban'),
                             delete: can(user.role, 'user:delete'),
+                            revoke: can(user.role, 'session:revoke'),
                         }}
                     />
                 </div>

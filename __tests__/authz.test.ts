@@ -36,6 +36,9 @@ describe('the authorization matrix', () => {
         expect(can('support', 'user:ban')).toBe(true);
         expect(can('support', 'user:update')).toBe(true);
         expect(can('support', 'user:set-password')).toBe(true);
+        expect(can('support', 'session:list')).toBe(true);
+        expect(can('support', 'session:revoke')).toBe(true);
+        expect(can('viewer', 'session:revoke')).toBe(false);
         expect(can('support', 'content:view')).toBe(true);
         expect(can('support', 'content:manage')).toBe(false);
         expect(can('support', 'user:set-role')).toBe(false);

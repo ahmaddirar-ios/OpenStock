@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Ban, Loader2, Search, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
+import { Ban, Loader2, LogOut, Search, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     banUserRecord,
     listUsers,
     removeUserRecord,
+    revokeUserSessions,
     setUserRole,
     unbanUserRecord,
     type AdminUser,
@@ -20,7 +21,7 @@ type Props = {
     lang: Lang;
     initial: AdminUserPage;
     meId: string;
-    can: { setRole: boolean; ban: boolean; delete: boolean };
+    can: { setRole: boolean; ban: boolean; delete: boolean; revoke: boolean };
 };
 
 /**
@@ -84,6 +85,21 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
             try {
                 await removeUserRecord(user.id);
                 setPage((current) => ({ ...current, users: current.users.filter((row) => row.id !== user.id), total: Math.max(0, current.total - 1) }));
+                toast.success(tx(lang, 'admin.saved'));
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : tx(lang, 'admin.error'));
+            } finally {
+                setBusy(null);
+            }
+        });
+    };
+
+    const signOutAll = (user: AdminUser) => {
+        if (!window.confirm(tx(lang, 'admin.users.signOutConfirm').replace('{email}', user.email))) return;
+        setBusy(`revoke:${user.id}`);
+        startTransition(async () => {
+            try {
+                await revokeUserSessions(user.id);
                 toast.success(tx(lang, 'admin.saved'));
             } catch (error) {
                 toast.error(error instanceof Error ? error.message : tx(lang, 'admin.error'));
@@ -180,6 +196,12 @@ const AdminUsersTable = ({ lang, initial, meId, can }: Props) => {
                                         <td className="num text-[12px] text-faint" dir="ltr">{user.createdAt?.slice(0, 10) ?? '—'}</td>
                                         <td>
                                             <span className="flex justify-end gap-1.5">
+                                                {can.revoke && !self && (
+                                                    <button type="button" className="btn btn-ghost h-7 px-2 text-[11px]" disabled={rowBusy} onClick={() => signOutAll(user)}>
+                                                        {busy === `revoke:${user.id}` ? <Loader2 className="animate-spin" /> : <LogOut />}
+                                                        {tx(lang, 'admin.users.signOutAll')}
+                                                    </button>
+                                                )}
                                                 {can.ban && !self && (
                                                     <button type="button" className="btn btn-ghost h-7 px-2 text-[11px]" disabled={rowBusy} onClick={() => (user.banned ? unban(user) : ban(user))}>
                                                         {rowBusy ? <Loader2 className="animate-spin" /> : user.banned ? <Undo2 /> : <Ban />}
