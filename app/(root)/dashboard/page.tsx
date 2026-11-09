@@ -9,7 +9,11 @@ import MarketWatch from "@/components/markets/MarketWatch";
 import PortfolioWidget from "@/components/portfolio/PortfolioWidget";
 import MarketRibbon from "@/components/markets/MarketRibbon";
 import NewsStrip from "@/components/news/NewsStrip";
+import DashboardBoard from "@/components/dashboard/DashboardBoard";
+import { AlertsCard, PortfolioCard, ScannerCard, ScreenersCard, StrategiesCard, WatchlistCard } from "@/components/dashboard/BoardWidgets";
 import { getSaudiMarketNews } from "@/lib/actions/news.actions";
+import { getDashboardLayout } from "@/lib/actions/dashboard.actions";
+import { isFlagEnabled } from "@/lib/flags";
 import { loadWorldBoard } from "@/lib/world-board";
 import { getLang } from "@/lib/i18n-server";
 import { tx, type Lang } from "@/lib/i18n";
@@ -55,6 +59,11 @@ async function MarketWatchPane({ lang }: { lang: Lang }) {
     );
 }
 
+/** One card's shape while its own read is in flight, so the board never jumps. */
+function BoardCardSkeleton() {
+    return <div className="card h-full min-h-[74px] animate-pulse bg-hover/40" aria-hidden />;
+}
+
 function MarketWatchSkeleton({ lang }: { lang: Lang }) {
     return (
         <Panel title={tx(lang, "marketWatch.title")} sub={tx(lang, "marketWatch.sub")} {...PANE}>
@@ -73,7 +82,12 @@ function MarketWatchSkeleton({ lang }: { lang: Lang }) {
  * TradingView does license get its widget with the indicator picker.
  */
 export default async function Overview() {
-    const [lang, jar] = await Promise.all([getLang(), cookies()]);
+    const [lang, jar, boardOn, layout] = await Promise.all([
+        getLang(),
+        cookies(),
+        isFlagEnabled('dashboard.board', true),
+        getDashboardLayout().catch(() => null),
+    ]);
     const symbol = overviewSymbol(jar.get(LAST_SYMBOL_KEY)?.value);
     const tvSymbol = formatSymbolForTradingView(symbol);
     // The Tadawul All Shares Index is the one symbol here that is not a company, and its usual
@@ -82,6 +96,22 @@ export default async function Overview() {
 
     return (
         <div className="overview">
+            {/* The trader's own cards, above the chart. Each streams inside its own boundary, so a
+                slow account read never holds up the chart. The whole board is a feature flag. */}
+            {boardOn && layout && (
+                <DashboardBoard
+                    lang={lang}
+                    layout={layout}
+                    widgets={{
+                        portfolio: <Suspense fallback={<BoardCardSkeleton />}><PortfolioCard lang={lang} /></Suspense>,
+                        watchlist: <Suspense fallback={<BoardCardSkeleton />}><WatchlistCard lang={lang} /></Suspense>,
+                        alerts: <Suspense fallback={<BoardCardSkeleton />}><AlertsCard lang={lang} /></Suspense>,
+                        scanner: <Suspense fallback={<BoardCardSkeleton />}><ScannerCard lang={lang} /></Suspense>,
+                        strategies: <Suspense fallback={<BoardCardSkeleton />}><StrategiesCard lang={lang} /></Suspense>,
+                        screeners: <Suspense fallback={<BoardCardSkeleton />}><ScreenersCard lang={lang} /></Suspense>,
+                    }}
+                />
+            )}
             {/* The day, in one line, before the work: indices and totals. It streams, so the chart
                 never waits on a scanner call — and it keeps its height while it does. */}
             <Suspense fallback={<div className="terminal-ribbon is-empty" aria-hidden />}>

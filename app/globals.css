@@ -1243,6 +1243,92 @@
         gap: 8px;
         min-height: 0;
     }
+
+    /* The board: the trader's own row of cards above the chart. Compact on purpose — it is a
+       glance, not a second dashboard, so the chart keeps most of the window. */
+    .board {
+        display: flex;
+        flex: none;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+    }
+    .board-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        height: 22px;
+    }
+    .board-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--faint);
+    }
+    .board-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-inline-start: auto;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        transition: background-color 120ms, color 120ms;
+    }
+    .board-action:hover { background: var(--hover); color: var(--text); }
+    .board-action.is-on { color: var(--brand-ink); background: var(--brand-soft); }
+    .board-restore .board-action { margin-inline-start: 0; }
+    .board-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px;
+        min-width: 0;
+    }
+    .board-card { position: relative; min-width: 0; }
+    .board-card > a { height: 100%; }
+    .board-tools {
+        position: absolute;
+        inset-inline-end: 4px;
+        top: 4px;
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 6px;
+        background: color-mix(in oklab, var(--page) 88%, transparent);
+        box-shadow: 0 0 0 1px var(--line);
+    }
+    .board-tools button {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        color: var(--muted);
+    }
+    .board-tools button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+    .board-tools button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .board-tools svg { width: 13px; height: 13px; }
+    .board-restore {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0;
+    }
+    @media (max-width: 1279px) {
+        .board-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 639px) {
+        .board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     .overview-grid > * { min-width: 0; min-height: 0; }
     [dir='rtl'] .overview-grid > * { direction: rtl; }
 
