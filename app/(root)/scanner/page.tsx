@@ -11,11 +11,13 @@ export default async function ScannerPage() {
     const [lang, watchlist] = await Promise.all([getLang(), getUserWatchlist()]);
 
     const names: ScanNames = {};
-    const universe: ScanUniverse = { watchlist: [], saudi: [], us: [] };
+    const universe: ScanUniverse = { watchlist: [], saudi: [], us: [], all: [] };
     for (const entry of SCREENER_UNIVERSE) {
         names[entry.symbol] = lang === 'ar' ? (entry.nameAr ?? entry.name) : entry.name;
         universe[entry.market === 'sa' ? 'saudi' : 'us'].push(entry.symbol);
     }
+    // "All" is the two directories in one list, deduped so a symbol listed twice is scanned once.
+    universe.all = [...new Set([...universe.saudi, ...universe.us])];
     for (const doc of watchlist) {
         const symbol = typeof doc?.symbol === 'string' ? doc.symbol : '';
         if (!symbol) continue;

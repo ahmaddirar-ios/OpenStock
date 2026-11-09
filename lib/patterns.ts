@@ -112,7 +112,9 @@ function apexOf(a: DrawPoint, b: DrawPoint, c: DrawPoint, d: DrawPoint): number 
     const first = (b.price - a.price) / (b.time - a.time);
     const second = (d.price - c.price) / (d.time - c.time);
     if (first === second) return null;
-    return (c.price - a.price - second * c.time + first * a.time) / (first - second);
+    const apex = (c.price - a.price - second * c.time + first * a.time) / (first - second);
+    // Two pivots on one bar make a slope infinite; a non-finite apex is not a convergence point.
+    return Number.isFinite(apex) ? apex : null;
 }
 
 /** Retracement of the leg `start → end` at `point`: 0 at the far end, 1 back at the start. */

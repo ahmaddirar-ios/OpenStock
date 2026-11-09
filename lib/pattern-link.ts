@@ -2,7 +2,7 @@
 // back into an ordinary drawing. Nothing here touches the DOM or the network, so a link is safe to
 // build on the server and read on the client.
 
-import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, type PatternDirection, type PatternHit, type PatternId } from '@/lib/patterns';
+import { PATTERN_ORDER, PATTERN_POINTS, PATTERN_TOOL, labelsFor, type PatternDirection, type PatternHit, type PatternId } from '@/lib/patterns';
 import { newDrawingId, toolDef, type Drawing, type DrawPoint } from '@/lib/chart-drawings';
 import { CANDLE_INTERVALS } from '@/lib/yahoo-candles';
 
@@ -81,7 +81,7 @@ export function drawingFromLink(link: PatternLink): Drawing | null {
         id: newDrawingId(),
         tool,
         points: link.points.map((point) => ({ time: point.time, price: point.price })),
-        labels: def.pointLabels,
+        labels: labelsFor(link.pattern),
         color: def.defaultColor,
     };
 }

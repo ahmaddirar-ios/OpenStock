@@ -5,7 +5,7 @@
 // the chart on the bars the pattern was measured from.
 
 import Link from 'next/link';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { scanPatternBatch } from '@/lib/actions/pattern-scan.actions';
 import { PATTERN_GROUP, PATTERN_LABEL_KEY, PATTERN_ORDER, type PatternGroup, type PatternHit, type PatternId } from '@/lib/patterns';
 import { AUTO_SENSITIVITIES, type AutoSensitivity } from '@/lib/auto-count';
@@ -13,16 +13,17 @@ import { MAX_SCAN_SYMBOLS, SCAN_BATCH } from '@/lib/pattern-scan';
 import { encodePatternLink } from '@/lib/pattern-link';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 
-export type ScanUniverse = { watchlist: string[]; saudi: string[]; us: string[] };
+export type ScanUniverse = { watchlist: string[]; saudi: string[]; us: string[]; all: string[] };
 export type ScanNames = Record<string, string>;
 
-type UniverseId = 'watchlist' | 'saudi' | 'us';
-type Row = { symbol: string; hit: PatternHit };
+type UniverseId = 'watchlist' | 'saudi' | 'us' | 'all';
+type Row = { symbol: string; hit: PatternHit; intervalId: string };
 
 const UNIVERSES: { id: UniverseId; key: StringKey }[] = [
     { id: 'watchlist', key: 'scan.universe.watchlist' },
     { id: 'saudi', key: 'scan.universe.saudi' },
     { id: 'us', key: 'scan.universe.us' },
+    { id: 'all', key: 'scan.universe.all' },
 ];
 
 const GROUPS: { id: PatternGroup; key: StringKey }[] = [
@@ -66,7 +67,7 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
 
     const symbols = universe[scope];
     const capped = symbols.length > MAX_SCAN_SYMBOLS;
-    const scanned = symbols.slice(0, MAX_SCAN_SYMBOLS);
+    const scanned = [...new Set(symbols)].slice(0, MAX_SCAN_SYMBOLS);
 
     const togglePattern = (id: PatternId) => {
         setPatterns((prev) => {
@@ -102,6 +103,9 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
 
         const runId = runRef.current + 1;
         runRef.current = runId;
+        // The link must name the interval the points were measured on, not whatever the select says
+        // when the trader clicks it later.
+        const scanInterval = intervalId;
         setRunning(true);
         setCancelled(false);
         setRows([]);
@@ -114,14 +118,14 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
         for (const batch of chunk(scanned, SCAN_BATCH)) {
             let result: Awaited<ReturnType<typeof scanPatternBatch>>;
             try {
-                result = await scanPatternBatch(batch, chosen, intervalId, sensitivity);
+                result = await scanPatternBatch(batch, chosen, scanInterval, sensitivity);
             } catch {
                 result = { results: [], answered: 0, requested: batch.length };
             }
             // The scan was stopped or restarted while this batch was in flight: its rows are stale.
             if (runRef.current !== runId) return;
             replies += result.answered;
-            for (const row of result.results) for (const hit of row.hits) collected.push({ symbol: row.symbol, hit });
+            for (const row of result.results) for (const hit of row.hits) collected.push({ symbol: row.symbol, hit, intervalId: scanInterval });
             done += batch.length;
             setRows([...collected]);
             setAnswered(replies);
@@ -130,6 +134,15 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
         if (runRef.current !== runId) return;
         setRunning(false);
     };
+
+    // A result belongs to the settings that produced it. Changing any control makes the table stale,
+    // so it is cleared rather than left to look like an answer to the new question.
+    useEffect(() => {
+        setRows([]);
+        setAnswered(0);
+        setProgress({ done: 0, total: 0 });
+        setCancelled(false);
+    }, [scope, patterns, intervalId, sensitivity]);
 
     const intervalLabel = (id: string): string => {
         const found = INTERVALS.find((entry) => entry.id === id);
@@ -148,7 +161,7 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
                         {UNIVERSES.map((entry) => (
                             <span key={entry.id} className="flex items-center gap-1.5 text-[13px]">
                                 <label className="flex items-center gap-1.5">
-                                    <input type="radio" name="scan-universe" value={entry.id} checked={scope === entry.id} onChange={() => setScope(entry.id)} />
+                                    <input type="radio" name="scan-universe" value={entry.id} checked={scope === entry.id} disabled={running} onChange={() => setScope(entry.id)} />
                                     {tx(lang, entry.key)}
                                 </label>
                                 <span className="text-muted-foreground">{arDigits(universe[entry.id].length, lang)}</span>
@@ -166,12 +179,12 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
                             return (
                                 <div key={group.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                                     <label className="flex items-center gap-1.5 text-[13px] font-medium">
-                                        <input type="checkbox" checked={allOn} onChange={(event) => toggleGroup(group.id, event.target.checked)} />
+                                        <input type="checkbox" checked={allOn} disabled={running} onChange={(event) => toggleGroup(group.id, event.target.checked)} />
                                         {tx(lang, group.key)}
                                     </label>
                                     {ids.map((id) => (
                                         <label key={id} className="flex items-center gap-1.5 text-[13px]">
-                                            <input type="checkbox" checked={patterns.has(id)} onChange={() => togglePattern(id)} />
+                                            <input type="checkbox" checked={patterns.has(id)} disabled={running} onChange={() => togglePattern(id)} />
                                             {tx(lang, PATTERN_LABEL_KEY[id])}
                                         </label>
                                     ))}
@@ -183,23 +196,24 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
 
                 <label className="flex flex-col gap-1">
                     <span className="form-label">{tx(lang, 'scan.interval')}</span>
-                    <select className="form-input" value={intervalId} onChange={(event) => setIntervalId(event.target.value)}>
+                    <select className="form-input" value={intervalId} disabled={running} onChange={(event) => setIntervalId(event.target.value)}>
                         {INTERVALS.map((entry) => <option key={entry.id} value={entry.id}>{intervalLabel(entry.id)}</option>)}
                     </select>
                 </label>
 
                 <label className="flex flex-col gap-1">
                     <span className="form-label">{tx(lang, 'scan.sensitivity')}</span>
-                    <select className="form-input" value={sensitivity} onChange={(event) => setSensitivity(event.target.value as AutoSensitivity)}>
+                    <select className="form-input" value={sensitivity} disabled={running} onChange={(event) => setSensitivity(event.target.value as AutoSensitivity)}>
                         {AUTO_SENSITIVITIES.map((value) => <option key={value} value={value}>{sensitivityLabel(value, lang)}</option>)}
                     </select>
                 </label>
 
                 <button
                     type="button"
-                    aria-label={tx(lang, 'scan.run')}
+                    aria-label={running ? tx(lang, 'scan.stop') : tx(lang, 'scan.run')}
                     className="btn btn-primary"
                     onClick={run}
+                    disabled={!running && (scanned.length === 0 || patterns.size === 0)}
                 >
                     {running ? tx(lang, 'scan.running') : tx(lang, 'scan.run')}
                 </button>
@@ -213,8 +227,22 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
                             .replace('{total}', arDigits(progress.total, lang))}
                     </p>
                 )}
+                {progress.total > 0 && (
+                    <div
+                        className="h-1.5 w-full overflow-hidden rounded-full bg-hover"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={progress.total}
+                        aria-valuenow={progress.done}
+                    >
+                        <div
+                            className="h-full rounded-full bg-accent transition-[width] duration-300"
+                            style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+                        />
+                    </div>
+                )}
                 {capped && <p>{tx(lang, 'scan.partial').replace('{max}', arDigits(MAX_SCAN_SYMBOLS, lang))}</p>}
-                {answered > 0 && (
+                {progress.total > 0 && (
                     <p>
                         {tx(lang, 'scan.answered')
                             .replace('{n}', arDigits(answered, lang))
@@ -264,7 +292,7 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
                                         <td>
                                             <Link
                                                 className="btn btn-ghost"
-                                                href={`/stocks/${encodeURIComponent(row.symbol)}?pattern=${encodePatternLink({ ...row.hit, intervalId })}`}
+                                                href={`/stocks/${encodeURIComponent(row.symbol)}?pattern=${encodePatternLink({ ...row.hit, intervalId: row.intervalId })}`}
                                             >
                                                 {tx(lang, 'scan.openChart')}
                                             </Link>

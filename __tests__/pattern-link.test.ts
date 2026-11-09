@@ -50,4 +50,16 @@ describe('the pattern link', () => {
         expect(drawing?.labels).toEqual(['1', '2', '3', '4', '5']);
         expect(drawing?.color).toBe('teal');
     });
+
+    it('numbers the points of a tool that has no labels of its own', () => {
+        // Three drives maps to the polyline tool, which carries no point labels; the link must still
+        // number its six points rather than draw them bare.
+        const drives = {
+            pattern: 'drives3' as const,
+            direction: 'bullish' as const,
+            intervalId: '1d',
+            points: [1, 2, 3, 4, 5, 6].map((time) => ({ time, price: 100 + time })),
+        };
+        expect(drawingFromLink(drives)?.labels).toEqual(['1', '2', '3', '4', '5', '6']);
+    });
 });

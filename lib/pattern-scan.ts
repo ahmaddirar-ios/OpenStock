@@ -38,7 +38,7 @@ export function scanCandles(
     if (pivots.length < 4) return [];
 
     const hits: PatternHit[] = [];
-    for (const id of patterns) {
+    for (const id of new Set(patterns)) {
         const detect = DETECTORS[id];
         if (!detect) continue;
         const points = PATTERN_POINTS[id];

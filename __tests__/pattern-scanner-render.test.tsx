@@ -10,6 +10,7 @@ vi.mock('@/lib/actions/pattern-scan.actions', () => ({ scanPatternBatch: vi.fn()
 import { scanPatternBatch } from '@/lib/actions/pattern-scan.actions';
 import PatternScanner from '@/components/scanner/PatternScanner';
 import { MAX_SCAN_SYMBOLS, SCAN_BATCH } from '@/lib/pattern-scan';
+import { decodePatternLink } from '@/lib/pattern-link';
 import { tx } from '@/lib/i18n';
 import type { PatternHit } from '@/lib/patterns';
 
@@ -46,7 +47,7 @@ afterEach(() => {
 
 describe('PatternScanner', () => {
     it('shows the controls, and the empty state before the first scan', () => {
-        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [] }} names={{ '2222.SR': 'أرامكو' }} />);
+        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [], all: [] }} names={{ '2222.SR': 'أرامكو' }} />);
         expect(screen.getByRole('button', { name: label('scan.run') })).toBeTruthy();
         expect((screen.getByRole('radio', { name: label('scan.universe.watchlist') }) as HTMLInputElement).checked).toBe(true);
         expect(screen.getByText(label('scan.empty'))).toBeTruthy();
@@ -54,7 +55,7 @@ describe('PatternScanner', () => {
 
     it('renders one row per hit with its pattern name, direction and state', async () => {
         vi.mocked(scanPatternBatch).mockResolvedValue({ results: [{ symbol: '2222.SR', hits: [hit] }], answered: 1, requested: 1 });
-        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [] }} names={{ '2222.SR': 'أرامكو' }} />);
+        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [], all: [] }} names={{ '2222.SR': 'أرامكو' }} />);
         fireEvent.click(screen.getByRole('button', { name: label('scan.run') }));
 
         const table = await screen.findByRole('table');
@@ -67,7 +68,7 @@ describe('PatternScanner', () => {
 
     it('reports progress while the batches run', async () => {
         vi.mocked(scanPatternBatch).mockResolvedValue({ results: [], answered: 1, requested: 1 });
-        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us: many }} names={{}} />);
+        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us: many, all: many }} names={{}} />);
         fireEvent.click(screen.getByRole('button', { name: label('scan.run') }));
 
         expect(await screen.findByText(label('scan.progress').replace('{done}', '9').replace('{total}', '9'))).toBeTruthy();
@@ -76,7 +77,7 @@ describe('PatternScanner', () => {
 
     it('stops at the ceiling and says so', () => {
         const us = Array.from({ length: MAX_SCAN_SYMBOLS + 10 }, (_, i) => `S${i}`);
-        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us }} names={{}} />);
+        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us, all: us }} names={{}} />);
         fireEvent.click(screen.getByRole('radio', { name: label('scan.universe.us') }));
         expect(screen.getByText(label('scan.partial').replace('{max}', String(MAX_SCAN_SYMBOLS)))).toBeTruthy();
     });
@@ -86,7 +87,7 @@ describe('PatternScanner', () => {
         vi.mocked(scanPatternBatch).mockImplementationOnce(() => pending.promise as never);
         vi.mocked(scanPatternBatch).mockResolvedValue({ results: [], answered: 1, requested: 1 });
 
-        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us: many }} names={{}} />);
+        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us: many, all: many }} names={{}} />);
         const button = screen.getByRole('button', { name: label('scan.run') });
         fireEvent.click(button); // starts, and awaits the first batch
         fireEvent.click(button); // cancels while that batch is still in flight
@@ -97,5 +98,58 @@ describe('PatternScanner', () => {
         });
 
         expect(screen.queryByRole('table')).toBeNull();
+    });
+
+    it('offers the All universe', () => {
+        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: ['2222.SR'], us: ['AAPL'], all: ['2222.SR', 'AAPL'] }} names={{}} />);
+        expect(screen.getByRole('radio', { name: label('scan.universe.all') })).toBeTruthy();
+    });
+
+    it('encodes the interval the scan ran on, not the live select', async () => {
+        vi.mocked(scanPatternBatch).mockResolvedValue({ results: [{ symbol: '2222.SR', hits: [hit] }], answered: 1, requested: 1 });
+        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [], all: [] }} names={{}} />);
+        fireEvent.click(screen.getByRole('button', { name: label('scan.run') }));
+
+        const link = await screen.findByRole('link', { name: label('scan.openChart') });
+        const token = new URL(link.getAttribute('href') ?? '', 'http://x').searchParams.get('pattern') ?? '';
+        expect(decodePatternLink(token)?.intervalId).toBe('1d');
+    });
+
+    it('clears the results when a control changes', async () => {
+        vi.mocked(scanPatternBatch).mockResolvedValue({ results: [{ symbol: '2222.SR', hits: [hit] }], answered: 1, requested: 1 });
+        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [], all: [] }} names={{}} />);
+        fireEvent.click(screen.getByRole('button', { name: label('scan.run') }));
+        await screen.findByRole('table');
+
+        fireEvent.change(screen.getByLabelText(label('scan.interval')), { target: { value: '1wk' } });
+
+        expect(screen.queryByRole('table')).toBeNull();
+    });
+
+    it('shows a progress bar while the batches run', async () => {
+        const pending = deferred<{ results: { symbol: string; hits: PatternHit[] }[]; answered: number; requested: number }>();
+        vi.mocked(scanPatternBatch).mockResolvedValue({ results: [], answered: 1, requested: 1 });
+        vi.mocked(scanPatternBatch).mockImplementationOnce(() => pending.promise as never);
+        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us: many, all: many }} names={{}} />);
+        fireEvent.click(screen.getByRole('button', { name: label('scan.run') }));
+
+        expect(await screen.findByRole('progressbar')).toBeTruthy();
+        await act(async () => {
+            pending.resolve({ results: [], answered: 1, requested: SCAN_BATCH });
+            await pending.promise;
+        });
+    });
+
+    it('says 0 of M answered when every symbol fails', async () => {
+        vi.mocked(scanPatternBatch).mockResolvedValue({ results: [], answered: 0, requested: 1 });
+        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [], all: [] }} names={{}} />);
+        fireEvent.click(screen.getByRole('button', { name: label('scan.run') }));
+
+        expect(await screen.findByText(label('scan.answered').replace('{n}', '0').replace('{m}', '1'))).toBeTruthy();
+    });
+
+    it('disables Scan when there is nothing to scan', () => {
+        render(<PatternScanner lang="en" universe={{ watchlist: [], saudi: [], us: [], all: [] }} names={{}} />);
+        expect((screen.getByRole('button', { name: label('scan.run') }) as HTMLButtonElement).disabled).toBe(true);
     });
 });

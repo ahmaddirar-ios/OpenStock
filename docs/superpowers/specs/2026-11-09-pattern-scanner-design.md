@@ -231,7 +231,7 @@ Controls, in one row above the results:
   because Elliott is the noisiest and a trader will want to switch it off.
 - **Interval**: 1h · 4h · 1D · 1W, default 1D.
 - **Sensitivity**: ATR · 1% · 3% · 5%, the same picker the chart's auto-count uses.
-- **Scan** button, disabled while running, with a progress bar and "scanned N of M".
+- **Scan** button, which switches to a Stop button while running, with a progress bar and "scanned N of M".
 
 Results table, one row per hit:
 

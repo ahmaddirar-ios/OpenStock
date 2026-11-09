@@ -1432,15 +1432,27 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
 
     const commit = (drawing: Drawing) => setDrawings((list) => [...list, { ...styleFor(drawing.tool, drawingStyles), ...drawing }]);
 
-    // A scanner link: one pattern, drawn once. It waits for both the candles and the account's setup,
-    // because the setup merge replaces the whole list and would erase a shape committed while it was
-    // still loading. A spent or broken token draws nothing; either way the parameter goes, so a reload
-    // keeps whatever the trader changes from here on.
-    const patternApplied = useRef(false);
+    // A scanner link: one pattern, drawn once. The token is read from the prop, so the parameter is
+    // cleared only after the draw (or after the candles fail) — clearing it earlier lets the router
+    // re-render the page with no token before the chart has had a chance to use it. The drawing waits
+    // for both the candles and the account's setup, because the setup merge replaces the whole list
+    // and would erase a shape committed while it was still loading.
+    const appliedToken = useRef<string | null>(null);
     useEffect(() => {
-        if (patternApplied.current || !initialPattern) return;
+        if (!initialPattern || appliedToken.current === initialPattern) return;
+        const clearParam = () => {
+            const url = new URL(window.location.href);
+            if (!url.searchParams.has('pattern')) return;
+            url.searchParams.delete('pattern');
+            window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+        };
+        if (status === 'error') {
+            appliedToken.current = initialPattern;
+            clearParam();
+            return;
+        }
         if (status !== 'ready' || syncState === 'loading') return;
-        patternApplied.current = true;
+        appliedToken.current = initialPattern;
         const link = decodePatternLink(initialPattern);
         const drawing = link ? drawingFromLink(link) : null;
         if (drawing) {
@@ -1448,10 +1460,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
             setSelectedId([drawing.id]);
             toast.success(t('scan.added'));
         }
-        const url = new URL(window.location.href);
-        url.searchParams.delete('pattern');
-        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
-        // `commit` and `t` are stable enough for a one-shot; the guard makes a re-run harmless.
+        clearParam();
+        // `commit` and `t` are stable enough for a one-shot; the token guard makes a re-run harmless.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialPattern, status, syncState]);
 
