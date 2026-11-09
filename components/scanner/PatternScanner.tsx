@@ -255,9 +255,13 @@ export default function PatternScanner({ lang, universe, names }: { lang: Lang; 
             </div>
 
             {rows.length === 0 ? (
-                <div className="empty-state py-14">
-                    <h3>{tx(lang, 'scan.empty')}</h3>
-                </div>
+                // "No pattern" is an answer to a question that was asked. Before the first scan the
+                // table has no verdict yet, so the space stays quiet instead of claiming a result.
+                progress.total > 0 && (
+                    <div className="empty-state py-14">
+                        <h3>{tx(lang, 'scan.empty')}</h3>
+                    </div>
+                )
             ) : (
                 <div className="card overflow-x-auto">
                     <table className="data-table">

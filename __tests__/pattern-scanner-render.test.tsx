@@ -46,11 +46,20 @@ afterEach(() => {
 });
 
 describe('PatternScanner', () => {
-    it('shows the controls, and the empty state before the first scan', () => {
+    it('shows the controls, and no verdict before the first scan', () => {
         render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [], all: [] }} names={{ '2222.SR': 'أرامكو' }} />);
         expect(screen.getByRole('button', { name: label('scan.run') })).toBeTruthy();
         expect((screen.getByRole('radio', { name: label('scan.universe.watchlist') }) as HTMLInputElement).checked).toBe(true);
-        expect(screen.getByText(label('scan.empty'))).toBeTruthy();
+        // "No complete pattern" answers a scan; before one runs it would be a verdict on nothing.
+        expect(screen.queryByText(label('scan.empty'))).toBeNull();
+    });
+
+    it('says there are no patterns once a scan finds none', async () => {
+        vi.mocked(scanPatternBatch).mockResolvedValue({ results: [], answered: 1, requested: 1 });
+        render(<PatternScanner lang="en" universe={{ watchlist: ['2222.SR'], saudi: [], us: [], all: [] }} names={{}} />);
+        fireEvent.click(screen.getByRole('button', { name: label('scan.run') }));
+
+        expect(await screen.findByText(label('scan.empty'))).toBeTruthy();
     });
 
     it('renders one row per hit with its pattern name, direction and state', async () => {
