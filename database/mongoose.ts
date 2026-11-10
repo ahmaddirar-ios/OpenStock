@@ -36,7 +36,18 @@ export const connectToDatabase = async () => {
     if (cached.conn) return cached.conn;
 
     if (!cached.promise) {
-        cached.promise = mongoose.connect(MONGODB_URI, { bufferCommands: false, family: 4 });
+        // A serverless deployment runs many short-lived instances, and each one keeps its own pool.
+        // Mongoose's default pool is 100 connections, so a handful of warm instances can exhaust a
+        // free Atlas cluster's 500-connection limit and lock the app out. Five per instance is
+        // plenty for this workload, and idle sockets are released instead of held open.
+        cached.promise = mongoose.connect(MONGODB_URI, {
+            bufferCommands: false,
+            family: 4,
+            maxPoolSize: 5,
+            minPoolSize: 0,
+            maxIdleTimeMS: 30_000,
+            serverSelectionTimeoutMS: 10_000,
+        });
     }
 
     try {
