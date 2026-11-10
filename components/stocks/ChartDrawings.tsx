@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwap, annotationText, arcThrough, arrowHeadPoints, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibTimeMultiples, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, sinePoints, speedFanEnds, strokeWidthOf, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart-drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, extendSegment, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fibWedgeLines, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, gannSquareFixedCorner, GANN_SQUARE_FIXED_SIDE, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, toolDefOrUndefined, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart/drawings';
+import { measureDetail, measureHeadline, measureReadout } from '@/lib/chart/measure';
 import type { StringKey } from '@/lib/i18n';
 
 export type ActiveTool = ShapeTool | 'select' | 'measure';
 
 type Props = {
     drawings: Drawing[];
-    selectedId: string | null;
+    /** Every selected drawing. Shift-click adds to the set, so several can move or delete together. */
+    selectedIds: string[];
     tool: ActiveTool | null;
     /** Filled in when the note tool places a label. */
     text: string;
@@ -25,12 +27,12 @@ type Props = {
     /** The inverse, so a pointer position can be stored as a chart point. */
     fromScreen: (x: number, y: number) => DrawPoint | null;
     onCommit: (drawing: Drawing) => void;
-    onSelect: (id: string | null) => void;
+    onSelect: (ids: string[]) => void;
     onMoveHandle: (id: string, index: number, point: DrawPoint) => void;
     /** The whole drawing moved: the parent translates it from the anchor it kept for this gesture. */
-    onMoveBody: (id: string, delta: { time: number; price: number }) => void;
-    /** Called once when a body drag starts, so the parent can snapshot the drawing for one undo step. */
-    onMoveBodyStart: (id: string) => void;
+    onMoveBody: (ids: string[], delta: { time: number; price: number }) => void;
+    /** Called once when a body drag starts, so the parent can snapshot the drawings for one undo step. */
+    onMoveBodyStart: (ids: string[]) => void;
     /** A note's new wording, saved from the editor on the chart. */
     onEditText: (id: string, text: string) => void;
     /** Called once a drawing is finished, so the toolbar can drop the tool. */
@@ -41,6 +43,10 @@ type Props = {
     onGestureEnd: () => void;
     /** Magnet rounding for a freshly placed or dragged point (identity when the magnet is off). */
     snapPoint?: (point: DrawPoint) => DrawPoint;
+    /** A right-click: the drawing under the pointer (already selected), or null on empty chart space. */
+    onContextMenu?: (hit: { id: string; x: number; y: number } | null) => void;
+    /** The chart's own text colour, so a tool that defaults to white stays visible on a light chart. */
+    paletteText?: string;
     label: (key: StringKey) => string;
 };
 
@@ -56,7 +62,7 @@ const HIGHLIGHTER_WIDTH = 12;
 // zooming the chart underneath keep working exactly as they do without drawings.
 export default function ChartDrawings({
     drawings,
-    selectedId,
+    selectedIds,
     tool,
     text,
     labels,
@@ -73,6 +79,8 @@ export default function ChartDrawings({
     onGestureStart,
     onGestureEnd,
     snapPoint,
+    onContextMenu,
+    paletteText,
     onEditText,
     onToolConsumed,
     label,
@@ -84,7 +92,7 @@ export default function ChartDrawings({
     const [dragging, setDragging] = useState<{ id: string; index: number } | null>(null);
     // Grabbing the shape itself: the anchor is the chart point the gesture started on, so every move
     // is a delta from where the line was, not from where it has already been pushed.
-    const bodyDrag = useRef<{ id: string; anchor: DrawPoint } | null>(null);
+    const bodyDrag = useRef<{ ids: string[]; anchor: DrawPoint } | null>(null);
     // The measure box lives only while the measure tool is on: it is a reading, not a drawing.
     const [measure, setMeasure] = useState<{ from: DrawPoint; to: DrawPoint } | null>(null);
     const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
@@ -109,6 +117,8 @@ export default function ChartDrawings({
         setPreview(null);
         setDragging(null);
         setEditing(null);
+        // A reading belongs to the gesture that made it, not to the tool.
+        setMeasure(null);
     }, [tool]);
 
     // Drawings stay on screen when no tool is armed; only the pointer capture is switched off, so the
@@ -123,11 +133,40 @@ export default function ChartDrawings({
 
     const screenOf = (drawing: Drawing): ScreenPoint[] => drawing.points.map((point) => toScreen(point) ?? { x: NaN, y: NaN });
     const kindOf = (drawing: Drawing): ShapeKind => toolDef(drawing.tool).kind;
+    const selectedSet = new Set(selectedIds);
     const usable = (points: ScreenPoint[]) => (points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) ? points : []);
 
     const cursorOf = (event: React.PointerEvent): ScreenPoint => {
         const rect = svgRef.current?.getBoundingClientRect();
         return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
+    };
+
+    // A right-click on a drawing opens the object menu; on empty space it clears the selection. The
+    // browser menu is suppressed only while the layer is interactive, so a right-click with no tool
+    // armed still behaves like a normal page.
+    const onContextMenuEvent = (event: React.MouseEvent) => {
+        if (!interactive) return;
+        event.preventDefault();
+        const rect = svgRef.current?.getBoundingClientRect();
+        const cursor = { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
+        const hit = hitTest(drawings, drawings.map((drawing) => usable(screenOf(drawing))), cursor, GRAB);
+        if (hit) {
+            onSelect([hit.id]);
+            onContextMenu?.({ id: hit.id, x: event.clientX, y: event.clientY });
+        } else {
+            onSelect([]);
+            onContextMenu?.(null);
+        }
+    };
+
+    // With no tool armed the layer itself ignores the pointer so the chart keeps panning, but a
+    // drawing still answers a right-click: only its painted pixels take the event.
+    const onShapeContextMenu = (event: React.MouseEvent, id: string) => {
+        if (interactive) return; // the layer's own handler owns the armed case
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect([id]);
+        onContextMenu?.({ id, x: event.clientX, y: event.clientY });
     };
 
     const onPointerDown = (event: React.PointerEvent) => {
@@ -151,27 +190,49 @@ export default function ChartDrawings({
         const drawable = drawings.map((_, i) => usable(drawn[i]));
 
         if (tool === 'select') {
-            const selectedIndex = drawings.findIndex((drawing) => drawing.id === selectedId);
-            if (selectedIndex !== -1 && !drawings[selectedIndex].locked) {
-                const grabbed = handleIndex(drawn[selectedIndex], cursor, GRAB);
+            // A handle of any selected drawing wins: grabbing one point of a group edits that point.
+            for (const drawing of drawings) {
+                if (!selectedSet.has(drawing.id) || drawing.locked) continue;
+                const grabbed = handleIndex(drawn[drawings.indexOf(drawing)], cursor, GRAB);
                 if (grabbed !== null) {
                     onGestureStart();
-                    setDragging({ id: drawings[selectedIndex].id, index: grabbed });
+                    setDragging({ id: drawing.id, index: grabbed });
                     return;
                 }
-                // Not a handle but on the line: drag the whole shape.
-                const onBody = hitTest([drawings[selectedIndex]], [drawn[selectedIndex]], cursor, GRAB, () => kindOf(drawings[selectedIndex]));
+            }
+            // Not a handle but on the body of a selected drawing: drag the whole selection together.
+            const selectedDrawings = drawings.filter((drawing) => selectedSet.has(drawing.id) && !drawing.locked);
+            if (selectedDrawings.length > 0) {
+                const onBody = hitTest(
+                    selectedDrawings,
+                    selectedDrawings.map((drawing) => usable(screenOf(drawing))),
+                    cursor,
+                    GRAB,
+                    (drawing) => kindOf(drawing),
+                );
                 if (onBody) {
                     const anchor = fromScreen(cursor.x, cursor.y);
                     if (anchor) {
-                        onMoveBodyStart(drawings[selectedIndex].id);
-                        bodyDrag.current = { id: drawings[selectedIndex].id, anchor };
+                        const ids = selectedDrawings.map((drawing) => drawing.id);
+                        onMoveBodyStart(ids);
+                        bodyDrag.current = { ids, anchor };
                         return;
                     }
                 }
             }
             setEditing(null);
-            onSelect(hitTest(drawings, drawable, cursor, GRAB)?.id ?? null);
+            const hit = hitTest(drawings, drawable, cursor, GRAB);
+            // Shift (or a command key) adds to the selection instead of replacing it.
+            const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+            if (!hit) {
+                if (!additive) onSelect([]);
+                return;
+            }
+            if (additive) {
+                onSelect(selectedSet.has(hit.id) ? selectedIds.filter((id) => id !== hit.id) : [...selectedIds, hit.id]);
+            } else {
+                onSelect([hit.id]);
+            }
             return;
         }
 
@@ -210,7 +271,7 @@ export default function ChartDrawings({
             setDraft(next);
             return;
         }
-        const glyphs = labels ?? toolDef(tool).pointLabels;
+        const glyphs = labels ?? toolDefOrUndefined(tool)?.pointLabels;
         onCommit({
             id: newDrawingId(),
             tool,
@@ -247,8 +308,8 @@ export default function ChartDrawings({
         if (bodyDrag.current) {
             const current = fromScreen(cursor.x, cursor.y);
             if (current) {
-                const { id, anchor } = bodyDrag.current;
-                onMoveBody(id, { time: current.time - anchor.time, price: current.price - anchor.price });
+                const { ids, anchor } = bodyDrag.current;
+                onMoveBody(ids, { time: current.time - anchor.time, price: current.price - anchor.price });
             }
             return;
         }
@@ -306,7 +367,7 @@ export default function ChartDrawings({
         setPreview(null);
         setDragging(null);
         setEditing(null);
-        onSelect(null);
+        onSelect([]);
     };
 
     const saveEdit = () => {
@@ -315,21 +376,31 @@ export default function ChartDrawings({
         setEditing(null);
     };
 
-    // The measure box: a rectangle between the two points with what it measures beside it.
+    // The ruler: a box between the two points, the price at each end, and a chip that reads the move
+    // in price, percent, bars, time and volume. It is a reading, not a drawing, so it lives only
+    // while the measure tool is armed.
+    const measureRead = measure ? measureReadout(measure.from, measure.to, barSeconds, candles) : null;
+    const measureTone = measureRead && measureRead.price < 0 ? '#EF5350' : '#26A69A';
     const measureBox = (() => {
-        if (!measure) return null;
+        if (!measure || !measureRead) return null;
         const a = toScreen(measure.from);
         const b = toScreen(measure.to);
         if (!a || !b) return null;
-        const price = measure.to.price - measure.from.price;
-        const percent = measure.from.price === 0 ? 0 : (price / measure.from.price) * 100;
-        const seconds = Math.abs(measure.to.time - measure.from.time);
-        const days = seconds / 86400;
-        const span = days >= 1 ? `${days.toFixed(1)}D` : `${(seconds / 3600).toFixed(1)}H`;
-        const tone = price >= 0 ? '#26A69A' : '#EF5350';
-        const label = `${price >= 0 ? '+' : '−'}${Math.abs(price).toFixed(2)} (${percent >= 0 ? '+' : '−'}${Math.abs(percent).toFixed(2)}%) · ${span}`;
         const x = Math.min(a.x, b.x);
         const y = Math.min(a.y, b.y);
+        const endLabel = (spot: ScreenPoint, price: number, key: string) => (
+            <text
+                key={key}
+                x={spot.x + 6}
+                y={spot.y - 6}
+                fontSize={11}
+                className="mono"
+                fill={measureTone}
+                style={{ paintOrder: 'stroke', stroke: 'var(--page)', strokeWidth: 3 }}
+            >
+                {price.toFixed(2)}
+            </text>
+        );
         return (
             <g key="measure">
                 <rect
@@ -337,22 +408,45 @@ export default function ChartDrawings({
                     y={y}
                     width={Math.abs(b.x - a.x)}
                     height={Math.abs(b.y - a.y)}
-                    fill={`color-mix(in oklab, ${tone} 16%, transparent)`}
-                    stroke={tone}
+                    fill={`color-mix(in oklab, ${measureTone} 16%, transparent)`}
+                    stroke={measureTone}
                     strokeWidth={1.4}
                 />
-                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={tone} strokeWidth={1.2} strokeDasharray="4 3" />
-                <text
-                    x={b.x + 8}
-                    y={b.y - 8}
-                    fontSize={12}
-                    className="mono"
-                    fill={tone}
-                    style={{ paintOrder: 'stroke', stroke: 'black', strokeWidth: 3 }}
-                >
-                    {label}
-                </text>
+                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={measureTone} strokeWidth={1.2} strokeDasharray="4 3" />
+                {endLabel(a, measure.from.price, 'measure-from')}
+                {endLabel(b, measure.to.price, 'measure-to')}
             </g>
+        );
+    })();
+
+    // The chip is HTML rather than SVG text so it can be clamped inside the plot: a reading that
+    // runs off the edge of the chart is a reading the trader cannot finish.
+    const measureChip = (() => {
+        if (!measure || !measureRead) return null;
+        const b = toScreen(measure.to);
+        if (!b) return null;
+        const headline = measureHeadline(measureRead);
+        const detail = measureDetail(measureRead, label('chart.range.bars'), label('chart.measure.vol'));
+        const rect = svgRef.current?.getBoundingClientRect();
+        const width = rect?.width ?? 0;
+        const height = rect?.height ?? 0;
+        // 11px monospace is about 6.6px a character; the padding and border add the rest.
+        const chipWidth = Math.max(headline.length, detail.length) * 6.6 + 22;
+        const chipHeight = 44;
+        const left = Math.min(Math.max(4, b.x + 12), Math.max(4, width - chipWidth - 4));
+        const top = Math.min(Math.max(4, b.y - chipHeight - 12), Math.max(4, height - chipHeight - 4));
+        return (
+            <div
+                key="measure-chip"
+                dir="ltr"
+                className="pointer-events-none absolute z-20 flex flex-col gap-0.5 rounded-[8px] border bg-page/95 px-2 py-1 shadow-[0_6px_18px_rgba(0,0,0,0.28)]"
+                style={{ left, top, borderColor: measureTone }}
+            >
+                <span className="mono text-[11.5px] font-semibold leading-tight" style={{ color: measureTone }}>
+                    {headline}
+                </span>
+                <span className="mono text-[10.5px] leading-tight text-faint">{detail}</span>
+            </div>
         );
     })();
 
@@ -369,8 +463,11 @@ export default function ChartDrawings({
         while (points.length < needed) points.push(preview);
         return points.slice(0, Math.max(needed, points.length));
     })();
-    const shapes: Drawing[] = draftPoints && tool && tool !== 'select'
-        ? [...drawings, { id: 'draft', tool: tool as ShapeTool, points: draftPoints, labels: labels ?? toolDef(tool as ShapeTool).pointLabels }]
+    // The draft is only a drawing when the armed tool is a real shape: `select` and `measure` have no
+    // definition, and rendering one as a draft reads `kind` off undefined.
+    const draftTool = tool ? toolDefOrUndefined(tool) : undefined;
+    const shapes: Drawing[] = draftPoints && draftTool
+        ? [...drawings, { id: 'draft', tool: tool as ShapeTool, points: draftPoints, labels: labels ?? draftTool.pointLabels }]
         : drawings;
 
     const dot = (x: number, y: number, key: string, color: string, opacity: number, radius = 4) => (
@@ -382,16 +479,16 @@ export default function ChartDrawings({
         if (points.some((point) => !point)) return null;
         const screen = points as ScreenPoint[];
         const kind = toolDef(drawing.tool).kind;
-        const color = drawingColor(drawing);
+        const color = drawingColor(drawing, paletteText);
         const previewing = drawing.id === 'draft';
         const opacity = previewing ? 0.65 : 1;
         // The fill is its own choice now: a box can be filled with a different colour at a strength
         // the trader picked, and the tool's original look is the default rather than the only option.
         const paint = fillOf(drawing);
         // Words can wear their own colour: a note in white over a busy candle is a choice, not a bug.
-        const ink = textColorOf(drawing);
+        const ink = textColorOf(drawing, paletteText);
         const fill = paint.opacity > 0 ? `color-mix(in oklab, ${paint.color} ${paint.opacity}%, transparent)` : 'none';
-        const selected = drawing.id === selectedId;
+        const selected = selectedSet.has(drawing.id);
         const locked = drawing.locked === true;
         // The trader's stroke, with the selection adding a little weight for feedback.
         const width = strokeWidthOf(drawing) + (selected ? 0.8 : 0);
@@ -545,6 +642,50 @@ export default function ChartDrawings({
             );
         }
 
+        if (kind === 'table') {
+            // A box of cells: the two anchors are the corners, and every row and column is drawn as
+            // an even slice of it. The text is the grid itself, so a cell is filled in where it sits.
+            const left = Math.min(screen[0].x, screen[1].x);
+            const top = Math.min(screen[0].y, screen[1].y);
+            const boxW = Math.abs(screen[1].x - screen[0].x);
+            const boxH = Math.abs(screen[1].y - screen[0].y);
+            const grid = tableGrid(drawing.text);
+            const cols = grid[0]?.length ?? 1;
+            const rows = grid.length;
+            const cellW = boxW / cols;
+            const cellH = boxH / rows;
+            const fontSize = Math.max(8, Math.min(13, cellH * 0.55));
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <rect x={left} y={top} width={boxW} height={boxH} fill={fill} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {Array.from({ length: cols - 1 }, (_, i) => (
+                        <line key={`${drawing.id}-v${i}`} x1={left + cellW * (i + 1)} y1={top} x2={left + cellW * (i + 1)} y2={top + boxH} stroke={color} strokeWidth={1} opacity={opacity * 0.65} />
+                    ))}
+                    {Array.from({ length: rows - 1 }, (_, i) => (
+                        <line key={`${drawing.id}-h${i}`} x1={left} y1={top + cellH * (i + 1)} x2={left + boxW} y2={top + cellH * (i + 1)} stroke={color} strokeWidth={1} opacity={opacity * 0.65} />
+                    ))}
+                    {grid.flatMap((row, r) =>
+                        row.map((cell, c) =>
+                            cell.length > 0 && cellW > 12 && cellH > 9 ? (
+                                <text
+                                    key={`${drawing.id}-c${r}-${c}`}
+                                    x={left + cellW * c + 4}
+                                    y={top + cellH * r + cellH / 2 + fontSize * 0.35}
+                                    fill={ink}
+                                    fontSize={fontSize}
+                                    opacity={opacity}
+                                    className="mono"
+                                >
+                                    {cell.length > Math.floor(cellW / (fontSize * 0.6)) ? `${cell.slice(0, Math.max(1, Math.floor(cellW / (fontSize * 0.6))))}…` : cell}
+                                </text>
+                            ) : null,
+                        ),
+                    )}
+                    {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
         if (kind === 'xrect') {
             // A box whose top and bottom prices run on to the right edge.
             const rightEdge = svgRef.current?.clientWidth ?? 0;
@@ -638,6 +779,52 @@ export default function ChartDrawings({
                         {`${priceText} · ${spanText}`}
                     </text>
                     {selected && !locked && screen.map((point, i) => <rect key={i} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
+                </g>
+            );
+        }
+
+        // Wolfe's five turns: the wave itself, the two converging channel lines (1-3 and 2-4), and
+        // the 1-4 line extended as the target. The target is the 1-4 line, not the 1-3 line — the
+        // 1-3 line is what point 5 pierces, and the 1-4 line is where the move is expected to end.
+        if (kind === 'wolfe') {
+            const rightEdge = svgRef.current?.clientWidth ?? 0;
+            const extend = (from: ScreenPoint, to: ScreenPoint): ScreenPoint => {
+                const dx = to.x - from.x;
+                return { x: rightEdge, y: Math.abs(dx) > 1 ? from.y + ((to.y - from.y) / dx) * (rightEdge - from.x) : from.y };
+            };
+            const channel13 = screen.length >= 3 ? extend(screen[0], screen[2]) : null;
+            const channel24 = screen.length >= 4 ? extend(screen[1], screen[3]) : null;
+            const target = screen.length >= 4 ? extend(screen[0], screen[3]) : null;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    {screen.slice(0, -1).map((point, i) => (
+                        <line key={`${drawing.id}-s${i}`} x1={point.x} y1={point.y} x2={screen[i + 1].x} y2={screen[i + 1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    ))}
+                    {channel13 && (
+                        <line x1={screen[0].x} y1={screen[0].y} x2={channel13.x} y2={channel13.y} stroke={color} strokeWidth={1} strokeDasharray="5 3" opacity={0.7} />
+                    )}
+                    {channel24 && (
+                        <line x1={screen[1].x} y1={screen[1].y} x2={channel24.x} y2={channel24.y} stroke={color} strokeWidth={1} strokeDasharray="5 3" opacity={0.7} />
+                    )}
+                    {target && (
+                        <>
+                            <line x1={screen[0].x} y1={screen[0].y} x2={target.x} y2={target.y} stroke={color} strokeWidth={width} strokeDasharray="7 4" opacity={opacity} />
+                            <text x={rightEdge - 6} y={target.y - 6} textAnchor="end" fontSize={11} className="mono" fill={color} opacity={opacity}>
+                                EPA
+                            </text>
+                        </>
+                    )}
+                    {screen.map((point, i) => (
+                        <g key={`${drawing.id}-p${i}`}>
+                            {dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity)}
+                            {glyphs[i] && (
+                                <text x={point.x} y={point.y - 8} textAnchor="middle" fontSize={12} fontWeight={700} fill={color} opacity={opacity}>
+                                    {glyphs[i]}
+                                </text>
+                            )}
+                        </g>
+                    ))}
+                    {selected && !locked && screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
                 </g>
             );
         }
@@ -943,6 +1130,35 @@ export default function ChartDrawings({
             );
         }
 
+        if (kind === 'fibwedge') {
+            const [p0, p1, p2] = drawing.points;
+            if (!p2) return null;
+            const lines = fibWedgeLines(p0, p1, p2);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {lines.map(([, end], index) => {
+                        const point = toScreen(end);
+                        if (!point) return null;
+                        return (
+                            <line
+                                key={`${drawing.id}-w${index}`}
+                                x1={screen[2].x}
+                                y1={screen[2].y}
+                                x2={point.x}
+                                y2={point.y}
+                                stroke={color}
+                                strokeWidth={1}
+                                opacity={0.7}
+                            />
+                        );
+                    })}
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
         if (kind === 'fibchannel') {
             const levels = fibChannelLevels(drawing.points[0], drawing.points[1], drawing.points[2]);
             return (
@@ -1058,6 +1274,29 @@ export default function ChartDrawings({
             );
         }
 
+        if (kind === 'rotrect') {
+            const corners = rotatedRectCorners(screen[0], screen[1], screen[2] ?? screen[1]);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <polygon points={polygonPoints(corners)} fill={fill} stroke={color} strokeWidth={width} opacity={opacity} />
+                    {screen.map((point, i) => dot(point.x, point.y, `${drawing.id}-d${i}`, color, opacity, TEXT_DOT))}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
+        if (kind === 'fibspiral') {
+            const points = fibSpiralPoints(screen[0], screen[1]);
+            if (points.length < 2) return null;
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <path d={polylinePath(points)} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" opacity={opacity} />
+                    {dot(screen[0].x, screen[0].y, `${drawing.id}-c`, color, opacity, TEXT_DOT)}
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
         if (kind === 'polyline') {
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
@@ -1168,6 +1407,10 @@ export default function ChartDrawings({
                     ) : (
                         <line x1={anchor.x} y1={anchor.y} x2={kind === 'flag' ? boxX : at.x} y2={kind === 'flag' ? boxY + boxH / 2 : at.y} stroke={color} strokeWidth={1} opacity={opacity} />
                     )}
+                    {/* A callout points at the bar it belongs to; a balloon already reads as a speech bubble. */}
+                    {kind === 'callout' && (
+                        <polygon points={arrowHeadPoints(at, anchor, 9)} fill={color} opacity={opacity} />
+                    )}
                     <rect
                         x={boxX}
                         y={boxY}
@@ -1192,6 +1435,25 @@ export default function ChartDrawings({
         // Gann measures the clicked trend against itself, a pitchfork measures the retracement that
         // followed it, and the regression channel is fitted to the candles on screen. The maths is in
         // lib/chart-drawings; here the lines are only placed.
+        if (kind === 'gannsquarefixed') {
+            // The side is fixed, so the square reads the same at every price; the second point only
+            // chooses which quadrant it grows into.
+            const corner = gannSquareFixedCorner(screen[0], screen[1]);
+            const side = GANN_SQUARE_FIXED_SIDE;
+            const x0 = Math.min(screen[0].x, corner.x);
+            const y0 = Math.min(screen[0].y, corner.y);
+            return (
+                <g key={drawing.id} strokeDasharray={dash}>
+                    <rect x={x0} y={y0} width={side} height={side} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />
+                    <line x1={x0} y1={y0} x2={x0 + side} y2={y0 + side} stroke={color} strokeWidth={1} opacity={0.7} />
+                    <line x1={x0} y1={y0 + side} x2={x0 + side} y2={y0} stroke={color} strokeWidth={1} opacity={0.7} />
+                    <line x1={x0 + side / 2} y1={y0} x2={x0 + side / 2} y2={y0 + side} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+                    <line x1={x0} y1={y0 + side / 2} x2={x0 + side} y2={y0 + side / 2} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+                    {selectionHandles(screen)}
+                </g>
+            );
+        }
+
         if (kind === 'gannfan' || kind === 'gannbox' || kind === 'gannsquare') {
             const [p0, p1] = drawing.points;
             if (!p1) return null;
@@ -1390,13 +1652,25 @@ export default function ChartDrawings({
 
         if (kind === 'avwap') {
             // toScreen wants a chart point; a VWAP point is a time and a value, which is the same shape.
-            const points = anchoredVwap(candles, drawing.points[0].time)
-                .map((point) => toScreen({ time: point.time, price: point.value }))
-                .filter((point): point is ScreenPoint => point != null);
-            const path = points.length > 1 ? polylinePath(points) : null;
+            const bands = anchoredVwapBands(candles, drawing.points[0].time);
+            const project = (pick: (point: (typeof bands)[number]) => number) =>
+                bands
+                    .map((point) => toScreen({ time: point.time, price: pick(point) }))
+                    .filter((point): point is ScreenPoint => point != null);
+            const line = project((point) => point.value);
+            const upper1 = project((point) => point.upper1);
+            const lower1 = project((point) => point.lower1);
+            const upper2 = project((point) => point.upper2);
+            const lower2 = project((point) => point.lower2);
+            const path = (points: ScreenPoint[]) => (points.length > 1 ? polylinePath(points) : null);
             return (
                 <g key={drawing.id} strokeDasharray={dash}>
-                    {path && <path d={path} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />}
+                    {/* The second band is the outer edge: faint, so it frames without shouting. */}
+                    {path(upper2) && <path d={path(upper2)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.35} />}
+                    {path(lower2) && <path d={path(lower2)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.35} />}
+                    {path(upper1) && <path d={path(upper1)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.6} strokeDasharray="4 3" />}
+                    {path(lower1) && <path d={path(lower1)!} fill="none" stroke={color} strokeWidth={1} opacity={opacity * 0.6} strokeDasharray="4 3" />}
+                    {path(line) && <path d={path(line)!} fill="none" stroke={color} strokeWidth={width} opacity={opacity} />}
                     {dot(screen[0].x, screen[0].y, `${drawing.id}-p`, color, opacity, TEXT_DOT)}
                     {selectionHandles(screen)}
                 </g>
@@ -1432,14 +1706,35 @@ export default function ChartDrawings({
                             />
                         );
                     })}
+                    {/* The value area: the band holding 70% of the range's volume, marked by two
+                        rules so a trader can see where the market accepted price. */}
+                    {profile.valueArea && (() => {
+                        const top = stepY(profile.valueArea.high);
+                        const bottom = stepY(profile.valueArea.low);
+                        if (top == null || bottom == null) return null;
+                        return (
+                            <g>
+                                <rect
+                                    x={left}
+                                    y={Math.min(top, bottom)}
+                                    width={span}
+                                    height={Math.abs(bottom - top)}
+                                    fill={`color-mix(in oklab, ${color} 10%, transparent)`}
+                                    stroke="none"
+                                />
+                                <line x1={left} y1={top} x2={left + span} y2={top} stroke={color} strokeWidth={1} opacity={0.7} strokeDasharray="3 3" />
+                                <line x1={left} y1={bottom} x2={left + span} y2={bottom} stroke={color} strokeWidth={1} opacity={0.7} strokeDasharray="3 3" />
+                            </g>
+                        );
+                    })()}
                     {/* The row that traded most: the point of control, with its price. */}
                     {(() => {
-                        const poc = profile.rows.find((row) => row.volume === profile.max);
-                        const y = poc ? stepY(poc.price) : null;
-                        if (!poc || y == null) return null;
+                        const poc = profile.poc;
+                        const y = poc != null ? stepY(poc) : null;
+                        if (poc == null || y == null) return null;
                         return (
                             <text x={left + span + 4} y={y + 4} fontSize={10.5} className="mono" fill={color}>
-                                {priceLabel(poc.price)}
+                                {priceLabel(poc)}
                             </text>
                         );
                     })()}
@@ -1494,10 +1789,15 @@ export default function ChartDrawings({
             );
         }
 
-        // trend: a segment between its two points
+        // trend: a segment between its two points, lengthened to the panel edge when the trader asked
+        // for it. The extension is screen arithmetic (lib/chart-drawings), so it reaches the edge even
+        // where the time scale has run out of bars.
+        const [segmentFrom, segmentTo] = drawing.extend
+            ? extendSegment(screen[0], screen[1], drawing.extend, 0, edgeX)
+            : [screen[0], screen[1]];
         return (
             <g key={drawing.id} strokeDasharray={dash}>
-                <line x1={screen[0].x} y1={screen[0].y} x2={screen[1].x} y2={screen[1].y} stroke={color} strokeWidth={width} opacity={opacity} />
+                <line x1={segmentFrom.x} y1={segmentFrom.y} x2={segmentTo.x} y2={segmentTo.y} stroke={color} strokeWidth={width} opacity={opacity} />
                 {selected && !locked &&
                     screen.map((point, i) => <rect key={`h${i}`} x={point.x - HANDLE} y={point.y - HANDLE} width={HANDLE * 2} height={HANDLE * 2} fill={color} />)}
             </g>
@@ -1528,6 +1828,7 @@ export default function ChartDrawings({
                 className="absolute inset-0 z-10 size-full"
                 style={{ pointerEvents: interactive ? 'auto' : 'none', cursor: interactive ? 'crosshair' : 'default' }}
                 onPointerDown={onPointerDown}
+                onContextMenu={onContextMenuEvent}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onDoubleClick={onDoubleClick}
@@ -1536,7 +1837,15 @@ export default function ChartDrawings({
                 role="application"
                 aria-label={label('chart.canvas')}
             >
-                {shapes.map((drawing) => shapeFor(drawing))}
+                {shapes.map((drawing) => (
+                    <g
+                        key={drawing.id}
+                        style={{ pointerEvents: interactive ? 'none' : 'visiblePainted' }}
+                        onContextMenu={(event) => onShapeContextMenu(event, drawing.id)}
+                    >
+                        {shapeFor(drawing)}
+                    </g>
+                ))}
                 {tool === 'measure' && measureBox}
                 {draftPath && <path d={draftPath} fill="none" stroke="var(--brand)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />}
                 {draftPath && draft.length >= 2 && lastDraftAt && draftHint && (
@@ -1551,29 +1860,56 @@ export default function ChartDrawings({
                 })}
             </svg>
 
-            {editing && editorAt && (
-                <div className="absolute z-20 flex items-center gap-1" style={{ left: editorAt.x + 6, top: editorAt.y - 12 }}>
-                    <input
-                        ref={inputRef}
-                        value={editing.value}
-                        maxLength={80}
-                        onChange={(event) => setEditing({ id: editing.id, value: event.target.value })}
-                        onKeyDown={(event) => {
-                            if (event.key === 'Enter') saveEdit();
-                            if (event.key === 'Escape') setEditing(null);
-                        }}
-                        className="h-6 w-40 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        dir="auto"
-                        aria-label={label('chart.editText')}
-                    />
-                    <button type="button" onClick={saveEdit} className="pill h-6 px-2 text-[11px] is-up">
-                        {label('chart.save')}
-                    </button>
-                    <button type="button" onClick={() => setEditing(null)} className="pill h-6 px-2 text-[11px]">
-                        {label('chart.cancel')}
-                    </button>
-                </div>
-            )}
+            {tool === 'measure' && measureChip}
+
+            {editing && editorAt && (() => {
+                // A table is edited as a grid, so it gets a multiline box and one line per row; every
+                // other note stays the single line it always was.
+                const isTable = editorTarget?.tool === 'table';
+                return (
+                    <div className="absolute z-20 flex flex-col gap-1" style={{ left: editorAt.x + 6, top: editorAt.y - 12 }}>
+                        <div className="flex items-center gap-1">
+                            {isTable ? (
+                                <textarea
+                                    ref={inputRef as unknown as React.RefObject<HTMLTextAreaElement>}
+                                    value={editing.value}
+                                    maxLength={TABLE_MAX}
+                                    rows={3}
+                                    onChange={(event) => setEditing({ id: editing.id, value: event.target.value })}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Escape') setEditing(null);
+                                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) saveEdit();
+                                    }}
+                                    className="h-20 w-52 rounded-[10px] bg-page px-2 py-1 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    dir="auto"
+                                    aria-label={label('chart.editText')}
+                                />
+                            ) : (
+                                <input
+                                    ref={inputRef}
+                                    value={editing.value}
+                                    maxLength={80}
+                                    onChange={(event) => setEditing({ id: editing.id, value: event.target.value })}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') saveEdit();
+                                        if (event.key === 'Escape') setEditing(null);
+                                    }}
+                                    className="h-6 w-40 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    dir="auto"
+                                    aria-label={label('chart.editText')}
+                                />
+                            )}
+                            <button type="button" onClick={saveEdit} className="pill h-6 px-2 text-[11px] is-up">
+                                {label('chart.save')}
+                            </button>
+                            <button type="button" onClick={() => setEditing(null)} className="pill h-6 px-2 text-[11px]">
+                                {label('chart.cancel')}
+                            </button>
+                        </div>
+                        {isTable && <p className="rounded bg-page/85 px-2 py-0.5 text-[10.5px] text-faint shadow-[inset_0_0_0_1px_var(--line)]">{label('chart.tool.tableHint')}</p>}
+                    </div>
+                );
+            })()}
 
             {/* How many clicks are still expected, so a five-point pattern is not a guessing game. */}
             {tool && tool !== 'select' && tool !== 'measure' && pointsNeeded(tool) > 1 && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeChartShare, encodeChartShare, sharePath, type ChartShare } from '@/lib/chart-share';
+import { decodeChartShare, encodeChartShare, sharePath, type ChartShare } from '@/lib/chart/share';
 
 const share: ChartShare = {
     symbol: '2222.SR',

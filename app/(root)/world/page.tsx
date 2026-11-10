@@ -1,7 +1,8 @@
-import { loadWorldBoard } from '@/lib/world-board';
+import { loadWorldBoard } from '@/lib/market/world-board';
 import WorldBoard from '@/components/markets/WorldBoard';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 export const metadata = {
     title: 'World markets',
@@ -11,6 +12,8 @@ export const metadata = {
 // Read on the server for a fast first paint (and for crawlers), then the board polls itself at the
 // pace the feed is willing to refresh.
 export default async function WorldMarketsPage() {
+    await requireFeaturePage('page.world');
+
     const [board, lang] = await Promise.all([loadWorldBoard(), getLang()]);
 
     return (

@@ -1,13 +1,64 @@
 import { betterAuth } from "better-auth";
 import {mongodbAdapter} from "better-auth/adapters/mongodb";
-import {connectToDatabase} from "@/database/mongoose";
+import { ObjectId } from "mongodb";
+import { connectToDatabase} from "@/database/mongoose";
 import {nextCookies} from "better-auth/next-js";
 import { headers } from "next/headers";
 import { cache } from "react";
+import { admin } from "better-auth/plugins";
+import { createAccessControl } from "better-auth/plugins/access";
 import { sendPasswordResetEmail } from "@/lib/nodemailer/reset-password";
+import { ROLES, STATEMENTS, groupByResource, type Role } from "@/lib/authz";
+import { sessionsToRevoke } from "@/lib/better-auth/device-policy";
 
 
 type MongoDb = Parameters<typeof mongodbAdapter>[0];
+
+// The authorization matrix, handed to better-auth so its own endpoints (`/admin/list-users`,
+// `/admin/set-role`, …) enforce exactly the rules `lib/authz.ts` defines. Every resource is listed
+// even when a role holds none of its actions, so the shape matches the statements exactly.
+const ac = createAccessControl(STATEMENTS);
+const roleInput = (role: Role) => {
+    const grouped = groupByResource(role);
+    return {
+        user: grouped.user ?? [],
+        session: grouped.session ?? [],
+        content: grouped.content ?? [],
+        flag: grouped.flag ?? [],
+        ops: grouped.ops ?? [],
+    };
+};
+// The cast is narrow: `groupByResource` returns `string[]`, but the values come from the same
+// `STATEMENTS` literal better-auth types against, so every action is a real one. The matrix itself
+// is proven by `__tests__/authz.test.ts`.
+const ACCESS_ROLES = Object.fromEntries(
+    ROLES.map((role) => [role, ac.newRole(roleInput(role) as Parameters<typeof ac.newRole>[0])]),
+);
+
+// The owner bootstraps from the environment: any account whose email is listed is an admin. It is a
+// DB write, not a read-time override, so `session.user.role` and the plugin agree, and there is no
+// route anywhere that can promote an account — the allowlist cannot be used to escalate.
+const adminEmails = (): string[] =>
+    (process.env.ADMIN_EMAILS ?? '')
+        .split(',')
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean);
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const syncAdminEmails = async (db: NonNullable<MongoDb>): Promise<void> => {
+    const emails = adminEmails();
+    if (emails.length === 0) return;
+    try {
+        // Case-insensitive, and only the rows that actually need it, so a boot is one cheap write.
+        await db.collection('user').updateMany(
+            { email: { $in: emails.map((email) => new RegExp(`^${escapeRegExp(email)}$`, 'i')) }, role: { $ne: 'admin' } },
+            { $set: { role: 'admin' } },
+        );
+    } catch (error) {
+        console.error('Admin bootstrap failed:', error);
+    }
+};
 
 // Typed from the real config, so additional user fields (country, ...) show up in session types
 const createAuth = (database: MongoDb) => betterAuth({
@@ -42,10 +93,63 @@ const createAuth = (database: MongoDb) => betterAuth({
                 });
             },
         },
-        // Signed session cookie for 5 min: pages stop paying a MongoDB round trip per request.
-        // Trade-off: a revoked session can stay valid for up to 5 minutes.
+        // Signed session cookie for 1 min: pages skip a MongoDB round trip per request, while a
+        // revoked session (another device signed in, or an admin kicked it) dies within that minute.
+        // Trade-off: one extra session read per user per minute, and a stale window of up to 60s.
         session: {
-            cookieCache: { enabled: true, maxAge: 5 * 60 },
+            cookieCache: { enabled: true, maxAge: 60 },
+        },
+        // One active device per account (see `lib/better-auth/device-policy.ts`). This runs after the
+        // new session row exists, so a failed insert never signs the user out everywhere. The error is
+        // caught: a policy hiccup must not break sign-in.
+        databaseHooks: {
+            // The allowlist is also re-checked when the account is created. `getAuth` syncs it once per
+            // server instance, and on a serverless host the very first sign-up can land on an instance
+            // that synced before the row existed — so the owner would sign up and find no admin panel.
+            // Syncing again right after the insert makes the promotion immediate, on any host.
+            user: {
+                create: {
+                    after: async () => {
+                        if (!database) return;
+                        await syncAdminEmails(database);
+                    },
+                },
+            },
+            session: {
+                create: {
+                    after: async (session) => {
+                        if (!database) return;
+                        const userId = session.userId ? String(session.userId) : '';
+                        const keepId = session.id ? String(session.id) : '';
+                        if (!userId || !keepId) return;
+                        try {
+                            const sessions = database.collection('session');
+                            // The adapter may store `userId` as an ObjectId or as the id string depending
+                            // on the deployment; match both so the policy never silently no-ops.
+                            const owners: (string | ObjectId)[] = [userId];
+                            if (/^[a-fA-F0-9]{24}$/.test(userId)) owners.push(new ObjectId(userId));
+                            const rows = await sessions
+                                .find({ userId: { $in: owners } }, { projection: { _id: 1, token: 1, createdAt: 1 } })
+                                .toArray();
+                            const revoke = sessionsToRevoke(
+                                rows.map((row) => ({
+                                    id: String(row._id),
+                                    token: String(row.token),
+                                    createdAt: row.createdAt as Date,
+                                })),
+                                keepId,
+                            );
+                            if (revoke.length > 0) {
+                                // Delete by token, not `_id`: the driver types `_id` as an ObjectId while
+                                // both adapters here store the session id as a string.
+                                await sessions.deleteMany({ token: { $in: revoke.map((row) => row.token) } });
+                            }
+                        } catch (error) {
+                            console.error('Session device policy failed:', error);
+                        }
+                    },
+                },
+            },
         },
         // No account linking. Sign-up doesn't verify emails, so linking a Google/GitHub identity to an
         // existing account with the same email would let someone pre-register a victim's address and
@@ -67,7 +171,12 @@ const createAuth = (database: MongoDb) => betterAuth({
                 clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
             },
         },
-        plugins: [nextCookies()],
+        plugins: [
+            // Roles, bans and the admin endpoints. `adminRoles` stays `['admin']` so the plugin's
+            // own routes are the strictest door; the finer roles pass through our own guards.
+            admin({ defaultRole: 'user', adminRoles: ['admin'], roles: ACCESS_ROLES }),
+            nextCookies(),
+        ],
 });
 
 let authInstance: ReturnType<typeof createAuth> | null = null;
@@ -88,6 +197,7 @@ export const getAuth = async () => {
     }
 
     authInstance = createAuth(database);
+    await syncAdminEmails(database);
     return authInstance;
 }
 

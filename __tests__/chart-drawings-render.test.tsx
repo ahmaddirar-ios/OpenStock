@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import ChartDrawings from '@/components/stocks/ChartDrawings';
-import { layerDrawings, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool } from '@/lib/chart-drawings';
+import { layerDrawings, type DrawPoint, type Drawing, type ScreenPoint, type ShapeTool } from '@/lib/chart/drawings';
 
 // The panel the SVG fills; jsdom has no layout, so the size is declared rather than measured.
 // It has to sit on Element.prototype: the drawing layer is an <svg>, which is not an HTMLElement.
@@ -24,12 +24,12 @@ afterEach(cleanup);
 const toScreen = (point: DrawPoint): ScreenPoint => ({ x: 100 + (point.time - 1000) / 10, y: 500 - (point.price - 100) * 5 });
 const fromScreen = (x: number, y: number): DrawPoint => ({ time: 1000 + (x - 100) * 10, price: 100 + (500 - y) / 5 });
 
-const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string; candles?: { time: number; open: number; high: number; low: number; close: number; volume: number }[]; fromScreen?: (x: number, y: number) => DrawPoint | null } = {}) => {
-    const drawing: Drawing = { id: 'd1', tool, points, ...(extra.text ? { text: extra.text } : {}) };
+const renderTool = (tool: ShapeTool, points: DrawPoint[], barTimes: number[] = [], toScreenOverride?: (point: DrawPoint) => ScreenPoint | null, extra: { text?: string; extend?: 'left' | 'right' | 'both'; candles?: { time: number; open: number; high: number; low: number; close: number; volume: number }[]; fromScreen?: (x: number, y: number) => DrawPoint | null } = {}) => {
+    const drawing: Drawing = { id: 'd1', tool, points, ...(extra.text ? { text: extra.text } : {}), ...(extra.extend ? { extend: extra.extend } : {}) };
     const { container } = render(
         <ChartDrawings
             drawings={[drawing]}
-            selectedId={null}
+            selectedIds={[]}
             tool={null}
             text={extra.text ?? ""}
             barTimes={barTimes}
@@ -86,7 +86,7 @@ const renderDrawing = (options: { tool: ShapeTool | 'select'; points?: DrawPoint
     const { container } = render(
         <ChartDrawings
             drawings={options.points ? [{ id: 'd1', tool: options.tool as ShapeTool, points: options.points }] : []}
-            selectedId={null}
+            selectedIds={[]}
             tool={options.tool}
             text={options.text ?? ""}
             barTimes={[]}
@@ -210,6 +210,29 @@ describe('the geometric shapes on the chart', () => {
         expect(onCommit).toHaveBeenCalledTimes(1);
         expect(onCommit.mock.calls[0][0].tool).toBe('polyline');
         expect(onCommit.mock.calls[0][0].points).toHaveLength(3);
+    });
+});
+
+describe('the Wolfe wave on the chart', () => {
+    const wave: DrawPoint[] = [
+        { time: 1000, price: 100 },
+        { time: 2000, price: 120 },
+        { time: 3000, price: 90 },
+        { time: 4000, price: 108 },
+        { time: 5000, price: 78 },
+    ];
+
+    it('labels the five turns and names the target line', () => {
+        const { texts } = renderTool('wolfe', wave);
+        expect(texts).toEqual(expect.arrayContaining(['1', '2', '3', '4', '5', 'EPA']));
+    });
+
+    it('draws the wave, the two channel lines and the 1-4 target', () => {
+        const { lines, dashes } = renderTool('wolfe', wave);
+        // Four segments of the wave, two channel rays (1-3 and 2-4), and the target ray (1-4).
+        expect(lines).toHaveLength(7);
+        expect(dashes.filter((dash) => dash === '5 3')).toHaveLength(2);
+        expect(dashes.filter((dash) => dash === '7 4')).toHaveLength(1);
     });
 });
 
@@ -653,7 +676,7 @@ describe('the pile the drawings are painted in', () => {
         const { container } = render(
             <ChartDrawings
                 drawings={drawings}
-                selectedId={null}
+                selectedIds={[]}
                 tool={null}
                 text=""
                 barTimes={[]}
@@ -676,6 +699,34 @@ describe('the pile the drawings are painted in', () => {
         // 50px and 80px wide on this scale: which one comes first tells the stacking order.
         return Array.from(svg.querySelectorAll('g rect')).map((rect) => Number(rect.getAttribute('width')));
     };
+
+    it('lengthens a trend line to the edge it was told to reach', () => {
+        // The same shallow line, painted with each extension.
+        const plain = renderTool('trend', rise);
+        expect(plain.lines[0]).toEqual({ x1: 100, y1: 500, x2: 200, y2: 475 });
+
+        const right = renderTool('trend', rise, [], undefined, { extend: 'right' });
+        expect(right.lines[0].x2).toBe(WIDTH);
+        // The slope is unchanged: a quarter pixel up per pixel right.
+        expect(right.lines[0].y2).toBeCloseTo(500 - 0.25 * (WIDTH - 100), 5);
+
+        const both = renderTool('trend', rise, [], undefined, { extend: 'both' });
+        expect(both.lines[0].x1).toBe(0);
+        expect(both.lines[0].x2).toBe(WIDTH);
+        expect(both.lines[0].y1).toBeCloseTo(525, 5);
+    });
+
+    it('points a callout at its anchor with an arrowhead', () => {
+        const { polygons, texts } = renderTool('callout', [
+            { time: 1000, price: 100 },
+            { time: 2000, price: 112 },
+        ], [], undefined, { text: 'Watch this' });
+        expect(texts).toContain('Watch this');
+        expect(polygons).toHaveLength(1);
+        expect(polygons[0].split(' ')).toHaveLength(3);
+        // The tip sits on the anchor the callout was pinned to.
+        expect(polygons[0].startsWith('100,500 ')).toBe(true);
+    });
 
     it('paints the drawings in the order it is given, last on top', () => {
         expect(renderList([under, over])).toEqual([50, 80]);
@@ -712,11 +763,11 @@ describe('the exotics on the chart', () => {
         expect(empty.texts).toContain('chart.imagePlaceholder');
     });
 
-    it('averages the candles from the anchor forward', () => {
+    it('averages the candles from the anchor forward, inside two deviation bands', () => {
         const { paths } = renderTool('avwap', [a], [], undefined, { candles });
-        expect(paths).toHaveLength(1);
-        // One point per candle from the anchor on, in one path.
-        expect(paths[0].split('L')).toHaveLength(6);
+        // The VWAP plus ±1σ and ±2σ: five lines, each one point per candle from the anchor on.
+        expect(paths).toHaveLength(5);
+        for (const path of paths) expect(path.split('L')).toHaveLength(6);
     });
 
     it('draws nothing for a VWAP when the drawing layer has no candles', () => {

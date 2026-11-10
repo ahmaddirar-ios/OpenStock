@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compactVolume, readoutAt, type ReadoutSeries } from '@/lib/chart-readout';
-import type { Candle } from '@/lib/yahoo-candles';
+import { compactVolume, readoutAt, type ReadoutSeries } from '@/lib/chart/readout';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const bar = (time: number, open: number, high: number, low: number, close: number, volume = 100): Candle => ({
     time,

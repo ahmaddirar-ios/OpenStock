@@ -4,7 +4,7 @@
 // a network call; only the prices are fetched, cached, and stored in the screener snapshot.
 
 import { US_TICKERS } from '@/lib/seo/tickers';
-import { SAUDI_SYMBOLS } from '@/lib/saudi-symbols';
+import { SAUDI_SYMBOLS } from '@/lib/market/saudi-symbols';
 
 export type ScreenerMarket = 'us' | 'sa';
 

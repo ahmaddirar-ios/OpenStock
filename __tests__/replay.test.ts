@@ -20,13 +20,14 @@ import {
     summarize,
     toCsv,
     validateBracket,
+    validateBracketOrder,
     validateOrder,
     visibleCandles,
     type Fill,
     type PendingOrder,
     type ReplayIntent,
-} from '@/lib/replay';
-import type { Candle } from '@/lib/yahoo-candles';
+} from '@/lib/chart/replay';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const candle = (time: number, close: number): Candle => ({
     time,
@@ -325,6 +326,24 @@ describe('validateBracket', () => {
     });
 });
 
+describe('validateBracketOrder', () => {
+    it('only refuses levels the current mark has already passed', () => {
+        // A stop deep under the mark is fine even when a distant limit will fill above it: the
+        // real cross-check happens when the bracket arms on the fill bar.
+        expect(validateBracketOrder(100, { stopLoss: 50, takeProfit: 400 })).toBeNull();
+        expect(validateBracketOrder(100, { stopLoss: 100 })).toBe('wrongSideOfMarket');
+        expect(validateBracketOrder(100, { stopLoss: 120 })).toBe('wrongSideOfMarket');
+        expect(validateBracketOrder(100, { takeProfit: 100 })).toBe('wrongSideOfMarket');
+        expect(validateBracketOrder(100, { takeProfit: 90 })).toBe('wrongSideOfMarket');
+    });
+
+    it('refuses a bracket with no level or no mark', () => {
+        expect(validateBracketOrder(100, {})).toBe('badPrice');
+        expect(validateBracketOrder(0, { stopLoss: 95 })).toBe('badPrice');
+        expect(validateBracketOrder(100, { stopLoss: -1 })).toBe('badPrice');
+    });
+});
+
 describe('settleBar — a pending order', () => {
     it('waits while the bar misses it and fills at the level when the bar reaches it', () => {
         const missed = settleBar({ account: openAccount(), intent: { order: order() }, bar: bar(2_000, 100, 101, 96, 100) });
@@ -375,6 +394,66 @@ describe('settleBar — a pending order', () => {
         expect(result.intent.order).toBeNull();
         expect(result.rejected).toBe('insufficientFunds');
         expect(result.fills).toHaveLength(0);
+    });
+});
+
+describe('settleBar — a bracket order (entry, stop and target as one order)', () => {
+    const entry = (over: Partial<PendingOrder> = {}): PendingOrder =>
+        order({ price: 95, bracket: { stopLoss: 90, takeProfit: 110 }, ...over });
+
+    it('arms the carried bracket on the bar that fills the entry', () => {
+        const filled = settleBar({ account: openAccount(), intent: { order: entry() }, bar: bar(3_000, 100, 101, 95, 99) });
+        expect(filled.account.position).toMatchObject({ quantity: 10 });
+        expect(filled.intent.order).toBeNull();
+        expect(filled.intent.bracket).toMatchObject({ stopLoss: 90, takeProfit: 110, placedAt: 3_000 });
+    });
+
+    it('cannot take the new position out on the bar that opened it', () => {
+        // The fill bar's low is under the stop and its high over the target; neither may fire.
+        const filled = settleBar({ account: openAccount(), intent: { order: entry() }, bar: bar(3_000, 100, 115, 80, 99) });
+        expect(filled.account.position).toMatchObject({ quantity: 10 });
+        expect(filled.fills.filter((fill) => fill.side === 'sell')).toHaveLength(0);
+    });
+
+    it('lets a later bar close the position at the stop', () => {
+        const filled = settleBar({ account: openAccount(), intent: { order: entry() }, bar: bar(3_000, 100, 101, 95, 99) });
+        const next = settleBar({ account: filled.account, intent: filled.intent, bar: bar(4_000, 100, 101, 88, 89) });
+        expect(next.account.position).toBeNull();
+        expect(next.fills[0]).toMatchObject({ side: 'sell', reason: 'stop' });
+        expect(next.intent.bracket).toBeNull();
+    });
+
+    it('lets a later bar take the target too', () => {
+        const filled = settleBar({ account: openAccount(), intent: { order: entry() }, bar: bar(3_000, 100, 101, 95, 99) });
+        const next = settleBar({ account: filled.account, intent: filled.intent, bar: bar(4_000, 100, 112, 99, 111) });
+        expect(next.fills[0]).toMatchObject({ side: 'sell', reason: 'target' });
+    });
+
+    it('keeps the whole order armed while the entry has not been reached', () => {
+        const missed = settleBar({ account: openAccount(), intent: { order: entry() }, bar: bar(2_000, 100, 101, 96, 100) });
+        expect(missed.account.position).toBeNull();
+        expect(missed.intent.order?.bracket).toMatchObject({ stopLoss: 90, takeProfit: 110 });
+    });
+
+    it('drops the order and its bracket when the fill cannot be afforded', () => {
+        const poor = { ...openAccount(500), cash: 100 };
+        const result = settleBar({ account: poor, intent: { order: entry() }, bar: bar(3_000, 100, 101, 90, 95) });
+        expect(result.intent.order).toBeNull();
+        expect(result.intent.bracket ?? null).toBeNull();
+        expect(result.rejected).toBe('insufficientFunds');
+    });
+
+    it('survives a stored session, bracket included', () => {
+        const intent: ReplayIntent = { order: entry() };
+        const parsed = parseSession(serializeSession({ cursorTime: 3_000, account: openAccount(), intent }));
+        expect(parsed?.intent?.order?.bracket).toMatchObject({ stopLoss: 90, takeProfit: 110 });
+        // A malformed bracket is dropped with the order rather than crashing the session.
+        const broken = parseSession(JSON.stringify({
+            cursorTime: 3_000,
+            account: openAccount(),
+            intent: { order: { ...entry(), bracket: { stopLoss: -1 } } },
+        }));
+        expect(broken?.intent?.order ?? null).toBeNull();
     });
 });
 

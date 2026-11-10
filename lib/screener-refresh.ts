@@ -1,8 +1,8 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { ScreenerRowModel } from '@/database/models/screener.model';
 import { SCREENER_UNIVERSE, SCREENER_TOTAL } from '@/lib/screener-universe';
-import { dailyQuoteFromChart } from '@/lib/yahoo';
-import { fetchSaudiQuotes } from '@/lib/tradingview-scanner';
+import { dailyQuoteFromChart } from '@/lib/market/yahoo';
+import { fetchSaudiQuotes } from '@/lib/market/tradingview-scanner';
 
 // Shared by the server action (which the page calls to build/refresh) and the Inngest cron, so a
 // refresh behaves the same whether a person asked for it or the schedule did.

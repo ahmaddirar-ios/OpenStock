@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { AreaSeries, LineSeries, createChart, type UTCTimestamp } from 'lightweight-charts';
-import { token } from '@/lib/candle-host';
+import { token } from '@/lib/chart/candle-host';
 import { tx, type Lang } from '@/lib/i18n';
-import type { DrawdownPoint, EquityPoint } from '@/lib/strategies';
+import type { DrawdownPoint, EquityPoint } from '@/lib/strategy/strategies';
 
 /** The chart is created inside a grid that may still be settling; a fit at zero width keeps the
  *  default window instead of the data, so the fit is retried until the container has a real width. */

@@ -1,6 +1,28 @@
 import { Schema, model, models, type Document, type Model } from 'mongoose';
 import { ALERT_CONDITIONS, type AlertCondition, type AlertParams } from '@/lib/alerts';
 
+/** One rule inside an alert. A single-rule alert is a group of one. */
+export type AlertRuleSpec = {
+    condition: AlertCondition;
+    targetPrice: number;
+    params: AlertParams;
+    /** What this rule saw on the previous check: a price, or what a series rule measured. */
+    lastValue?: number | null;
+    /** A drawing rule's gap on the previous check. */
+    lastGap?: number | null;
+};
+
+const AlertRuleSchema = new Schema<AlertRuleSpec>(
+    {
+        condition: { type: String, enum: ALERT_CONDITIONS, required: true },
+        targetPrice: { type: Number, default: 0 },
+        params: { type: Schema.Types.Mixed, default: {} },
+        lastValue: { type: Number, default: null },
+        lastGap: { type: Number, default: null },
+    },
+    { _id: false },
+);
+
 export interface IAlert extends Document {
     userId: string;
     symbol: string;
@@ -8,6 +30,13 @@ export interface IAlert extends Document {
     condition: AlertCondition;
     /** The second number some rules carry: an RSI period or a volume window. */
     params: AlertParams;
+    /**
+     * Every rule the alert watches, joined by `join`. The first entry mirrors `condition` and
+     * `targetPrice`, so a row written before groups existed still reads as a group of one.
+     */
+    rules: AlertRuleSpec[];
+    /** How the rules combine: all of them, or any of them. */
+    join: 'and' | 'or';
     active: boolean;
     triggered: boolean;
     /** The value seen on the previous check: a price, or what a series rule measured. */
@@ -34,11 +63,14 @@ const AlertSchema = new Schema<IAlert>(
         // Mixed rather than a nested schema: the second number differs by rule, and an old row
         // without it must keep working untouched.
         params: { type: Schema.Types.Mixed, default: {} },
+        // Mixed: a rule's params differ by condition, and the gate is lib/alerts on the way in.
+        rules: { type: [AlertRuleSchema], default: [] },
+        join: { type: String, enum: ['and', 'or'], default: 'and' },
         active: { type: Boolean, default: true },
         triggered: { type: Boolean, default: false },
         lastPrice: { type: Number, default: null },
         // Mixed: a drawing snapshot is the same object the chart hands over, validated by
-        // lib/drawing-alert on the way in and on the way out.
+        // lib/chart/drawing-alert on the way in and on the way out.
         anchor: { type: Schema.Types.Mixed, default: null },
         lastGap: { type: Number, default: null },
         triggeredAt: { type: Date, default: null },

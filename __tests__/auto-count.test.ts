@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { COUNT_GLYPHS, type Drawing } from '@/lib/chart-drawings';
-import { AUTO_SENSITIVITIES, autoCount, detectPivots, type Pivot } from '@/lib/auto-count';
-import type { Candle } from '@/lib/yahoo-candles';
+import { COUNT_GLYPHS, type Drawing } from '@/lib/chart/drawings';
+import { AUTO_SENSITIVITIES, autoCount, detectPivots, type Pivot } from '@/lib/chart/auto-count';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 const DAY = 86_400;
 const T0 = 1_700_000_000;
@@ -53,6 +53,26 @@ describe('detectPivots', () => {
 
         expect(pivots.length).toBeGreaterThan(0);
         for (const pivot of pivots) expect(times.has(pivot.time)).toBe(true);
+    });
+
+    it('never puts two pivots on the same bar when an outside bar reverses', () => {
+        // Bar 3 makes a new high (130) and a low (100) far enough below it to confirm the reversal.
+        // The high pivot is that bar; the low leg must start on the next bar, not on the same one.
+        const bars: Candle[] = [
+            bar(0, 100),
+            bar(1, 110),
+            bar(2, 120),
+            { time: T0 + 3 * DAY, open: 120, close: 124, high: 130, low: 100, volume: 1 },
+            bar(4, 105),
+            { time: T0 + 5 * DAY, open: 100, close: 108, high: 110, low: 92, volume: 1 },
+            bar(6, 106),
+        ];
+        const pivots = detectPivots(bars, threePercent);
+        const times = pivots.map((p) => p.time);
+
+        expect(kinds(pivots)).toEqual(['high', 'low']);
+        expect(prices(pivots)).toEqual([130, 92]);
+        expect(new Set(times).size).toBe(times.length);
     });
 
     it('leaves the last extreme unconfirmed when nothing has reversed after it yet', () => {

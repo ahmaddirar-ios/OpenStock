@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import Link from 'next/link';
 import {
     LineSeries,
     createSeriesMarkers,
@@ -21,6 +22,7 @@ import {
     BringToFront,
     Camera,
     ChevronDown,
+    ChevronsRight,
     ClipboardPaste,
     Copy,
     CopyPlus,
@@ -31,8 +33,12 @@ import {
     GitCompare,
     History,
     Keyboard,
+    LayoutTemplate,
     Loader2,
     Lock,
+    Paintbrush,
+    PaintBucket,
+    Printer,
     Unlock,
     Maximize2,
     Minimize2,
@@ -41,21 +47,22 @@ import {
     RefreshCw,
     Repeat,
     Share2,
-    Search,
     SendToBack,
     Trash2,
     Upload,
     X,
 } from 'lucide-react';
 import ChartDrawings, { type ActiveTool } from '@/components/stocks/ChartDrawings';
-import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart-magnet';
-import { EDIT_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
+import ChartPrintSheet from '@/components/stocks/ChartPrintSheet';
+import { applyCopiedStyle, copyStyleOf, type CopiedStyle } from '@/lib/chart/drawing-style-copy';
+import { printDocumentTitle } from '@/lib/chart/print';
+import { magnetPixels, nearestBar, nextMagnetStrength, snapPoint, type MagnetStrength } from '@/lib/chart/magnet';
+import { EDIT_SHORTCUTS, MEASURE_KEY, REPLAY_SHORTCUTS, TOOL_SHORTCUTS, toolForKey } from '@/lib/chart/hotkeys';
 import {
-    TIME_ZONES,
     readTimeZone,
     writeTimeZone,
     type TimeZoneId,
-} from '@/lib/chart-time';
+} from '@/lib/chart/time';
 import {
     applyHistory,
     canRedo,
@@ -65,11 +72,12 @@ import {
     redoHistory,
     undoHistory,
     type History as DrawingHistory,
-} from '@/lib/chart-history';
+} from '@/lib/chart/history';
 import StrategyMenu from '@/components/stocks/StrategyMenu';
 import ReplayPanel from '@/components/stocks/ReplayPanel';
 import { getYahooCandles, getCompareCandles, getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
-import { CANDLE_INTERVALS, eventLabel, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/yahoo-candles';
+import { CANDLE_INTERVALS, eventLabel, isCandleIntervalId, openingInterval, type CandleSet } from '@/lib/market/yahoo-candles';
+import { getEarningsDates } from '@/lib/actions/finnhub.actions';
 import {
     MIN_WARMUP_BARS,
     buy as paperBuy,
@@ -84,6 +92,7 @@ import {
     sessionKey,
     settleBar,
     validateBracket,
+    validateBracketOrder,
     validateOrder,
     visibleCandles,
     type Bracket,
@@ -94,11 +103,11 @@ import {
     type PendingOrder,
     type ReplayIntent,
     type ReplaySpeed,
-} from '@/lib/replay';
+} from '@/lib/chart/replay';
 import { toast } from 'sonner';
 import { COMPARE_LIMIT, compareYahooSymbol, latestChange, normalizeCompareInputs, percentSeries } from '@/lib/compare';
-import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, isColorKey, layerDrawings, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart-drawings';
-import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import { COLOR_KEYS, COUNT_GLYPHS, COUNT_TOOL, DRAWING_COLORS, DRAWING_DASHES, DRAWING_WIDTHS, FILL_OPACITIES, IMAGE_DATA_MAX, MAX_FIB_LEVELS, TEXT_SIZES, buildTransferPayload, canExtend, carriesText, cloneDrawing, drawingColor, fibRatiosOf, fillOf, hasFibLevels, hasFill, hitTest, isColorKey, layerDrawings, layerDrawingsMany, loadDrawings, mergeDrawings, nearestTime, newDrawingId, nextColor, parseTransferPayload, readStayDrawing, saveDrawings, textColorOf, toolDef, translateDrawing, type ColorKey, type CountDegree, type CountKind, type DrawPoint, type Drawing, type DrawingDash, type DrawingWidth, type LayerMove, type ScreenPoint, type ShapeTool, visibleOn, withPoint, withText, writeStayDrawing } from '@/lib/chart/drawings';
+import { TOOL_LABEL_KEYS } from '@/lib/chart/drawing-groups';
 import {
     loadDrawingStyles,
     saveDrawingStyles,
@@ -106,17 +115,23 @@ import {
     withDrawingStyle,
     withoutDrawingStyle,
     type DrawingStyleMap,
-} from '@/lib/drawing-styles';
+} from '@/lib/chart/drawing-styles';
 import DrawingRail from '@/components/stocks/DrawingRail';
-import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/drawing-templates';
-import { decodeChartShare, sharePath } from '@/lib/chart-share';
+import { addTemplate, loadTemplates, removeTemplate, saveTemplates, styleOfDrawing, stylePatch, type DrawingTemplate } from '@/lib/chart/drawing-templates';
+import { addChartTemplate, chartTemplateCounts, instantiateChartTemplate, loadChartTemplates, removeChartTemplate, saveChartTemplates, type ChartTemplate } from '@/lib/chart/templates';
+import { candlesToCsv, csvFileName } from '@/lib/chart/export';
+import { BAR_SECONDS } from '@/lib/chart/countdown';
+import { decodeChartShare, sharePath } from '@/lib/chart/share';
+import { decodePatternLink, drawingFromLink } from '@/lib/pattern-link';
 import { cn, tradingViewSymbolUrl } from '@/lib/utils';
-import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/auto-count';
-import { createCandleHost, token, type CandleHost } from '@/lib/candle-host';
-import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart-studies';
-import ToolPalette from '@/components/stocks/ToolPalette';
+import { AUTO_SENSITIVITIES, autoCount, type AutoSensitivity } from '@/lib/chart/auto-count';
+import { findWolfe } from '@/lib/wolfe';
+import { createCandleHost, token, type CandleHost } from '@/lib/chart/candle-host';
+import CandleTooltip from '@/components/stocks/CandleTooltip';
+import { MAX_STUDIES, defaultStudy, type StudyConfig, type StudyId } from '@/lib/chart/studies';
+import ChartToolbarMore from '@/components/stocks/ChartToolbarMore';
 import type { ToolEntry } from '@/lib/tools/catalog';
-import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
+import { readStudies, writeStudies } from '@/lib/chart/studies-storage';
 import {
     mergeSetup,
     mergeStudies,
@@ -125,19 +140,34 @@ import {
     setupDecision,
     setupFromLocal,
     writeSetupPending,
-} from '@/lib/chart-setup';
+} from '@/lib/chart/setup';
 import { loadChartSetup, saveChartSetup } from '@/lib/actions/chart-setup.actions';
-import { anchorFor } from '@/lib/drawing-alert';
+import { anchorFor } from '@/lib/chart/drawing-alert';
 import { alertSource } from '@/lib/alerts';
 import ChartLegend from '@/components/stocks/ChartLegend';
-import type { BarReadout } from '@/lib/chart-readout';
-import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
+import type { BarReadout } from '@/lib/chart/readout';
+import { INTERVAL_LABEL_KEYS } from '@/lib/chart/grid';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
+import ChartPeriods from '@/components/stocks/ChartPeriods';
+import { formatPrice, signedPercent } from '@/lib/market/ribbon';
+import { riyadhNow, sessionChange, tadawulPhase, type TadawulPhase } from '@/lib/chart/quote';
+import ChartSettingsMenu from '@/components/stocks/ChartSettingsMenu';
+import BarCountdown from '@/components/stocks/BarCountdown';
+import {
+    DEFAULT_PALETTE_STATE,
+    FALLBACK_THEME_PALETTE,
+    paletteVars,
+    readPaletteState,
+    resolvePalette,
+    themePalette,
+    writePaletteState,
+    type ChartPalette,
+    type ChartPaletteState,
+} from '@/lib/chart/palette';
 import CreateAlertModal from '@/components/watchlist/CreateAlertModal';
 import {
     CHART_TYPES,
     CHART_TYPE_KEYS,
-    SCALE_MODES,
     parseKagiReversal,
     parseLineBreakCount,
     parseRenkoBox,
@@ -149,18 +179,20 @@ import {
     writeKagiReversal,
     writeLineBreakCount,
     writeRenkoBox,
-    SCALE_MODE_KEYS,
     readChartType,
     readScaleMode,
     writeChartType,
     writeScaleMode,
     type ChartType,
     type ScaleMode,
-} from '@/lib/chart-view';
-import { STRATEGY_IDS, type StrategyId } from '@/lib/strategies';
+} from '@/lib/chart/view';
+import { STRATEGY_IDS, type StrategyId } from '@/lib/strategy/strategies';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
+import { toolFromParam } from '@/lib/shell/command';
+import { canUseChartType, canUseDrawing, canUseTool } from '@/lib/tools/access';
+import { useFeatures } from '@/components/shell/AccessContext';
 
-type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'visibility' | 'fib' | 'tools';
+type MenuId = 'lines' | 'patterns' | 'elliott' | 'counts' | 'cycles' | 'transfer' | 'type' | 'scale' | 'tz' | 'templates' | 'layout' | 'visibility' | 'fib' | 'tf';
 
 /** A row of a dropdown. */
 type MenuItem = { key: string; label: string; onClick: () => void; active?: boolean };
@@ -193,6 +225,20 @@ type Props = {
     lang: Lang;
     /** Interval the page opens on, for a symbol whose usual default has no data (the Saudi index). */
     preferredInterval?: string;
+    /**
+     * A pattern link from the scanner, as the raw token. The chart decodes it, draws it once the
+     * candles and the account's setup have settled, and clears the parameter — a link carries a
+     * shape, not a portfolio.
+     */
+    initialPattern?: string;
+    /** Fill the container instead of standing 420px tall — the overview's pane owns the height. */
+    fill?: boolean;
+    /**
+     * Draw the quote header above the chart. Defaults to `fill`: the overview needs it because the
+     * pane has no other identity, while a symbol page already prints the same price in its header
+     * card and would only be repeating itself.
+     */
+    quote?: boolean;
 };
 
 /**
@@ -200,10 +246,18 @@ type Props = {
  * Saudi quotes use), the indicators are computed here, and the drawings are kept in this browser.
  * Nothing about it depends on a paid provider or an API key.
  */
-export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }: Props) {
+export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, initialPattern, fill = false, quote: quoteHeader }: Props) {
+    // The account's plan, so a locked tool family is never armable — by click, hotkey or deep link.
+    const features = useFeatures();
+    const showQuote = quoteHeader ?? fill;
     const t = useCallback((key: StringKey) => tx(lang, key), [lang]);
+    // Printing briefly retitles the document so the browser offers a sensible PDF name.
+    const originalTitle = useRef<string>('');
 
     const hostRef = useRef<HTMLDivElement>(null);
+    // The chart's outermost element: its nearest hatch shell takes the palette too, so the frame
+    // around the pane is painted in the same five colours as the pane itself.
+    const rootRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
     // Strategy markers live on the price series; the plugin is rebuilt with every host, so the
@@ -211,16 +265,27 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const markersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
     /** The dividends and splits of the symbol, drawn beside whatever a strategy marks. */
     const eventMarkersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
+    /** Results days: the last report and the next scheduled one, when the feed knows them. */
+    const earningsMarkersRef = useRef<SeriesMarker<UTCTimestamp>[]>([]);
     const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     // The candle host is kept so a replay step can replace the candles in place: rebuilding the
     // chart on every bar would throw away the trader's zoom, which is exactly what a replay needs.
     const candleHostRef = useRef<CandleHost | null>(null);
     const displayRef = useRef<CandleSet | null>(null);
     const replayRef = useRef(false);
+    // Set when a background refresh lands while the trader is sitting at the newest bar: the view
+    // should follow the new bar instead of quietly sliding the newest one off the right edge.
+    const followLatestRef = useRef(false);
     const replayPanelRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+    const imageFileRef = useRef<HTMLInputElement>(null);
 
     const [intervalId, setIntervalId] = useState<string>(openingInterval(preferredInterval));
+    // What the watermark says, in the page's language: the listing's own name and the interval.
+    const watermarkText = useMemo(
+        () => `${symbol.split('.')[0]} · ${t(INTERVAL_LABEL_KEYS[intervalId] ?? 'chart.tf.1d')}`,
+        [symbol, intervalId, t],
+    );
     // The chart type is this browser's, like the interval: read after mount, saved on change. The
     // host is built with it through a ref, so switching type never rebuilds the whole chart.
     const [chartType, setChartType] = useState<ChartType>('candles');
@@ -238,9 +303,23 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const [sessionBreaks, setSessionBreaks] = useState(false);
     const sessionBreaksRef = useRef(false);
     sessionBreaksRef.current = sessionBreaks;
+    // The faint symbol behind the candles, on by default like TradingView's.
+    const [watermark, setWatermark] = useState(true);
+    const watermarkRef = useRef(true);
+    watermarkRef.current = watermark;
     const [invertScale, setInvertScale] = useState(false);
     const invertScaleRef = useRef(false);
     invertScaleRef.current = invertScale;
+    // The chart's own colours: a preset plus any hand-picked override, remembered per browser.
+    const [paletteState, setPaletteState] = useState<ChartPaletteState>(DEFAULT_PALETTE_STATE);
+    const paletteStateRef = useRef<ChartPaletteState>(DEFAULT_PALETTE_STATE);
+    paletteStateRef.current = paletteState;
+    // The theme's five colours, read from the live tokens so the pickers can show and edit them.
+    const [themeColors, setThemeColors] = useState<ChartPalette>(FALLBACK_THEME_PALETTE);
+    // The palette the chart is painting with, and the five colours the pickers show: the preset's
+    // own when one is set, the theme's when it is not.
+    const resolvedPalette = useMemo(() => resolvePalette(paletteState), [paletteState]);
+    const effectivePalette = resolvedPalette ?? themeColors;
     const [renkoBox, setRenkoBox] = useState<number | undefined>(undefined);
     const renkoBoxRef = useRef<number | undefined>(undefined);
     renkoBoxRef.current = renkoBox;
@@ -264,6 +343,18 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setRenkoBox(readRenkoBox(window.localStorage));
         setKagiReversal(readKagiReversal(window.localStorage));
         setLineBreakCount(readLineBreakCount(window.localStorage));
+        setPaletteState(readPaletteState());
+    }, []);
+    useEffect(() => {
+        writePaletteState(paletteState);
+    }, [paletteState]);
+    // The theme's tokens are CSS variables, so they are read from the live document — and re-read
+    // when the shell flips the theme, so the pickers never show a colour the chart is not using.
+    useEffect(() => {
+        const sync = () => setThemeColors(themePalette());
+        sync();
+        window.addEventListener('rovex:theme', sync);
+        return () => window.removeEventListener('rovex:theme', sync);
     }, []);
     useEffect(() => {
         writeChartType(window.localStorage, chartType);
@@ -305,16 +396,27 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     studiesRef.current = studies;
     // The bar the legend reads: the hovered one, or the last bar the host drew.
     const [readout, setReadout] = useState<BarReadout | null>(null);
+    // The same bar plus the pointer, for the tooltip that follows a hovered candle.
+    const [hover, setHover] = useState<{ readout: BarReadout | null; point: { x: number; y: number } | null }>({
+        readout: null,
+        point: null,
+    });
     const [tool, setTool] = useState<ActiveTool | null>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     // Hide-all: the drawings stay in memory, the layer just stops rendering.
     const [drawingsHidden, setDrawingsHidden] = useState(false);
+    // The list of drawings is a reference, not a workspace: it stays folded to one strip until asked.
+    const [listOpen, setListOpen] = useState(false);
     // Magnet is a working mode, not a preference: it starts off and cycles weak → strong → off.
     const [magnet, setMagnet] = useState<MagnetStrength>('off');
     const magnetRef = useRef<MagnetStrength>('off');
     magnetRef.current = magnet;
     const [pendingLabels, setPendingLabels] = useState<string[] | null>(null);
     const [noteText, setNoteText] = useState('');
+    // An uploaded picture is a data payload, not a note: it must not leak into the next text tool.
+    useEffect(() => {
+        if (tool !== 'image' && noteText.startsWith('data:image')) setNoteText('');
+    }, [tool, noteText]);
     // The drawing list is a timeline: every discrete edit is a step, a whole drag is one step.
     const [timeline, setTimeline] = useState<DrawingHistory<Drawing[]>>(() => createHistory<Drawing[]>([]));
     const drawings = timeline.present;
@@ -327,7 +429,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     /** Opens a symbol's stored set: it is the starting point, not an edit, so undo cannot erase it. */
     const resetDrawings = useCallback((list: Drawing[]) => {
         setTimeline(createHistory(list));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
 
     // The account's copy of this symbol's setup — the drawings and the studies — so a chart follows the
@@ -397,42 +499,48 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     }, []);
     const undo = useCallback(() => {
         setTimeline((history) => undoHistory(history));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
     const redo = useCallback(() => {
         setTimeline((history) => redoHistory(history));
-        setSelectedId(null);
+        setSelectedId([]);
     }, []);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    // Several drawings can be selected at once: shift-click adds to the set, and the whole set moves,
+    // restyles and deletes together. `selectedId` is the one a control that takes a single drawing
+    // acts on — a handle, a colour chip, an edit — namely the last one picked.
+    const [selectedIds, setSelectedId] = useState<string[]>([]);
+    const selectedId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
+    const selectOnly = useCallback((id: string | null) => setSelectedId(id ? [id] : []), []);
 
     // A clipboard for drawings, in memory: a copy is a sketch until it is pasted.
-    const clipboard = useRef<Drawing | null>(null);
+    const clipboard = useRef<Drawing[]>([]);
     const copySelected = useCallback(() => {
-        const drawing = drawings.find((d) => d.id === selectedId);
-        if (drawing) clipboard.current = drawing;
-    }, [drawings, selectedId]);
-    const offsetCopy = (drawing: Drawing) =>
-        cloneDrawing(drawing, newDrawingId(), { price: Math.max(0.001, Math.abs(drawing.points[0]?.price ?? 0) * 0.005) });
+        const chosen = drawings.filter((d) => selectedIds.includes(d.id));
+        if (chosen.length > 0) clipboard.current = chosen;
+    }, [drawings, selectedIds]);
+    const offsetCopyList = (list: Drawing[]) =>
+        list.map((drawing) =>
+            cloneDrawing(drawing, newDrawingId(), { price: Math.max(0.001, Math.abs(drawing.points[0]?.price ?? 0) * 0.005) }),
+        );
     const pasteClipboard = useCallback(() => {
         const source = clipboard.current;
-        if (!source) return;
-        const copy = cloneDrawing(source, newDrawingId(), {
-            price: Math.max(0.001, Math.abs(source.points[0]?.price ?? 0) * 0.005),
-        });
-        setDrawings((list) => [...list, copy]);
-        setSelectedId(copy.id);
+        if (source.length === 0) return;
+        const copies = offsetCopyList(source);
+        setDrawings((list) => [...list, ...copies]);
+        setSelectedId(copies.map((copy) => copy.id));
     }, [setDrawings]);
     const duplicateSelected = useCallback(() => {
-        const drawing = drawings.find((d) => d.id === selectedId);
-        if (!drawing) return;
-        const copy = offsetCopy(drawing);
-        setDrawings((list) => [...list, copy]);
-        setSelectedId(copy.id);
-    }, [drawings, selectedId, setDrawings]);
-    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'color' | 'textColor' | 'customColor' | 'customFill' | 'customTextColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels'>>) => {
-        if (!selectedId) return;
+        const chosen = drawings.filter((d) => selectedIds.includes(d.id));
+        if (chosen.length === 0) return;
+        const copies = offsetCopyList(chosen);
+        setDrawings((list) => [...list, ...copies]);
+        setSelectedId(copies.map((copy) => copy.id));
+    }, [drawings, selectedIds, setDrawings]);
+    const restyleDrawing = (patch: Partial<Pick<Drawing, 'width' | 'dash' | 'textSize' | 'bold' | 'italic' | 'background' | 'color' | 'textColor' | 'customColor' | 'customFill' | 'customTextColor' | 'fill' | 'fillOpacity' | 'timeframes' | 'fibLevels' | 'extend'>>) => {
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
         setDrawings((list) => list.map((d) => {
-            if (d.id !== selectedId) return d;
+            if (!chosen.has(d.id)) return d;
             const next = { ...d, ...patch };
             // A cleared field must leave the drawing, not sit in it as undefined.
             for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
@@ -473,8 +581,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     // A template paints the selected drawing, or arms the current tool for the next one.
     const applyTemplate = (style: ReturnType<typeof styleOfDrawing>) => {
-        if (selectedId) {
-            setDrawings((list) => list.map((drawing) => (drawing.id === selectedId ? { ...drawing, ...stylePatch(style) } : drawing)));
+        if (selectedIds.length > 0) {
+            const chosen = new Set(selectedIds);
+            setDrawings((list) => list.map((drawing) => (chosen.has(drawing.id) ? { ...drawing, ...stylePatch(style) } : drawing)));
             return;
         }
         const armed = tool && tool !== 'select' && tool !== 'measure' ? tool : undefined;
@@ -485,9 +594,37 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         }
     };
 
+    // A whole-chart template: the drawings are stamped on with fresh ids (so they add rather than
+    // overwrite), and the studies merge by id the same way an imported setup does.
+    const applyChartTemplate = (template: ChartTemplate) => {
+        const applied = instantiateChartTemplate(template);
+        if (applied.drawings.length > 0) setDrawings((list) => mergeDrawings(list, applied.drawings));
+        if (applied.studies.length > 0) updateStudies(mergeStudies(studies, applied.studies));
+    };
+
+    const saveChartTemplate = () => {
+        const next = addChartTemplate(chartTemplates, chartTemplateName, drawings, studies);
+        if (next === chartTemplates) return;
+        setChartTemplates(next);
+        saveChartTemplates(next);
+        setChartTemplateName('');
+    };
+
     const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [menu, setMenu] = useState<MenuId | null>(null);
+    // The phone fold: one row of controls until the trader asks for the rest of the toolbar.
+    const [toolbarMore, setToolbarMore] = useState(false);
+    // The right-click object menu: where it is anchored, and which drawing it acts on.
+    const [objectMenu, setObjectMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+    // An alert opened from the object menu: the modal lives at the top level, so closing the menu
+    // does not take the dialog with it.
+    const [objectAlert, setObjectAlert] = useState<string | null>(null);
+    // A copied look, held for the session: paste it onto any drawing the trader picks next.
+    const [styleClipboard, setStyleClipboard] = useState<CopiedStyle | null>(null);
+    // The chart caught as an image, while the print sheet is open. Printing waits for it, so the page
+    // never goes to the printer with a blank hole where the chart was.
+    const [printSheet, setPrintSheet] = useState<{ dataUrl: string; width: number; height: number } | null>(null);
     // The count the automatic numbering targets: whatever degree/kind was last picked by hand.
     const [countChoice, setCountChoice] = useState<{ degree: CountDegree; kind: CountKind }>({
         degree: 'minor',
@@ -495,10 +632,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     });
     const [sensitivity, setSensitivity] = useState<AutoSensitivity>(AUTO_SENSITIVITIES[0]);
     const [autoNotice, setAutoNotice] = useState<StringKey | null>(null);
+    // Wolfe's notice is its own: the two autos sit in different flyouts and must not share a message.
+    const [wolfeNotice, setWolfeNotice] = useState<StringKey | null>(null);
     const [paste, setPaste] = useState('');
     const [transfer, setTransfer] = useState<'ok' | 'bad' | 'copied' | 'blocked' | null>(null);
     // Bumped whenever the chart pans or zooms, so the drawings are re-projected onto the new scale.
     const [, setFrame] = useState(0);
+    // True once the trader has panned or zoomed away from the newest bar; shows the "back to latest" pill.
+    const [scrolledBack, setScrolledBack] = useState(false);
+    // Bumped by the background refresh so the compare overlays fetch again with the main series.
+    const [refreshTick, setRefreshTick] = useState(0);
     // Compare overlays: the symbols, their candles, and the little add control.
     const [compareList, setCompareList] = useState<string[]>([]);
     const [compareData, setCompareData] = useState<Record<string, CandleSet | null>>({});
@@ -519,6 +662,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     const [intent, setIntent] = useState<ReplayIntent>({});
     const [orderError, setOrderError] = useState<OrderFailure | null>(null);
     const [resumedFrom, setResumedFrom] = useState<number | null>(null);
+    // The ghost feed: the bars after the cursor, painted faintly. Off by default, because seeing the
+    // future is a choice a replay should not make for the trader.
+    const [ghost, setGhost] = useState(false);
 
     const replayCandles = useMemo(() => replaySet?.candles ?? [], [replaySet]);
 
@@ -538,6 +684,39 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         if (!replaySet) return null;
         return { candles: visibleCandles(replayCandles, cursor), currency: replaySet.currency };
     }, [replay, data, replaySet, replayCandles, cursor]);
+
+    // The bars the replay has not reached. They go to their own faint series, never to the price
+    // series, so no indicator, drawing or marker can be shaped by them.
+    const ghostCandles = useMemo(
+        () => (replay && ghost ? replayCandles.slice(cursor + 1) : []),
+        [replay, ghost, replayCandles, cursor],
+    );
+
+    // The quote header the overview draws above the chart: the instrument, its last print, the day's
+    // move and whether its market is open. Every number comes from the candles already on screen —
+    // the header never asks the feed a second question.
+    // TASI is Tadawul's own index and arrives without the .SR suffix its listings carry.
+    const isTadawul = symbol.toUpperCase().endsWith('.SR') || symbol.toUpperCase() === 'TASI';
+    const quote = useMemo(() => {
+        const candles = data?.candles ?? [];
+        const last = candles.at(-1);
+        if (!last) return null;
+        return { price: last.close, change: sessionChange(candles, isTadawul ? 'riyadh' : 'utc', data?.previousClose) };
+    }, [data, isTadawul]);
+
+    // The clock is read after mount: the server's minute and the browser's would otherwise disagree
+    // in the markup, and a phase is only useful when it is the reader's own now.
+    const [phase, setPhase] = useState<TadawulPhase | null>(null);
+    useEffect(() => {
+        if (!isTadawul) return;
+        const tick = () => {
+            const now = riyadhNow(new Date());
+            setPhase(tadawulPhase(now.weekday, now.minutes));
+        };
+        tick();
+        const timer = window.setInterval(tick, 60_000);
+        return () => window.clearInterval(timer);
+    }, [isTadawul]);
 
     // Latest-value refs for the callbacks that must not re-run when a replay bar advances.
     displayRef.current = displayData;
@@ -603,22 +782,46 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             if (!cancelled) setCompareData(Object.fromEntries(entries));
         })();
         return () => { cancelled = true; };
-    }, [compareList, intervalId, replay]);
+    }, [compareList, intervalId, replay, refreshTick]);
 
-    const load = useCallback(async () => {
-        setStatus('loading');
+    // `silent` is the background refresh: it never flashes the loading overlay, never clears the
+    // chart on a failed fetch, and never moves the view or the "back to latest" pill.
+    const load = useCallback(async (options?: { silent?: boolean }) => {
+        const silent = options?.silent === true;
+        if (!silent) setStatus('loading');
         const result = await getYahooCandles(symbol, intervalId);
         if (!result || result.candles.length === 0) {
+            if (silent) return;
             setData(null);
             setStatus('error');
             return;
         }
+        if (silent) followLatestRef.current = candleHostRef.current?.isAtLatest() ?? true;
         setData(result);
         setStatus('ready');
+        if (!silent) setScrolledBack(false);
     }, [symbol, intervalId]);
 
     useEffect(() => {
         void load();
+    }, [load]);
+
+    // The feed is delayed, but a chart left open should still pick up the next bar without a reload.
+    // One request a minute matches the server's own one-minute cache; a hidden tab costs nothing and
+    // catches up the moment it is shown again. Replay owns its own history, so it is left alone.
+    useEffect(() => {
+        const refresh = () => {
+            if (replayRef.current) return;
+            if (document.visibilityState !== 'visible') return;
+            void load({ silent: true });
+            setRefreshTick((tick) => tick + 1);
+        };
+        const timer = window.setInterval(refresh, 60_000);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener('visibilitychange', refresh);
+        };
     }, [load]);
 
     // Entering replay swaps the light chart payload for the lab's deep history (10y daily, 10y weekly,
@@ -727,12 +930,16 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     const [drawingStyles, setDrawingStyles] = useState<DrawingStyleMap>({});
     const [templates, setTemplates] = useState<DrawingTemplate[]>([]);
+    // Whole-chart templates: every drawing and study, saved under a name and stamped onto any symbol.
+    const [chartTemplates, setChartTemplates] = useState<ChartTemplate[]>([]);
     const shareApplied = useRef(false);
     const [templateName, setTemplateName] = useState('');
+    const [chartTemplateName, setChartTemplateName] = useState('');
     const [levelDraft, setLevelDraft] = useState('');
     useEffect(() => {
         setDrawingStyles(loadDrawingStyles());
         setTemplates(loadTemplates());
+        setChartTemplates(loadChartTemplates());
     }, []);
     const rememberStyle = (tool: ShapeTool | undefined, style: { color?: ColorKey; width?: DrawingWidth; dash?: DrawingDash }) => {
         if (!tool) return;
@@ -871,26 +1078,41 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             chartType: chartTypeRef.current,
             scaleMode: scaleModeRef.current,
             timeZone: timeZoneRef.current,
+            lang,
             sessionBreaks: sessionBreaksRef.current,
+            watermark: watermarkRef.current ? watermarkText : null,
             volumeVisible: volumeVisibleRef.current,
             invertScale: invertScaleRef.current,
+            palette: resolvePalette(paletteStateRef.current),
             renkoBox: renkoBoxRef.current,
             kagiReversal: kagiReversalRef.current,
             lineBreakCount: lineBreakCountRef.current,
             pnfBox: pnfBoxRef.current,
             pnfReversal: pnfReversalRef.current,
+            interval: intervalId,
+            // A study that names a symbol (correlation, spread) loads it through the same action the
+            // compare pane uses: one fetch path, one cache, no new endpoint.
+            loadSymbol: getCompareCandles,
             onPriceSeries: (series) => {
                 // The host replaces the price series when the chart type changes; the markers and the
                 // coordinate reference must follow the series that is actually on screen.
                 seriesRef.current = series;
-                // Both lists from the start: the events are already known when the chart is built.
+                // Every list from the start: the events are already known when the chart is built.
                 markersApiRef.current = createSeriesMarkers(
                     series,
-                    [...eventMarkersRef.current, ...markersRef.current].sort((a, b) => Number(a.time) - Number(b.time)),
+                    [...eventMarkersRef.current, ...earningsMarkersRef.current, ...markersRef.current].sort(
+                        (a, b) => Number(a.time) - Number(b.time)
+                    ),
                 );
             },
             extend,
-            onRangeChange: () => setFrame((frame) => frame + 1),
+            onRangeChange: () => {
+                setFrame((frame) => frame + 1);
+                // The host is still null while the chart is being built; the first fit lands at the
+                // newest bar, so only a real pan or zoom away should raise the pill.
+                const host = candleHostRef.current;
+                if (host) setScrolledBack(!host.isAtLatest());
+            },
         });
 
         // Replay opens on the recent end of a ten-year series, not compressed into a thousand bars.
@@ -904,17 +1126,19 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         // The host owns the crosshair and the indicator arrays, so the legend cannot drift from the
         // chart: it fires on hover, on a replay step, and on an indicator toggle alike.
         const unsubscribeReadout = host.subscribeReadout(setReadout);
+        const unsubscribeHover = host.subscribeHover(setHover);
         chartRef.current = host.chart;
 
         return () => {
             unsubscribeReadout();
+            unsubscribeHover();
             candleHostRef.current = null;
             chartRef.current = null;
             seriesRef.current = null;
             markersApiRef.current = null;
             host.destroy();
         };
-    }, [hasDisplay, intervalId, compareList, compareData, symbol, compareFrom]);
+    }, [hasDisplay, intervalId, compareList, compareData, symbol, compareFrom, lang, watermarkText]);
 
     // Studies are redrawn in place: the bars, the zoom and the replay never move.
     useEffect(() => {
@@ -956,6 +1180,21 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     useEffect(() => {
         candleHostRef.current?.setVolumeVisible(volumeVisible);
     }, [volumeVisible]);
+    // A palette change repaints the candles, the tile and the grid without rebuilding the chart.
+    useEffect(() => {
+        candleHostRef.current?.setPalette(resolvePalette(paletteState));
+    }, [paletteState]);
+    // The shell around the chart is not inside the chart's own style scope, so its frame tokens are
+    // mirrored onto the nearest `.hatch`. Removed on cleanup, which hands the frame back to the theme.
+    useEffect(() => {
+        const hatch = rootRef.current?.closest('.hatch') as HTMLElement | null;
+        if (!hatch || !resolvedPalette) return;
+        const vars = paletteVars(resolvedPalette);
+        for (const [name, value] of Object.entries(vars)) hatch.style.setProperty(name, value);
+        return () => {
+            for (const name of Object.keys(vars)) hatch.style.removeProperty(name);
+        };
+    }, [resolvedPalette]);
     // The theme toggle lives in the shell; the chart repaints itself when it flips.
     useEffect(() => {
         const onTheme = () => candleHostRef.current?.setTheme();
@@ -965,6 +1204,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     useEffect(() => {
         candleHostRef.current?.setSessionBreaks(sessionBreaks);
     }, [sessionBreaks]);
+    useEffect(() => {
+        candleHostRef.current?.setWatermark(watermark ? watermarkText : null);
+    }, [watermark, watermarkText]);
 
     // Undo/redo on the drawings, the shortcut every editor shares. Typing in a field keeps its own
     // undo, so the handler steps aside there.
@@ -1012,20 +1254,40 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 setShortcutsOpen((open) => !open);
                 return;
             }
+            // Shift+letter is replay trading (⇧B / ⇧S / ⇧X), not a tool: the panel owns those.
+            if (event.shiftKey) return;
+            if (event.key.toLowerCase() === MEASURE_KEY) {
+                event.preventDefault();
+                setTool((current) => (current === 'measure' ? null : 'measure'));
+                return;
+            }
             const next = toolForKey(event.key);
-            if (next) {
+            if (next && canUseDrawing(features, next as Parameters<typeof canUseDrawing>[1])) {
                 event.preventDefault();
                 setTool((current) => (current === next ? null : next));
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, []);
+    }, [features]);
 
     // A replay step replaces the candles in place: the zoom, the panes and the markers stay put.
     useEffect(() => {
-        if (displayData) candleHostRef.current?.setData(displayData);
+        if (!displayData) return;
+        const host = candleHostRef.current;
+        if (!host) return;
+        host.setData(displayData);
+        // A background refresh that arrived while the trader was at the newest bar keeps them there.
+        if (followLatestRef.current) {
+            followLatestRef.current = false;
+            host.toLatest();
+        }
     }, [displayData]);
+
+    // The ghost feed follows the cursor: a step forward shortens it, a step back lengthens it.
+    useEffect(() => {
+        candleHostRef.current?.setGhost(ghostCandles);
+    }, [ghostCandles]);
 
     // Entering or leaving replay re-frames the view once. Steps after that never touch it, which is
     // what makes a fast replay readable instead of a chart that keeps re-fitting itself.
@@ -1041,9 +1303,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         else host.fit();
     }, [replay, intervalId, displayData]);
 
-    /** Both lists on one series: the events sit under whatever the strategy is marking. */
+    /** Every list on one series: events and results sit under whatever the strategy is marking. */
     const syncMarkers = useCallback(() => {
-        const all = [...eventMarkersRef.current, ...markersRef.current].sort((a, b) => Number(a.time) - Number(b.time));
+        const all = [...eventMarkersRef.current, ...earningsMarkersRef.current, ...markersRef.current].sort(
+            (a, b) => Number(a.time) - Number(b.time)
+        );
         markersApiRef.current?.setMarkers(all);
     }, []);
     const applyStrategyMarkers = useCallback(
@@ -1077,6 +1341,42 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             }));
         syncMarkers();
     }, [data, intervalId, syncMarkers]);
+
+    // Results days. A report is a day, not a bar, so it is only marked on daily-and-lower intervals;
+    // the last report and the next scheduled one are both worth seeing on a chart.
+    useEffect(() => {
+        const intraday = ['1m', '5m', '15m', '30m', '60m', '2h', '4h'].includes(intervalId);
+        const candles = data?.candles ?? [];
+        if (intraday || candles.length === 0) {
+            earningsMarkersRef.current = [];
+            syncMarkers();
+            return;
+        }
+        let cancelled = false;
+        void getEarningsDates(symbol)
+            .then((dates) => {
+                if (cancelled || !dates) return;
+                const first = candles[0].time;
+                const last = candles[candles.length - 1].time;
+                const markers: SeriesMarker<UTCTimestamp>[] = [];
+                const add = (ms: number | null, text: string, position: 'aboveBar' | 'belowBar') => {
+                    if (ms == null) return;
+                    const time = Math.floor(ms / 1000);
+                    if (time < first || time > last) return;
+                    markers.push({ time: time as UTCTimestamp, position, shape: 'arrowDown', color: '#A78BFA', text });
+                };
+                add(dates.last, 'E', 'aboveBar');
+                add(dates.next, 'E?', 'belowBar');
+                earningsMarkersRef.current = markers;
+                syncMarkers();
+            })
+            .catch(() => {
+                /* A missing calendar is not a chart error. */
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [symbol, intervalId, data, syncMarkers]);
 
     useEffect(() => {
         if (!expanded) return;
@@ -1127,12 +1427,45 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     const startTool = (next: ActiveTool | null, labels: string[] | null = null) => {
         setMenu(null);
-        setSelectedId(null);
+        setSelectedId([]);
         setPendingLabels(labels);
         setTool((current) => (current === next && !labels ? null : next));
     };
 
     const commit = (drawing: Drawing) => setDrawings((list) => [...list, { ...styleFor(drawing.tool, drawingStyles), ...drawing }]);
+
+    // A scanner link: one pattern, drawn once. The token is read from the prop, so the parameter is
+    // cleared only after the draw (or after the candles fail) — clearing it earlier lets the router
+    // re-render the page with no token before the chart has had a chance to use it. The drawing waits
+    // for both the candles and the account's setup, because the setup merge replaces the whole list
+    // and would erase a shape committed while it was still loading.
+    const appliedToken = useRef<string | null>(null);
+    useEffect(() => {
+        if (!initialPattern || appliedToken.current === initialPattern) return;
+        const clearParam = () => {
+            const url = new URL(window.location.href);
+            if (!url.searchParams.has('pattern')) return;
+            url.searchParams.delete('pattern');
+            window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+        };
+        if (status === 'error') {
+            appliedToken.current = initialPattern;
+            clearParam();
+            return;
+        }
+        if (status !== 'ready' || syncState === 'loading') return;
+        appliedToken.current = initialPattern;
+        const link = decodePatternLink(initialPattern);
+        const drawing = link ? drawingFromLink(link) : null;
+        if (drawing) {
+            commit(drawing);
+            setSelectedId([drawing.id]);
+            toast.success(t('scan.added'));
+        }
+        clearParam();
+        // `commit` and `t` are stable enough for a one-shot; the token guard makes a re-run harmless.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialPattern, status, syncState]);
 
     /**
      * Numbers the waves on the candles that are loaded. One shot, like a normal tool: the result is
@@ -1156,10 +1489,38 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             return;
         }
         commit(drawing);
-        setSelectedId(drawing.id);
+        setSelectedId([drawing.id]);
         setTool(null);
         setPendingLabels(null);
         setAutoNotice(null);
+        setMenu(null);
+    };
+
+    /**
+     * Finds the most recent Wolfe wave in the candles and places it like any other drawing: the
+     * trader can drag, recolour, or delete it straight away. Same one-shot behaviour as the count.
+     */
+    const runWolfe = (sensitivityId: AutoSensitivity) => {
+        const candles = data?.candles ?? [];
+        setSensitivity(sensitivityId);
+        if (candles.length === 0) {
+            setWolfeNotice('chart.wolfe.autoLoading');
+            return;
+        }
+        const drawing = findWolfe(candles, {
+            ...(sensitivityId === 'atr'
+                ? { mode: 'atr' as const }
+                : { mode: 'percent' as const, percent: Number(sensitivityId) }),
+        });
+        if (!drawing) {
+            setWolfeNotice('chart.wolfe.autoNone');
+            return;
+        }
+        commit(drawing);
+        setSelectedId([drawing.id]);
+        setTool(null);
+        setPendingLabels(null);
+        setWolfeNotice(null);
         setMenu(null);
     };
 
@@ -1224,6 +1585,30 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         updateStudies([...studies, { ...formula, params: { ...formula.params, expression: entry.example ?? formula.params.expression } }]);
     };
 
+    // A command-bar pick arrives as an address: ?tool=drawing:fib. It is applied once, then the URL
+    // forgets it, so a reload does not arm the tool again. The ref keeps the effect out of the
+    // handler's dependency list without freezing an old closure in it.
+    const insertToolRef = useRef(insertTool);
+    insertToolRef.current = insertTool;
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const entry = toolFromParam(params.get('tool'));
+        if (!entry) return;
+        if (!canUseTool(features, entry)) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('tool');
+            window.history.replaceState({}, '', url.toString());
+            return;
+        }
+        insertToolRef.current(entry);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('tool');
+        window.history.replaceState({}, '', url.toString());
+        // Once per page load: the parameter is gone from the URL by the time this runs again.
+        // `features` only changes with the account, never inside a loaded chart.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // The Elliott flyout also keeps the degree picker and the one-shot auto count.
     const countExtra = (
         <div className="mt-1 border-t border-line pt-1.5">
@@ -1272,21 +1657,63 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             )}
         </div>
     );
+
+    // The patterns flyout offers the same one-shot detection for Wolfe, over the same sensitivities.
+    const wolfeExtra = (
+        <div className="mt-1 border-t border-line pt-1.5">
+            <p className="px-2 pb-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">{t('chart.wolfe.auto')}</p>
+            <div className="flex items-center gap-1 px-2">
+                {AUTO_SENSITIVITIES.map((id) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => runWolfe(id)}
+                        disabled={!hasCandles}
+                        aria-pressed={sensitivity === id}
+                        title={id === 'atr' ? t('chart.count.autoAtr') : undefined}
+                        className={cn(
+                            'flex-1 rounded-full px-2 py-1 text-[11.5px] font-semibold transition-colors',
+                            sensitivity === id ? 'bg-brand text-brand-ink' : 'bg-page text-muted hover:bg-hover',
+                            !hasCandles && 'cursor-not-allowed opacity-40',
+                        )}
+                    >
+                        {id === 'atr' ? 'ATR' : `${Math.round(Number(id) * 100)}%`}
+                    </button>
+                ))}
+            </div>
+            {wolfeNotice && (
+                <p role="status" className="px-2 pt-1.5 text-[11px] leading-snug text-faint">
+                    {t(wolfeNotice)}
+                </p>
+            )}
+        </div>
+    );
     // The anchor is taken once per gesture: a body drag is one edit, and translating from the
     // anchor (not from the last position) keeps it exact however fast the pointer moves.
-    const bodyAnchor = useRef<{ id: string; points: DrawPoint[] } | null>(null);
-    const beginBodyDrag = (id: string) => {
-        const drawing = drawings.find((d) => d.id === id);
-        if (!drawing) return;
+    const bodyAnchor = useRef<Map<string, DrawPoint[]> | null>(null);
+    // A group drag keeps one anchor per drawing, so every shape moves by the same delta from where
+    // it was when the drag began — not from wherever it has been pushed to in the meantime.
+    const beginBodyDrag = (ids: string[]) => {
+        const anchors = new Map(
+            drawings
+                .filter((d) => ids.includes(d.id))
+                .map((d) => [d.id, d.points.map((point) => ({ ...point }))] as const),
+        );
+        if (anchors.size === 0) return;
         beginGesture();
-        bodyAnchor.current = { id, points: drawing.points.map((point) => ({ ...point })) };
+        bodyAnchor.current = anchors;
     };
-    const moveBody = (id: string, delta: { time: number; price: number }) => {
-        const anchor = bodyAnchor.current;
-        if (!anchor || anchor.id !== id) return;
+    const moveBody = (ids: string[], delta: { time: number; price: number }) => {
+        const anchors = bodyAnchor.current;
+        if (!anchors || anchors.size === 0) return;
+        const moving = new Set(ids);
         setTimeline((history) => ({
             ...history,
-            present: history.present.map((d) => (d.id === id ? { ...translateDrawing({ ...d, points: anchor.points }, delta) } : d)),
+            present: history.present.map((d) => {
+                if (!moving.has(d.id)) return d;
+                const points = anchors.get(d.id);
+                return points ? translateDrawing({ ...d, points }, delta) : d;
+            }),
         }));
     };
     const moveHandle = (id: string, index: number, point: DrawPoint) =>
@@ -1305,20 +1732,92 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     /** Hidden drawings keep their place in the list and in storage; they are simply not painted. */
     const toggleHidden = (id: string) =>
         setDrawings((list) => list.map((d) => (d.id === id ? { ...d, hidden: !d.hidden } : d)));
+    /** The same two toggles for the whole selection: one click locks or hides everything picked. */
+    const toggleLockSelected = () => {
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        const lock = !drawings.filter((d) => chosen.has(d.id)).every((d) => d.locked);
+        setDrawings((list) => list.map((d) => (chosen.has(d.id) ? { ...d, locked: lock } : d)));
+    };
+    const toggleHiddenSelected = () => {
+        if (selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        const hide = !drawings.filter((d) => chosen.has(d.id)).every((d) => d.hidden);
+        setDrawings((list) => list.map((d) => (chosen.has(d.id) ? { ...d, hidden: hide } : d)));
+    };
     const allLocked = drawings.length > 0 && drawings.every((drawing) => drawing.locked);
     const toggleLockAll = () => setDrawings((list) => list.map((drawing) => ({ ...drawing, locked: !allLocked })));
     /** Which end of the pile the selected drawing sits on. The list's order is the stacking order. */
     const layerSelected = (move: LayerMove) => {
-        if (!selectedId) return;
-        setDrawings((list) => layerDrawings(list, selectedId, move));
+        if (selectedIds.length === 0) return;
+        setDrawings((list) => (selectedIds.length === 1 ? layerDrawings(list, selectedIds[0], move) : layerDrawingsMany(list, selectedIds, move)));
     };
     const removeDrawing = (id: string) => {
         setDrawings((list) => list.filter((d) => d.id !== id));
-        setSelectedId((current) => (current === id ? null : current));
+        setSelectedId((current) => current.filter((selected) => selected !== id));
     };
+    const removeSelected = () => {
+        if (selectedIds.length === 0) return;
+        const gone = new Set(selectedIds);
+        setDrawings((list) => list.filter((d) => !gone.has(d.id)));
+        setSelectedId([]);
+    };
+    /** Copy the look of the drawing the trader picked last; the geometry and the words stay behind. */
+    const copyStyleSelected = () => {
+        const source = selectedId ? drawings.find((drawing) => drawing.id === selectedId) : null;
+        if (!source) return;
+        setStyleClipboard(copyStyleOf(source));
+        toast.success(t('chart.style.copied'));
+    };
+    /** Paint the copied look onto everything selected, replacing each drawing's own style. */
+    const pasteStyleSelected = () => {
+        if (!styleClipboard || selectedIds.length === 0) return;
+        const chosen = new Set(selectedIds);
+        setDrawings((list) => list.map((drawing) => (chosen.has(drawing.id) ? applyCopiedStyle(drawing, styleClipboard) : drawing)));
+    };
+    /** One side of the trend line's extension, toggled independently of the other. */
+    const toggleExtend = (side: 'left' | 'right') => {
+        if (!selectedDrawing) return;
+        const current = selectedDrawing.extend;
+        const on = current === 'both' || current === side;
+        const left = side === 'left' ? !on : current === 'both' || current === 'left';
+        const right = side === 'right' ? !on : current === 'both' || current === 'right';
+        restyleDrawing({ extend: left && right ? 'both' : left ? 'left' : right ? 'right' : undefined });
+    };
+    const openObjectMenu = useCallback((hit: { id: string; x: number; y: number } | null) => {
+        setObjectMenu(hit);
+    }, []);
+    const objectTarget = objectMenu ? drawings.find((drawing) => drawing.id === objectMenu.id) ?? null : null;
+    // The line the object menu's alert would watch: snapshotted when the alert is made, so dragging
+    // the drawing afterwards cannot change what was promised.
+    const objectAnchor = objectTarget ? anchorFor(objectTarget.tool, objectTarget.points) : null;
+    const alertTarget = objectAlert ? drawings.find((drawing) => drawing.id === objectAlert) ?? null : null;
+    const alertAnchor = alertTarget ? anchorFor(alertTarget.tool, alertTarget.points) : null;
+    const closeObjectMenu = () => setObjectMenu(null);
+    // A menu is a moment, not a mode: a click anywhere else, a scroll or Escape dismisses it.
+    useEffect(() => {
+        if (!objectMenu) return;
+        const onDown = (event: MouseEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (target && target.closest('[data-object-menu]')) return;
+            setObjectMenu(null);
+        };
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setObjectMenu(null);
+        };
+        document.addEventListener('mousedown', onDown, true);
+        document.addEventListener('keydown', onKey);
+        window.addEventListener('scroll', closeObjectMenu, true);
+        return () => {
+            document.removeEventListener('mousedown', onDown, true);
+            document.removeEventListener('keydown', onKey);
+            window.removeEventListener('scroll', closeObjectMenu, true);
+        };
+    }, [objectMenu]);
+
     const clearAll = () => {
         setDrawings([]);
-        setSelectedId(null);
+        setSelectedId([]);
         // Straight to the account, not on the debounce: an empty local set merged with the old account
         // copy would restore every drawing on the next visit.
         pendingSetup.current = null;
@@ -1333,16 +1832,25 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         });
     };
 
-    /** The chart plus the drawings layer, stamped with the symbol and interval, as a PNG. */
-    const exportImage = useCallback(async () => {
+    /**
+     * The chart's pixels as one image: the canvas tile, the drawings layer painted on top, and
+     * optionally the symbol line burned in. The PNG download and the printed sheet both start here,
+     * so what a trader prints is exactly what they would have saved.
+     */
+    const compositeChart = useCallback(async (caption: boolean): Promise<{ dataUrl: string; width: number; height: number } | null> => {
         const host = candleHostRef.current;
         const shot = host?.screenshot();
-        if (!host || !shot) return;
+        if (!host || !shot) return null;
         const out = document.createElement('canvas');
         out.width = shot.width;
         out.height = shot.height;
         const ctx = out.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) return null;
+        // A palette paints the tile, so the PNG gets the same tile instead of a transparent hole.
+        if (resolvedPalette) {
+            ctx.fillStyle = resolvedPalette.background;
+            ctx.fillRect(0, 0, out.width, out.height);
+        }
         ctx.drawImage(shot, 0, 0);
 
         // The drawings are an SVG layer over the canvas, so it is serialised and painted on top.
@@ -1366,16 +1874,74 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             });
         }
 
-        const scale = shot.width / Math.max(1, hostRef.current?.clientWidth ?? shot.width);
-        ctx.font = `600 ${Math.round(13 * scale)}px ui-sans-serif, system-ui, sans-serif`;
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
-        ctx.fillText(`${symbol} · ${intervalId} · Rovex`, 12 * scale, 20 * scale);
+        if (caption) {
+            const scale = shot.width / Math.max(1, hostRef.current?.clientWidth ?? shot.width);
+            ctx.font = `600 ${Math.round(13 * scale)}px ui-sans-serif, system-ui, sans-serif`;
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
+            ctx.fillText(`${symbol} · ${intervalId} · Rovex`, 12 * scale, 20 * scale);
+        }
 
+        return { dataUrl: out.toDataURL('image/png'), width: out.width, height: out.height };
+    }, [symbol, intervalId, resolvedPalette]);
+
+    /** Capture the chart, show the sheet, then open the browser's print dialog over it. */
+    const openPrintSheet = useCallback(async () => {
+        const image = await compositeChart(false);
+        if (!image) return;
+        setPrintSheet(image);
+    }, [compositeChart]);
+    /** Put the sheet away and give the tab back its own name. */
+    const closePrintSheet = useCallback(() => {
+        if (originalTitle.current) document.title = originalTitle.current;
+        setPrintSheet(null);
+    }, []);
+    useEffect(() => {
+        if (!printSheet) return;
+        // One frame for the sheet to paint; the fonts and the image are already local.
+        originalTitle.current = document.title;
+        const timer = window.setTimeout(() => {
+            document.title = printDocumentTitle({ symbol, interval: intervalId, printedAt: new Date() });
+            window.print();
+        }, 150);
+        // The dialog closing is the end of the visit, whether the trader printed or cancelled.
+        window.addEventListener('afterprint', closePrintSheet);
+        return () => {
+            window.clearTimeout(timer);
+            window.removeEventListener('afterprint', closePrintSheet);
+        };
+    }, [printSheet, symbol, intervalId, closePrintSheet]);
+
+    /** The facts the printed sheet states, read once from what the chart is already showing. */
+    const printMeta = useMemo(() => {
+        const bars = displayData?.candles ?? [];
+        return {
+            symbol,
+            interval: intervalId,
+            last: bars.at(-1)?.close,
+            // The sheet prints the move as a percent; the quote carries the same percent here.
+            changePercent: quote?.change ?? null,
+            from: bars[0]?.time,
+            to: bars.at(-1)?.time,
+            // Named the way a reader says it — "Stochastic RSI 14" — not the legend's whole parameter
+            // readout, which fills a printed line with numbers nobody needs on paper.
+            studies: studies.map((study) => {
+                const name = t(`study.${study.id}` as StringKey);
+                const period = Number(study.params?.length);
+                return Number.isFinite(period) && period > 0 ? `${name} ${period}` : name;
+            }),
+            currency: data?.currency ?? 'USD',
+        };
+    }, [displayData, symbol, data, intervalId, quote, studies, t]);
+
+    /** The chart, stamped with symbol and interval, as a PNG file. */
+    const exportImage = useCallback(async () => {
+        const image = await compositeChart(true);
+        if (!image) return;
         const link = document.createElement('a');
         link.download = `openstock-${symbol.replace(/[^A-Za-z0-9]/g, '')}-${intervalId}.png`;
-        link.href = out.toDataURL('image/png');
+        link.href = image.dataUrl;
         link.click();
-    }, [symbol, intervalId]);
+    }, [compositeChart, symbol, intervalId]);
 
     const addCompare = () => {
         const candidate = compareYahooSymbol(compareInput);
@@ -1491,6 +2057,63 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
     const cancelPendingOrder = () => setIntent((current) => ({ ...current, order: null }));
 
+    /**
+     * Entry, stop and target as one order. A market entry fills now and the bracket arms on this
+     * bar; a limit or a stop carries its bracket until the bar that fills it, so the position is
+     * protected from the bar after the fill without a second decision from the trader.
+     */
+    const placeBracketOrder = (entry: { type: OrderType; price?: number }, quantity: number, bracket: Bracket) => {
+        if (!replayBar) {
+            setOrderError('badPrice');
+            return;
+        }
+        if (entry.type === 'market') {
+            const refusal = validateBracket(bracket, replayBar.close);
+            if (refusal) {
+                setOrderError(refusal);
+                return;
+            }
+            const result = paperBuy(account, { price: replayBar.close, quantity, time: replayBar.time });
+            if (!result.ok) {
+                setOrderError(result.reason);
+                return;
+            }
+            setAccount(result.account);
+            setIntent((current) => ({ ...current, bracket: { ...bracket, placedAt: replayBar.time } }));
+            setOrderError(null);
+            return;
+        }
+
+        const price = entry.price ?? Number.NaN;
+        const refusal = validateOrder(entry.type, price, quantity, replayBar.close);
+        if (refusal) {
+            setOrderError(refusal);
+            return;
+        }
+        if (bracket.stopLoss == null && bracket.takeProfit == null) {
+            setOrderError('badBracket');
+            return;
+        }
+        // Levels the current mark has already passed cannot protect anything even if the entry
+        // gaps; the real cross-check against the fill happens when the bracket arms on the fill bar.
+        const guard = validateBracketOrder(replayBar.close, bracket);
+        if (guard) {
+            setOrderError(guard);
+            return;
+        }
+        const order: PendingOrder = {
+            id: `o-${replayBar.time}-${entry.type}`,
+            type: entry.type,
+            side: 'buy',
+            price,
+            quantity,
+            placedAt: replayBar.time,
+            bracket,
+        };
+        setIntent((current) => ({ ...current, order }));
+        setOrderError(null);
+    };
+
     /** A stop under the mark and a target above it; both optional, either alone is enough. */
     const setBracket = (bracket: Bracket) => {
         if (!replayBar) {
@@ -1598,6 +2221,18 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         setTransfer('ok');
     };
 
+    // The bars actually on screen (replay included), as a spreadsheet can read them.
+    const exportData = useCallback(() => {
+        const bars = displayRef.current?.candles ?? [];
+        if (bars.length === 0) return;
+        const url = URL.createObjectURL(new Blob([candlesToCsv(bars)], { type: 'text/csv;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = csvFileName(symbol, intervalId);
+        link.click();
+        URL.revokeObjectURL(url);
+    }, [symbol, intervalId]);
+
     const exportFile = () => {
         const payload = JSON.stringify(buildTransferPayload(symbol, drawings), null, 2);
         const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
@@ -1636,15 +2271,53 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     // anchored VWAP and volume profile count them.
     const drawingCandles = useMemo(() => data?.candles ?? [], [data]);
 
+
+
+    // A right-click on a drawing opens its object menu even with no tool armed: the drawings layer
+    // is inert until a tool is picked, so the hit test runs here, in the same chart coordinates.
+    const onChartContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (replay) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const cursor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        const points = visibleDrawings.map((drawing) => {
+            const screen = drawing.points.map((point) => toScreen(point) ?? { x: NaN, y: NaN });
+            return screen.every((spot) => Number.isFinite(spot.x) && Number.isFinite(spot.y)) ? screen : [];
+        });
+        // A right-click inside a box is a click on the box: there is no panning to protect here.
+        const hit = hitTest(visibleDrawings, points, cursor, 9, undefined, true);
+        if (!hit) return;
+        event.preventDefault();
+        setSelectedId([hit.id]);
+        setObjectMenu({ id: hit.id, x: event.clientX, y: event.clientY });
+    };
+
     const body = (
         // dir=ltr on the plotting area too: the labels drawn on the canvas overlay are SVG text
         // (Fibonacci ratios, notes), and in an RTL page "0.786" would otherwise reorder to "786.0".
-        <div className={cn('relative', expanded ? 'size-full' : 'h-[420px]')} dir="ltr">
+        <div
+            className={cn('relative', expanded ? 'size-full' : fill ? 'min-h-[300px] flex-1' : 'h-[420px]')}
+            dir="ltr"
+            onContextMenu={onChartContextMenu}
+        >
             {/* The host element is the one lightweight-charts listens on; the data attribute keeps
                 a browser check pointed at the chart rather than at the widget's inner canvases. */}
             <div ref={hostRef} data-chart="price" className="size-full" />
 
+            {status === 'ready' && (
+                <CandleTooltip readout={hover.readout} point={hover.point} lang={lang} zone={timeZone} />
+            )}
+
             {status === 'ready' && <ChartLegend lang={lang} readout={readout} studies={studies} />}
+
+            {/* The newest bar's clock: only on intraday, only outside replay, and the component
+                itself hides when the market is shut (see secondsToBarClose). */}
+            {status === 'ready' && !replay && displayData && BAR_SECONDS[intervalId] && displayData.candles.length > 0 && (
+                <BarCountdown
+                    lastTime={displayData.candles[displayData.candles.length - 1].time}
+                    intervalId={intervalId}
+                    lang={lang}
+                />
+            )}
 
             {status === 'ready' && !replay && (
                 <DrawingRail
@@ -1653,12 +2326,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     magnetStrength={magnet}
                     onMagnet={() => setMagnet((current) => nextMagnetStrength(current))}
                     locked={!!selectedDrawing?.locked}
-                    canLock={!!selectedId}
-                    onToggleLock={() => selectedId && toggleLock(selectedId)}
+                    canLock={selectedIds.length > 0}
+                    onToggleLock={toggleLockSelected}
                     hidden={drawingsHidden}
                     onHideAll={() => setDrawingsHidden((value) => !value)}
-                    canDelete={!!selectedId}
-                    onDelete={() => selectedId && removeDrawing(selectedId)}
+                    canDelete={selectedIds.length > 0}
+                    onDelete={removeSelected}
                     canUndo={canUndo(timeline)}
                     canRedo={canRedo(timeline)}
                     onUndo={undo}
@@ -1666,14 +2339,14 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     canClear={drawings.length > 0}
                     onClear={clearAll}
                     label={t}
-                    renderGroupExtra={(group) => (group === 'elliott' ? countExtra : null)}
+                    renderGroupExtra={(group) => (group === 'elliott' ? countExtra : group === 'patterns' ? wolfeExtra : null)}
                 />
             )}
 
             {status === 'ready' && !replay && !drawingsHidden && (
                 <ChartDrawings
                     drawings={visibleDrawings}
-                    selectedId={selectedId}
+                    selectedIds={selectedIds}
                     tool={tool}
                     text={noteText}
                     labels={pendingLabels}
@@ -1684,12 +2357,14 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     fromScreen={fromScreen}
                     onCommit={commit}
                     onSelect={setSelectedId}
+                    onContextMenu={openObjectMenu}
                     onMoveHandle={moveHandle}
                     onMoveBody={moveBody}
                     onMoveBodyStart={beginBodyDrag}
                     onGestureStart={beginGesture}
                     onGestureEnd={endGesture}
                     snapPoint={snapDrawingPoint}
+                    paletteText={effectivePalette.text}
                     onEditText={editText}
                     onToolConsumed={() => {
                         // "Stay in drawing mode" keeps the tool armed, so a run of shapes needs no re-pick.
@@ -1717,6 +2392,23 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         </a>
                     </div>
                 </div>
+            )}
+
+            {/* Only after the trader has panned or zoomed away from the newest bar: one tap slides
+                the view back without touching the zoom width. Hidden in replay, where the cursor
+                owns the right edge. */}
+            {status === 'ready' && !replay && scrolledBack && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        candleHostRef.current?.toLatest();
+                        setScrolledBack(false);
+                    }}
+                    className="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-card px-2.5 py-1 text-[11.5px] font-semibold text-foreground shadow-[0_0_0_1px_var(--line),0_8px_24px_oklch(0_0_0/0.35)] transition-colors hover:bg-hover"
+                >
+                    <ChevronsRight className="size-3.5" aria-hidden="true" />
+                    {t('chart.toLatest')}
+                </button>
             )}
         </div>
     );
@@ -1756,8 +2448,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
         }),
     ];
 
-    const dropdown = (id: MenuId, label: string, items: MenuItem[], footer?: ReactNode) => (
-        <div key={id} className="relative">
+    const dropdown = (id: MenuId, label: string, items: MenuItem[], footer?: ReactNode, className?: string) => (
+        <div key={id} className={cn('relative', className)}>
             <button
                 type="button"
                 onClick={() => {
@@ -1784,42 +2476,82 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
     );
 
     return (
-        <div className="flex flex-col gap-2">
-            {/* The chart itself stays LTR: mirrored axes and prices are the one thing RTL must not touch. */}
-            <div className="chart-toolbar" dir="ltr">
-                {timeframes.map((timeframe) => (
-                    <button
-                        key={timeframe.id}
-                        type="button"
-                        onClick={() => setIntervalId(timeframe.id)}
-                        className={cn('pill h-7 px-2.5 text-[12px]', intervalId === timeframe.id && 'is-up')}
-                        aria-pressed={intervalId === timeframe.id}
+        <div
+            ref={rootRef}
+            className={cn('flex flex-col gap-2', fill && 'h-full min-h-0')}
+            // A palette makes the chart its own surface: the tile, the toolbar and the quote header
+            // all read on the same background instead of the page's.
+            style={resolvedPalette
+                ? ({ background: resolvedPalette.background, ...paletteVars(resolvedPalette) } as CSSProperties)
+                : undefined}
+        >
+            {/* The quote header, overview only: what the pane is showing, in the order a trader asks
+                it — instrument, last, change, is the market open, is this data late. */}
+            {showQuote && (
+                <div className="chart-quote">
+                    <Link
+                        href={`/stocks/${encodeURIComponent(symbol)}`}
+                        className="chart-quote-sym mono"
+                        dir="ltr"
                     >
-                        {timeframe.label}
-                    </button>
-                ))}
-                <span className="mx-1 h-4 w-px bg-line" />
-                {/* One field over every drawing, indicator, chart type and formula function. */}
-                <div className="relative">
-                    <button
-                        type="button"
-                        onClick={() => setMenu((current) => (current === 'tools' ? null : 'tools'))}
-                        aria-expanded={menu === 'tools'}
-                        className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', menu === 'tools' && 'is-up')}
-                        title={t('tools.palette')}
-                    >
-                        <Search className="size-3.5" /> {t('tools.palette')}
-                    </button>
-                    {menu === 'tools' && (
+                        {symbol}
+                    </Link>
+                    {quote ? (
                         <>
-                            <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
-                            <ToolPalette lang={lang} onInsert={insertTool} onClose={() => setMenu(null)} />
+                            <bdi className="chart-quote-last num" dir="ltr">{formatPrice(quote.price, lang)}</bdi>
+                            {quote.change != null && (
+                                <bdi
+                                    className={cn(
+                                        'chart-quote-change num',
+                                        quote.change > 0 ? 'is-up' : quote.change < 0 ? 'is-down' : 'is-flat',
+                                    )}
+                                    dir="ltr"
+                                >
+                                    {signedPercent(quote.change, lang)}
+                                </bdi>
+                            )}
                         </>
+                    ) : (
+                        <span className="chart-quote-loading" aria-hidden="true" />
                     )}
+                    <span className="chart-quote-spacer" aria-hidden="true" />
+                    {phase && (
+                        <span className={cn('chart-quote-phase', phase === 'open' && 'is-open')}>
+                            <span className="chart-quote-dot" aria-hidden="true" />
+                            {t(`market.${phase}`)}
+                        </span>
+                    )}
+                    <span className="chart-quote-chip">{t('status.delayed')}</span>
                 </div>
+            )}
+            {/* The chart itself stays LTR: mirrored axes and prices are the one thing RTL must not touch. */}
+            <div className={cn('chart-toolbar chart-toolbar-main', toolbarMore && 'is-open')} dir="ltr">
+                {/* One track, one choice: the intervals are a segmented control, not seven pills. */}
+                <ChartPeriods periods={timeframes} active={intervalId} lang={lang} onPick={setIntervalId} />
+                <span className="tool-divider" aria-hidden />
+                {/* A phone cannot spend five rows on intervals: one button names the one in use. */}
+                {dropdown(
+                    'tf',
+                    timeframes.find((timeframe) => timeframe.id === intervalId)?.label ?? timeframes[0].label,
+                    timeframes.map((timeframe) => ({
+                        key: timeframe.id,
+                        label: timeframe.label,
+                        onClick: () => {
+                            setIntervalId(timeframe.id);
+                            setMenu(null);
+                        },
+                        active: intervalId === timeframe.id,
+                    })),
+                    undefined,
+                    'chart-tf-pick keep-mobile',
+                )}
+                {/* The chart keeps its tools on the floating drawing rail and behind the two
+                    dedicated menus below. The all-in-one "Tools" search pill sat between them and
+                    read as a third, competing entry point for the same things, so it is gone: one
+                    place per job. The shell's own Tools page remains the index of the whole app. */}
                 <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
                 {chartType === 'linebreak' && (
-                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                    <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                         {t('chart.lineBreakCount')}
                         <input
                             type="number"
@@ -1837,7 +2569,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 )}
                 {chartType === 'pnf' && (
                     <>
-                        <label className="flex items-center gap-1 text-[11px] text-faint">
+                        <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                             {t('chart.pnfBox')}
                             <input
                                 type="number"
@@ -1853,7 +2585,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                                 className="num h-7 w-20 rounded-[7px] bg-page px-2 text-foreground shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                         </label>
-                        <label className="flex items-center gap-1 text-[11px] text-faint">
+                        <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                             {t('chart.pnfReversal')}
                             <input
                                 type="number"
@@ -1873,7 +2605,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     </>
                 )}
                 {chartType === 'kagi' && (
-                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                    <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                         {t('chart.kagiReversal')}
                         <input
                             type="number"
@@ -1893,7 +2625,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     </label>
                 )}
                 {chartType === 'renko' && (
-                    <label className="flex items-center gap-1 text-[11px] text-faint">
+                    <label className="keep-mobile flex items-center gap-1 text-[11px] text-faint">
                         {t('chart.renkoBox')}
                         <input
                             type="number"
@@ -1911,7 +2643,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 {dropdown(
                     'type',
                     t('chart.type'),
-                    CHART_TYPES.map((type) => ({
+                    CHART_TYPES.filter((type) => canUseChartType(features, type)).map((type) => ({
                         key: type,
                         label: t(CHART_TYPE_KEYS[type]),
                         onClick: () => {
@@ -1920,68 +2652,32 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         },
                         active: chartType === type,
                     })),
+                    undefined,
+                    'keep-mobile',
                 )}
-                {dropdown(
-                    'tz',
-                    t('chart.tz'),
-                    TIME_ZONES.map((zone) => ({
-                        key: zone.id,
-                        label: t(zone.label),
-                        onClick: () => {
-                            setTimeZone(zone.id);
-                            setMenu(null);
-                        },
-                        active: timeZone === zone.id,
-                    })),
-                )}
-                <button
-                    type="button"
-                    onClick={() => setInvertScale((value) => !value)}
-                    aria-pressed={invertScale}
-                    className={cn('pill h-7 px-2.5 text-[12px]', invertScale && 'is-up')}
-                    title={t('chart.scale.invert')}
-                >
-                    {t('chart.scale.invert')}
-                </button>
+                <span className="tool-divider" aria-hidden />
+                {/* Volume is a layer you flip while reading, so it stays on the bar. */}
                 <button
                     type="button"
                     onClick={() => setVolumeVisible((value) => !value)}
                     aria-pressed={volumeVisible}
+                    aria-label={t('chart.volume')}
                     className={cn('pill h-7 px-2.5 text-[12px]', volumeVisible && 'is-up')}
                     title={t('chart.volume')}
                 >
                     <BarChart3 className="size-3.5" />
                 </button>
-                <button
-                    type="button"
-                    onClick={() => setSessionBreaks((value) => !value)}
-                    aria-pressed={sessionBreaks}
-                    className={cn('pill h-7 px-2.5 text-[12px]', sessionBreaks && 'is-up')}
-                    title={t('chart.sessionBreaks')}
-                >
-                    {t('chart.sessionBreaks')}
-                </button>
-                {dropdown(
-                    'scale',
-                    t('chart.scale'),
-                    SCALE_MODES.map((mode) => ({
-                        key: mode,
-                        label: t(SCALE_MODE_KEYS[mode]),
-                        onClick: () => {
-                            setScaleMode(mode);
-                            setMenu(null);
-                        },
-                        active: scaleMode === mode,
-                    })),
-                )}
+                {/* Replay and compare are modes you flip, not labels you read: the glyph carries them
+                    and the tooltip names them, so the bar keeps its width for the things it explains. */}
                 <button
                     type="button"
                     onClick={() => (replay ? exitReplay() : startReplay())}
                     aria-pressed={replay}
-                    className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', replay && 'is-up')}
+                    aria-label={t('replay.open')}
+                    className={cn('pill h-7 px-2 text-[12px]', replay && 'is-up')}
                     title={t('replay.title')}
                 >
-                    <History className="size-3.5" /> {t('replay.open')}
+                    <History className="size-3.5" />
                 </button>
                 {!replay && (
                 <div className="relative">
@@ -1989,10 +2685,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         type="button"
                         onClick={() => setCompareOpen((value) => !value)}
                         aria-expanded={compareOpen}
-                        className={cn('pill h-7 px-2.5 text-[12px] gap-1.5', compareList.length > 0 && 'is-up')}
+                        aria-label={t('chart.compare')}
+                        className={cn('pill h-7 px-2 text-[12px] gap-1', compareList.length > 0 && 'is-up')}
                         title={t('chart.compare')}
                     >
-                        <GitCompare className="size-3.5" /> {t('chart.compare')}
+                        <GitCompare className="size-3.5" />
                         {compareList.length > 0 && <span className="num text-faint">{compareList.length}</span>}
                     </button>
                     {compareOpen && (
@@ -2036,10 +2733,108 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 </div>
                 )}
                 {!replay && <StrategyMenu symbol={symbol} intervalId={intervalId} lang={lang} onChange={applyStrategyMarkers} initial={autoStrategy} />}
+                {/* Whole-chart templates: every drawing and study, saved once and stamped anywhere. It
+                    lives on the always-visible bar, not the contextual drawing bar, because saving a
+                    setup must not require selecting a shape first. */}
+                {!replay && (
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setMenu((current) => (current === 'layout' ? null : 'layout'))}
+                        aria-expanded={menu === 'layout'}
+                        aria-label={t('chart.layout')}
+                        title={t('chart.layout')}
+                        className={cn('pill h-7 px-2 text-[12px] gap-1', menu === 'layout' && 'is-up')}
+                    >
+                        <LayoutTemplate className="size-3.5" />
+                    </button>
+                    {menu === 'layout' && (
+                        <>
+                            <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} />
+                            <div className="chart-layout-menu absolute end-0 z-30 mt-1 flex w-72 flex-col gap-1.5 rounded-[12px] bg-card p-2 shadow-[0_0_0_1px_var(--line),0_16px_40px_oklch(0_0_0/0.5)]">
+                                <p className="px-1 text-[11.5px] text-faint">{t('chart.layoutHint')}</p>
+                                {chartTemplates.length === 0 && <p className="px-1 py-1 text-[12px] text-faint">{t('chart.layoutEmpty')}</p>}
+                                {chartTemplates.map((template) => {
+                                    const counts = chartTemplateCounts(template);
+                                    return (
+                                        <div key={template.id} className="flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => { applyChartTemplate(template); setMenu(null); }}
+                                                className="pill h-7 min-w-0 flex-1 gap-2 px-2 text-[12px]"
+                                            >
+                                                <LayoutTemplate className="size-3.5 shrink-0 text-faint" />
+                                                <span className="truncate">{template.name}</span>
+                                                <span className="num ms-auto shrink-0 text-[10.5px] text-faint">
+                                                    {arDigits(counts.drawings, lang)} · {arDigits(counts.studies, lang)}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const next = removeChartTemplate(chartTemplates, template.id);
+                                                    setChartTemplates(next);
+                                                    saveChartTemplates(next);
+                                                }}
+                                                aria-label={`${t('chart.layoutDelete')} ${template.name}`}
+                                                title={t('chart.layoutDelete')}
+                                                className="icon-btn is-danger"
+                                            >
+                                                <Trash2 className="size-3.5" />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                                <div className="mt-1 flex gap-1.5 border-t border-white/5 pt-2">
+                                    <input
+                                        value={chartTemplateName}
+                                        onChange={(event) => setChartTemplateName(event.target.value)}
+                                        placeholder={t('chart.layoutName')}
+                                        maxLength={40}
+                                        dir="auto"
+                                        className="h-7 min-w-0 flex-1 rounded-full bg-page px-2.5 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={saveChartTemplate}
+                                        disabled={!chartTemplateName.trim() || (drawings.length === 0 && studies.length === 0)}
+                                        className="pill h-7 px-2.5 text-[12px] is-up disabled:opacity-50"
+                                    >
+                                        {t('chart.layoutSave')}
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                )}
+                {/* The far edge: settings, then the actions that take something out of the chart. The
+                    spacer is a spacer, not an auto margin: the bar is forced LTR inside an RTL page,
+                    and a logical auto margin lands on the wrong side of the gear. */}
+                <span className="chart-toolbar-spacer" aria-hidden />
+                <ChartSettingsMenu
+                    lang={lang}
+                    timeZone={timeZone}
+                    scaleMode={scaleMode}
+                    invert={invertScale}
+                    sessionBreaks={sessionBreaks}
+                    watermark={watermark}
+                    paletteState={paletteState}
+                    palette={effectivePalette}
+                    onTimeZone={setTimeZone}
+                    onScaleMode={setScaleMode}
+                    onInvert={setInvertScale}
+                    onSessionBreaks={setSessionBreaks}
+                    onWatermark={setWatermark}
+                    onExportData={exportData}
+                    onPalette={setPaletteState}
+                    onGoToDate={(time) => candleHostRef.current?.goToTime(time)}
+                />
+                <span className="tool-divider" aria-hidden />
                 <button
                     type="button"
                     onClick={() => void shareChart()}
-                    className="icon-btn ms-auto"
+                    className="icon-btn"
                     aria-label={t('chart.share')}
                     title={t('chart.share')}
                 >
@@ -2080,15 +2875,35 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         </label>
                     </>
                 )}
-                <button
-                    type="button"
-                    onClick={() => setShortcutsOpen(true)}
-                    className="icon-btn"
-                    aria-label={t('chart.shortcuts.title')}
-                    title={t('chart.shortcuts.title')}
-                >
-                    <Keyboard />
-                </button>
+                {/* One chart-level action that must not hide with the contextual drawing bar: an alert.
+                    The keyboard sheet is still ⌘/ and in the help menu, so the bar spends the pixel here. */}
+                {alertSource(symbol) ? (
+                    <CreateAlertModal
+                        symbol={symbol}
+                        currentPrice={alertPrice}
+                        currency={data?.currency ?? 'USD'}
+                        lang={lang}
+                    >
+                        <button
+                            type="button"
+                            className={cn('icon-btn', selectedLevel != null && 'is-up')}
+                            aria-label={t('chart.alert')}
+                            title={t('chart.alert')}
+                        >
+                            <Bell />
+                        </button>
+                    </CreateAlertModal>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => setShortcutsOpen(true)}
+                        className="icon-btn chart-toolbar-optional"
+                        aria-label={t('chart.shortcuts.title')}
+                        title={t('chart.shortcuts.title')}
+                    >
+                        <Keyboard />
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={() => void exportImage()}
@@ -2100,6 +2915,15 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 </button>
                 <button
                     type="button"
+                    onClick={() => void openPrintSheet()}
+                    className="icon-btn"
+                    aria-label={t('chart.print')}
+                    title={t('chart.print')}
+                >
+                    <Printer />
+                </button>
+                <button
+                    type="button"
                     onClick={() => setExpanded((value) => !value)}
                     className="icon-btn"
                     aria-label={t(expanded ? 'chart.exitFullscreen' : 'chart.fullscreen')}
@@ -2107,27 +2931,15 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 >
                     {expanded ? <Minimize2 /> : <Maximize2 />}
                 </button>
+                {/* Only a phone sees this: one row until the trader asks for the rest. */}
+                <ChartToolbarMore lang={lang} open={toolbarMore} onToggle={() => setToolbarMore((value) => !value)} />
             </div>
 
-            {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away. */}
-            {!replay && (
-            <div className="chart-toolbar">
-                {alertSource(symbol) && (
-                    <CreateAlertModal
-                        symbol={symbol}
-                        currentPrice={alertPrice}
-                        currency={data?.currency ?? 'USD'}
-                        lang={lang}
-                    >
-                        <button
-                            type="button"
-                            className={cn('pill h-7 gap-1.5 px-2.5 text-[12px]', selectedLevel != null && 'is-up')}
-                            title={t('chart.alert')}
-                        >
-                            <Bell className="size-3.5" /> {t('chart.alert')}
-                        </button>
-                    </CreateAlertModal>
-                )}
+            {/* The drawing toolkit is off in replay: a note drawn on a later turn would give the future away.
+                It is also contextual: with nothing selected and no tool armed the chart keeps one row of
+                chrome, and the bar returns the moment there is something to style. */}
+            {!replay && (toolbarMore || selectedId !== null || (tool !== null && tool !== 'select')) && (
+            <div className="chart-toolbar chart-toolbar-edit is-open">
                 {alertSource(symbol) && selectedAnchor && (
                     <CreateAlertModal
                         symbol={symbol}
@@ -2146,15 +2958,93 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     </CreateAlertModal>
                 )}
                 {tool != null && tool !== 'select' && tool !== 'measure' && carriesText(tool) && (
-                    <input
-                        value={noteText}
-                        onChange={(event) => setNoteText(event.target.value)}
-                        placeholder={t(tool === 'image' ? 'chart.imagePlaceholder' : 'chart.notePlaceholder')}
-                        maxLength={tool === 'image' ? 300 : 80}
-                        className="h-7 w-40 rounded-full bg-page px-3 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
-                        dir="auto"
-                    />
+                    <div className="flex items-center gap-1">
+                        {tool === 'image' && noteText.startsWith('data:image') ? (
+                            <span className="flex h-7 items-center gap-1.5 rounded-full bg-page px-2 text-[11px] shadow-[inset_0_0_0_1px_var(--line)]">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={noteText} alt="" className="size-5 rounded-[4px] object-cover" />
+                                <button
+                                    type="button"
+                                    onClick={() => setNoteText('')}
+                                    aria-label={t('chart.imageRemove')}
+                                    title={t('chart.imageRemove')}
+                                    className="text-faint hover:text-foreground"
+                                >
+                                    <X className="size-3" />
+                                </button>
+                            </span>
+                        ) : (
+                            <input
+                                value={noteText}
+                                onChange={(event) => setNoteText(event.target.value)}
+                                placeholder={t(tool === 'image' ? 'chart.imagePlaceholder' : 'chart.notePlaceholder')}
+                                maxLength={tool === 'image' ? 300 : 80}
+                                className="h-7 w-40 rounded-full bg-page px-3 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-ring"
+                                dir="auto"
+                            />
+                        )}
+                        {tool === 'image' && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => imageFileRef.current?.click()}
+                                    className="icon-btn"
+                                    aria-label={t('chart.imageUpload')}
+                                    title={t('chart.imageUpload')}
+                                >
+                                    <Upload className="size-3.5" />
+                                </button>
+                                <input
+                                    ref={imageFileRef}
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp,image/gif"
+                                    className="hidden"
+                                    onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        event.target.value = '';
+                                        if (!file) return;
+                                        if (file.size > 300_000) {
+                                            toast.error(t('chart.imageTooLarge'));
+                                            return;
+                                        }
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                            const result = typeof reader.result === 'string' ? reader.result : '';
+                                            if (!result || result.length > IMAGE_DATA_MAX) {
+                                                toast.error(t('chart.imageTooLarge'));
+                                                return;
+                                            }
+                                            setNoteText(result);
+                                        };
+                                        reader.readAsDataURL(file);
+                                    }}
+                                />
+                            </>
+                        )}
+                    </div>
                 )}
+                {/* The stroke palette: the eight colours the drawings ship with, one click each. */}
+                <div role="group" aria-label={t('chart.tool.color')} className="flex items-center gap-0.5">
+                    {COLOR_KEYS.map((key) => {
+                        const active = selectedDrawing ? drawingColor(selectedDrawing, effectivePalette.text) === DRAWING_COLORS[key].toLowerCase() : false;
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => restyleDrawing({ color: key, customColor: undefined })}
+                                disabled={!selectedId}
+                                aria-pressed={active}
+                                aria-label={`${t('chart.tool.color')} ${key}`}
+                                title={`${t('chart.tool.color')} ${key}`}
+                                className={cn(
+                                    'size-4 rounded-[4px] border border-white/25 transition-transform hover:scale-110 disabled:opacity-40',
+                                    active && 'ring-2 ring-brand',
+                                )}
+                                style={{ background: DRAWING_COLORS[key] }}
+                            />
+                        );
+                    })}
+                </div>
                 {/* Any colour, not just the palette: a chart palette (black, grey, a broker's teal). */}
                 <label
                     className={cn('relative size-6 cursor-pointer rounded-[6px] border border-white/25', !selectedId && 'opacity-50')}
@@ -2164,11 +3054,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     <span
                         aria-hidden
                         className="absolute inset-0 rounded-[5px]"
-                        style={{ background: selectedDrawing ? drawingColor(selectedDrawing) : 'transparent' }}
+                        style={{ background: selectedDrawing ? drawingColor(selectedDrawing, effectivePalette.text) : 'transparent' }}
                     />
                     <input
                         type="color"
-                        value={selectedDrawing ? drawingColor(selectedDrawing) : '#2962ff'}
+                        value={selectedDrawing ? drawingColor(selectedDrawing, effectivePalette.text) : '#2962ff'}
                         disabled={!selectedId}
                         onChange={(event) => restyleDrawing({ customColor: event.target.value })}
                         className="absolute inset-0 size-full cursor-pointer opacity-0"
@@ -2236,12 +3126,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                                     key={key}
                                     type="button"
                                     onClick={() => restyleDrawing({ textColor: key, customTextColor: undefined })}
-                                    aria-pressed={textColorOf(selectedDrawing) === key}
+                                    aria-pressed={textColorOf(selectedDrawing, effectivePalette.text) === key}
                                     aria-label={`${t('chart.text.color')} ${key}`}
                                     title={`${t('chart.text.color')} ${key}`}
                                     className={cn(
                                         'size-4 rounded-[4px] border border-white/25 transition-transform hover:scale-110',
-                                        textColorOf(selectedDrawing) === key && 'ring-2 ring-brand',
+                                        textColorOf(selectedDrawing, effectivePalette.text) === key && 'ring-2 ring-brand',
                                     )}
                                     style={{ background: DRAWING_COLORS[key] }}
                                 />
@@ -2303,6 +3193,48 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                 >
                     {hasDefaultStyle ? <BookmarkCheck /> : <Bookmark />}
                 </button>
+                {/* A look carried from one drawing to another, without touching the tool's default. */}
+                <button
+                    type="button"
+                    onClick={copyStyleSelected}
+                    disabled={!selectedId}
+                    className="icon-btn"
+                    title={t('chart.style.copy')}
+                    aria-label={t('chart.style.copy')}
+                >
+                    <Paintbrush />
+                </button>
+                <button
+                    type="button"
+                    onClick={pasteStyleSelected}
+                    disabled={!styleClipboard || !selectedId}
+                    className="icon-btn"
+                    title={t('chart.style.paste')}
+                    aria-label={t('chart.style.paste')}
+                >
+                    <PaintBucket />
+                </button>
+                {/* A trend line can run past its two points, the way TradingView's Extend left/right does. */}
+                {selectedDrawing && canExtend(selectedDrawing.tool) && (
+                    <div role="group" aria-label={t('chart.extend')} className="flex items-center gap-0.5">
+                        {(['left', 'right'] as const).map((side) => {
+                            const on = selectedDrawing.extend === 'both' || selectedDrawing.extend === side;
+                            return (
+                                <button
+                                    key={side}
+                                    type="button"
+                                    onClick={() => toggleExtend(side)}
+                                    aria-pressed={on}
+                                    aria-label={t(`chart.extend.${side}`)}
+                                    title={t(`chart.extend.${side}`)}
+                                    className={cn('icon-btn text-[13px]', on && 'text-brand')}
+                                >
+                                    {side === 'left' ? '↤' : '↦'}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
                 <button type="button" onClick={copySelected} disabled={!selectedId} className="icon-btn" title={t('chart.tool.copy')} aria-label={t('chart.tool.copy')}>
                     <Copy />
                 </button>
@@ -2551,6 +3483,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         </>
                     )}
                 </div>
+                {/* Porting a setup: the drawings travel as JSON, out and back in. */}
                 <div className="relative">
                     <button
                         type="button"
@@ -2614,7 +3547,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             </div>
             )}
 
-            <div ref={replayPanelRef} />
+            {/* A scroll anchor for the replay panel; out of the flow (and its gap) the rest of the time. */}
+            <div ref={replayPanelRef} className={replay ? undefined : 'hidden'} />
             {replay && (
                 <ReplayPanel
                     lang={lang}
@@ -2630,6 +3564,8 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     onCursor={moveCursor}
                     onTogglePlay={togglePlayback}
                     onSpeed={setSpeed}
+                    ghost={ghost}
+                    onToggleGhost={() => setGhost((value) => !value)}
                     onStart={moveCursor}
                     onFirst={() => { if (replayCandles.length > 0) moveCursor(replayCandles[0].time); }}
                     onRandom={() => { if (replayCandles.length > 0) moveCursor(replayCandles[randomCursor(replayCandles.length)].time); }}
@@ -2638,6 +3574,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                     onSell={(quantity) => placePaperOrder('sell', quantity)}
                     intent={intent}
                     onPlacePending={placePendingOrder}
+                    onBracketOrder={placeBracketOrder}
                     onCancelOrder={cancelPendingOrder}
                     onSetBracket={setBracket}
                     onClearBracket={clearBracket}
@@ -2663,24 +3600,78 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             )}
 
             {!replay && drawings.length > 0 && (
-                <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-[10px] bg-page/60 p-1">
-                    <p className="px-2 pt-0.5 text-[11px] font-semibold text-faint">
-                        {t('chart.list')} · {drawings.length}
-                    </p>
+                <div className="rounded-[10px] bg-page/60">
+                    {/* Folded by default: the list is a reference, and 100px of it above the candles
+                        costs more than it gives. The strip still names what is on the chart. */}
+                    <button
+                        type="button"
+                        onClick={() => setListOpen((value) => !value)}
+                        aria-expanded={listOpen}
+                        className="flex w-full items-center gap-2 rounded-[10px] px-2 py-1 text-[11px] font-semibold text-faint hover:bg-hover/40"
+                    >
+                        <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', !listOpen && '-rotate-90')} />
+                        <span className="shrink-0">{t('chart.list')} · {arDigits(drawings.length, lang)}</span>
+                        {!listOpen && (
+                            <span className="truncate text-[11px] font-normal text-faint">
+                                {drawings.map((drawing) => toolLabel(drawing)).join(' · ')}
+                            </span>
+                        )}
+                    </button>
+                    {listOpen && (
+                <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto px-1 pb-1">
+                    {drawings.length > 1 && (
+                        <div className="flex items-center gap-2 px-2 pb-0.5">
+                            <p className="flex-1 text-[10.5px] text-faint">{t('chart.multiHint')}</p>
+                            {selectedIds.length > 0 && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={toggleHiddenSelected}
+                                        className="text-[10.5px] font-semibold text-faint hover:text-foreground"
+                                    >
+                                        {t('chart.hide')} · {arDigits(selectedIds.length, lang)}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={toggleLockSelected}
+                                        className="text-[10.5px] font-semibold text-faint hover:text-foreground"
+                                    >
+                                        {t('chart.tool.lock')} · {arDigits(selectedIds.length, lang)}
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )}
                     {drawings.map((drawing) => (
                         <div
                             key={drawing.id}
-                            className={cn('flex items-center gap-2 rounded-[8px] px-2 py-1 text-[12.5px]', drawing.id === selectedId && 'bg-hover')}
+                            className={cn('flex items-center gap-2 rounded-[8px] px-2 py-1 text-[12.5px]', selectedIds.includes(drawing.id) && 'bg-hover')}
                         >
                             <button
                                 type="button"
                                 onClick={() => cycleColor(drawing.id)}
                                 title={t('chart.color')}
-                                aria-label={`${t('chart.color')}: ${drawingColor(drawing)}`}
+                                aria-label={`${t('chart.color')}: ${drawingColor(drawing, effectivePalette.text)}`}
                                 className="size-4 shrink-0 rounded-full border border-line-strong"
-                                style={{ backgroundColor: drawingColor(drawing) }}
+                                style={{ backgroundColor: drawingColor(drawing, effectivePalette.text) }}
                             />
-                            <button type="button" onClick={() => setSelectedId(drawing.id)} className="flex flex-1 items-center gap-2 text-start">
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    // Shift (or a command key) adds to the selection, the same rule the
+                                    // chart itself follows, so the list and the canvas agree.
+                                    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+                                        setSelectedId((current) =>
+                                            current.includes(drawing.id)
+                                                ? current.filter((id) => id !== drawing.id)
+                                                : [...current, drawing.id],
+                                        );
+                                    } else {
+                                        selectOnly(drawing.id);
+                                    }
+                                }}
+                                className="flex flex-1 items-center gap-2 text-start"
+                            >
                                 <span className="font-semibold">{toolLabel(drawing)}</span>
                                 <span className="mono num truncate text-[11.5px] text-faint">{summary(drawing)}</span>
                             </button>
@@ -2727,10 +3718,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                         </div>
                     ))}
                 </div>
+                    )}
+                </div>
             )}
 
             {!replay && (
-                <p role="status" className="px-1 text-[11px] text-faint">
+                <p role="status" className={cn('px-1 text-[11px] text-faint', syncState === 'saved' && 'sr-only')}>
                     {t(
                         syncState === 'saving'
                             ? 'chart.sync.saving'
@@ -2746,12 +3739,13 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
             )}
 
             {expanded && <div className="fixed inset-0 z-40 bg-page/70 backdrop-blur-[3px]" onClick={() => setExpanded(false)} />}
-            <div className={cn(expanded && 'fixed inset-3 z-50 rounded-[14px] bg-card p-3 shadow-[0_0_0_4px_var(--frame),0_24px_60px_oklch(0_0_0/0.6)]')}>
+            <div className={cn(expanded && 'fixed inset-3 z-50 rounded-[14px] bg-card p-3 shadow-[0_0_0_4px_var(--frame),0_24px_60px_oklch(0_0_0/0.6)]', fill && !expanded && 'flex min-h-0 flex-1 flex-col')}>
                 {body}
             </div>
 
-            <p className="text-[12px] text-faint">{t(replay ? 'replay.noFuture' : 'chart.drawingHint')}</p>
-            <p className="text-[12px] text-faint">
+            {/* A pane that owns the whole screen spends its pixels on the chart, not on footnotes. */}
+            <p className={cn('text-[12px] text-faint', fill && 'hidden')}>{t(replay ? 'replay.noFuture' : 'chart.drawingHint')}</p>
+            <p className={cn('text-[12px] text-faint', fill && 'hidden')}>
                 <ExternalLink className="me-1 inline size-3.5" />
                 <a href={tradingViewSymbolUrl(tvSymbol)} target="_blank" rel="noopener noreferrer" className="underline">
                     {t('stock.openTV')}
@@ -2760,6 +3754,101 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
 
             {/* The whole keyboard on one card: the tool letters and the editing chords, from the same
                 tables the handlers read, so the help can never drift from what the keys do. */}
+            {objectMenu && objectTarget && (
+                <div
+                    data-object-menu
+                    role="menu"
+                    aria-label={t('chart.drawings')}
+                    dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                    className="fixed z-[70] flex w-44 flex-col rounded-[10px] bg-card p-1 text-[12.5px] shadow-[0_14px_40px_rgba(0,0,0,0.45)] ring-1 ring-line"
+                    style={{
+                        left: Math.min(objectMenu.x, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerWidth) - 184)),
+                        top: Math.min(objectMenu.y, Math.max(8, (typeof window === 'undefined' ? 0 : window.innerHeight) - 372)),
+                    }}
+                >
+                    {[
+                        // An alert belongs on the object, not only on the toolbar: the trader is
+                        // already looking at the line they want watched.
+                        ...(alertSource(symbol) && objectAnchor
+                            ? [
+                                  {
+                                      key: 'alert',
+                                      label: t('chart.alertOnDrawing'),
+                                      run: () => setObjectAlert(objectTarget.id),
+                                  },
+                              ]
+                            : []),
+                        { key: 'layer-front', label: t('chart.layer.front'), run: () => layerSelected('front') },
+                        { key: 'layer-back', label: t('chart.layer.back'), run: () => layerSelected('back') },
+                        { key: 'duplicate', label: t('chart.tool.duplicate'), run: duplicateSelected },
+                        { key: 'copy', label: t('chart.tool.copy'), run: copySelected },
+                        { key: 'copy-style', label: t('chart.style.copy'), run: copyStyleSelected },
+                        { key: 'paste-style', label: t('chart.style.paste'), run: pasteStyleSelected },
+                        {
+                            key: 'lock',
+                            label: t(objectTarget.locked ? 'chart.tool.unlock' : 'chart.tool.lock'),
+                            run: toggleLockSelected,
+                        },
+                        { key: 'hide', label: t('chart.hide'), run: toggleHiddenSelected },
+                    ].map((item) => (
+                        <button
+                            key={item.key}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                                item.run();
+                                closeObjectMenu();
+                            }}
+                            className="flex h-8 items-center rounded-[6px] px-2 text-start text-muted-foreground transition-colors hover:bg-hover/60 hover:text-foreground"
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                    <div className="my-1 h-px bg-line" aria-hidden="true" />
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                            removeSelected();
+                            closeObjectMenu();
+                        }}
+                        className="flex h-8 items-center rounded-[6px] px-2 text-start text-down transition-colors hover:bg-down/12"
+                    >
+                        {t('chart.tool.delete')}
+                    </button>
+                </div>
+            )}
+
+            {/* An alert opened from the object menu. The modal is not a child of the menu: a
+                dismissed menu must not dismiss the dialog it opened. */}
+            {alertAnchor && alertSource(symbol) && (
+                <CreateAlertModal
+                    symbol={symbol}
+                    currentPrice={alertPrice}
+                    currency={data?.currency ?? 'USD'}
+                    lang={lang}
+                    anchor={alertAnchor}
+                    open
+                    onOpenChange={(next) => {
+                        if (!next) setObjectAlert(null);
+                    }}
+                />
+            )}
+
+            {/* One sheet for paper and for PDF: the print dialog is the same dialog either way. */}
+            {printSheet && (
+                <ChartPrintSheet
+                    image={printSheet}
+                    meta={{
+                        ...printMeta,
+                        last: quote?.price ?? printMeta.last,
+                        changePercent: quote?.change ?? printMeta.changePercent,
+                    }}
+                    lang={lang}
+                    onClose={closePrintSheet}
+                />
+            )}
+
             {shortcutsOpen && (
                 <div
                     className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4"
@@ -2776,17 +3865,37 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval }
                             </button>
                         </div>
                         <div className="mt-4 grid gap-6 sm:grid-cols-2">
-                            <div>
-                                <p className="form-label">{t('chart.shortcuts.tools')}</p>
-                                <ul className="mt-2 flex flex-col gap-1.5">
-                                    {TOOL_SHORTCUTS.map((shortcut) => (
-                                        <li key={shortcut.key} className="flex items-center justify-between gap-3 text-[13px]">
-                                            <span className="text-muted-foreground">{t(`chart.tool.${shortcut.tool}` as StringKey)}</span>
-                                            <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>
+                            {/* Replay replaces the tool list rather than adding to it: with the
+                                drawing rail off, ⇧B / ⇧S / ⇧X are the keys that matter. */}
+                            {replay ? (
+                                <div>
+                                    <p className="form-label">{t('replay.shortcuts')}</p>
+                                    <ul className="mt-2 flex flex-col gap-1.5">
+                                        {REPLAY_SHORTCUTS.map((shortcut) => (
+                                            <li key={shortcut.keys} className="flex items-center justify-between gap-3 text-[13px]">
+                                                <span className="text-muted-foreground">{t(shortcut.labelKey)}</span>
+                                                <kbd className="kbd">{shortcut.keys}</kbd>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : (
+                                <div>
+                                    <p className="form-label">{t('chart.shortcuts.tools')}</p>
+                                    <ul className="mt-2 flex flex-col gap-1.5">
+                                        {TOOL_SHORTCUTS.filter((shortcut) => canUseDrawing(features, shortcut.tool)).map((shortcut) => (
+                                            <li key={shortcut.key} className="flex items-center justify-between gap-3 text-[13px]">
+                                                <span className="text-muted-foreground">{t(`chart.tool.${shortcut.tool}` as StringKey)}</span>
+                                                <kbd className="kbd">{shortcut.key.toUpperCase()}</kbd>
+                                            </li>
+                                        ))}
+                                        <li className="flex items-center justify-between gap-3 text-[13px]">
+                                            <span className="text-muted-foreground">{t('chart.tool.measure')}</span>
+                                            <kbd className="kbd">{MEASURE_KEY.toUpperCase()}</kbd>
                                         </li>
-                                    ))}
-                                </ul>
-                            </div>
+                                    </ul>
+                                </div>
+                            )}
                             <div>
                                 <p className="form-label">{t('chart.shortcuts.edit')}</p>
                                 <ul className="mt-2 flex flex-col gap-1.5">

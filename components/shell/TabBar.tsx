@@ -7,27 +7,20 @@ import { LayoutDashboard, Menu, Plus, Star, X } from "lucide-react";
 import { openSearch } from "@/components/SearchCommand";
 import { cn } from "@/lib/utils";
 import { tx, type Lang, type StringKey } from "@/lib/i18n";
+import type { Role } from "@/lib/authz";
+import type { Feature } from "@/lib/plans";
+import { canOpen, pageByHref } from "@/lib/shell/pages";
 
 const PINNED = ['/dashboard', '/watchlist'];
 const STORAGE_KEY = 'openstock-tabs';
 const MAX_TABS = 12;
 
-const PAGE_LABELS: Record<string, StringKey> = {
-    '/dashboard': 'nav.overview',
-    '/saudi': 'nav.saudi',
-    '/watchlist': 'nav.watchlist',
-    '/portfolio': 'nav.portfolio',
-    '/screener': 'nav.screener',
-    '/charts': 'nav.charts',
-    '/strategies': 'nav.strategies',
-    '/alerts': 'nav.alerts',
-    '/profile': 'nav.profile',
-};
-
 // Pages become browser-style tabs; stock pages are labelled by their symbol.
-// Keys are resolved per language at render time, so switching language relabels open tabs.
+// Keys are resolved per language at render time, so switching language relabels open tabs. The
+// page list is the shell's one list (lib/shell/pages.ts) — a page the sidebar has is a tab too.
 const tabKey = (path: string): StringKey | 'stock' | null => {
-    if (PAGE_LABELS[path]) return PAGE_LABELS[path];
+    const page = pageByHref(path);
+    if (page) return page.labelKey;
     if (/^\/stocks\/[^/]+$/.test(path)) return 'stock';
     return null;
 };
@@ -38,6 +31,12 @@ const tabLabel = (path: string, lang: Lang) => {
     return tx(lang, key);
 };
 
+/** A tab is openable when its page is, or when it is a stock page (no requirement). */
+const openable = (path: string, role: Role, features?: readonly Feature[]): boolean => {
+    const page = pageByHref(path);
+    return !page || canOpen(page, role, features);
+};
+
 const withTab = (tabs: string[], path: string) => {
     if (!tabKey(path) || tabs.includes(path)) return tabs;
     const next = [...tabs, path];
@@ -45,7 +44,7 @@ const withTab = (tabs: string[], path: string) => {
     return extra > 0 ? next.filter((t, i) => PINNED.includes(t) || i >= extra + PINNED.length) : next;
 };
 
-const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
+const TabBar = ({ onMenu, lang, role, features }: { onMenu: () => void; lang: Lang; role: Role; features: readonly Feature[] }) => {
     const pathname = usePathname();
     const router = useRouter();
     const [tabs, setTabs] = useState(() => withTab(PINNED, pathname));
@@ -57,10 +56,10 @@ const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
         try {
             const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
             if (Array.isArray(saved)) {
-                setTabs((current) => saved.filter((p): p is string => typeof p === 'string').reduce(withTab, current));
+                setTabs((current) => saved.filter((p): p is string => typeof p === 'string' && openable(p, role, features)).reduce(withTab, current));
             }
         } catch { /* storage unavailable */ }
-    }, []);
+    }, [role, features]);
 
     useEffect(() => setTabs((current) => withTab(current, pathname)), [pathname]);
 
@@ -99,7 +98,7 @@ const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
                     <svg className="tab-glider-curve is-right" viewBox="0 0 12 12"><path d="M12 0v12H0c6.627 0 12-5.373 12-12z" /></svg>
                 </div>
 
-                {tabs.map((path) => {
+                {tabs.filter((path) => openable(path, role, features)).map((path) => {
                     const pinned = PINNED.includes(path);
                     const isStock = path.startsWith('/stocks/');
                     const active = path === pathname;
@@ -130,7 +129,7 @@ const TabBar = ({ onMenu, lang }: { onMenu: () => void; lang: Lang }) => {
                 })}
             </div>
 
-            <button type="button" onClick={openSearch} className="chrome-btn -ms-2" aria-label={tx(lang, 'tab.open')} title={`${tx(lang, 'tab.open')} (⌘K)`}>
+            <button type="button" onClick={openSearch} className="chrome-btn ms-auto me-2" aria-label={tx(lang, 'tab.open')} title={`${tx(lang, 'tab.open')} (⌘K)`}>
                 <Plus />
             </button>
         </div>

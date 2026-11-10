@@ -14,15 +14,18 @@ import {
     doubleCurvePath,
     ellipseFrom,
     extendedEnds,
+    FIB_SPIRAL_TURNS,
     fibArcRadii,
     fibChannelLevels,
     fibExtension,
     fibFanEnds,
+    fibSpiralPoints,
     fibTimeMultiples,
     flattenLines,
     gannBoxGuides,
     gannFanEnds,
     ICON_GLYPHS,
+    IMAGE_DATA_MAX,
     IMAGE_URL_MAX,
     isImageUrl,
     measureSpan,
@@ -38,6 +41,7 @@ import {
     rangeReadout,
     rayEnd,
     regressionChannel,
+    rotatedRectCorners,
     serializeDrawings,
     speedFanEnds,
     TEXT_MAX,
@@ -50,7 +54,7 @@ import {
     withText,
     type DrawCandle,
     type DrawPoint,
-} from '@/lib/chart-drawings';
+} from '@/lib/chart/drawings';
 
 const a: DrawPoint = { time: 1000, price: 100 };
 const b: DrawPoint = { time: 2000, price: 120 };
@@ -290,6 +294,54 @@ describe('the geometric shapes', () => {
     });
 });
 
+describe('the rotated rectangle and the Fibonacci spiral', () => {
+    it('lifts the height off the base edge, squarely', () => {
+        // A level base: the third point's height is straight up, so the corners form an upright box.
+        const level = rotatedRectCorners({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: -40 });
+        expect(level).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -40 }, { x: 0, y: -40 }]);
+    });
+
+    it('turns the box with its base, keeping the corners square', () => {
+        // A base along the diagonal (0,0)->(100,100); the normal points up-right, height 50*sqrt2.
+        const corners = rotatedRectCorners({ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 0, y: -Math.SQRT2 * 50 });
+        // First two corners are the base, unchanged.
+        expect(corners[0]).toEqual({ x: 0, y: 0 });
+        expect(corners[1]).toEqual({ x: 100, y: 100 });
+        // Every corner is at right angles: the side vectors dot to zero.
+        const side = { x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y };
+        const rise = { x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y };
+        expect(side.x * rise.x + side.y * rise.y).toBeCloseTo(0, 6);
+        // Opposite sides are equal length.
+        expect(Math.hypot(rise.x, rise.y)).toBeCloseTo(Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y), 6);
+    });
+
+    it('degrades safely when the two base points are the same', () => {
+        const point = { x: 10, y: 10 };
+        expect(rotatedRectCorners(point, { ...point }, { x: 20, y: 20 })).toEqual([point, { ...point }, { x: 20, y: 20 }]);
+    });
+
+    it('grows by the golden ratio every quarter turn', () => {
+        const centre = { x: 0, y: 0 };
+        const points = fibSpiralPoints(centre, { x: 10, y: 0 });
+        // twelve steps to the turn, so one quarter-turn is twelve points along.
+        const quarter = 12;
+        const r = (p: { x: number; y: number }) => Math.hypot(p.x, p.y);
+        const phi = (1 + Math.sqrt(5)) / 2;
+        expect(r(points[quarter]) / r(points[0])).toBeCloseTo(phi, 6);
+        expect(r(points[quarter * 2]) / r(points[quarter])).toBeCloseTo(phi, 6);
+        // First point sits on the edge, at angle 0.
+        expect(points[0].x).toBeCloseTo(10, 6);
+        expect(points[0].y).toBeCloseTo(0, 6);
+        // The default run is eight turns of twelve steps, plus the closing point.
+        expect(points).toHaveLength(FIB_SPIRAL_TURNS * 12 + 1);
+    });
+
+    it('has nothing to draw from a point centre or no turns', () => {
+        expect(fibSpiralPoints({ x: 0, y: 0 }, { x: 0, y: 0 })).toEqual([]);
+        expect(fibSpiralPoints({ x: 0, y: 0 }, { x: 10, y: 0 }, 0)).toEqual([]);
+    });
+});
+
 describe('an open-ended tool', () => {
     it('takes as many points as the trader clicks', () => {
         expect(pointsNeeded('polyline')).toBe(0);
@@ -311,6 +363,17 @@ describe('an open-ended tool', () => {
     });
 });
 
+describe('the cursors', () => {
+    // Regression: arming the measure tool after an undo/redo re-rendered the rail hint, which asked
+    // pointsNeeded('measure') and dereferenced an undefined tool definition — the pane crashed.
+    it('report zero points instead of throwing when the chart asks how many clicks they need', () => {
+        expect(() => pointsNeeded('measure')).not.toThrow();
+        expect(() => pointsNeeded('select')).not.toThrow();
+        expect(pointsNeeded('measure')).toBe(0);
+        expect(pointsNeeded('select')).toBe(0);
+    });
+});
+
 describe('the seven basic line tools', () => {
     const lines = toolsInGroup('lines').map((d) => d.tool);
 
@@ -324,7 +387,9 @@ describe('the seven basic line tools', () => {
         // A horizontal ray and a vertical line are fixed by where the pointer was.
         expect(pointsNeeded('hray')).toBe(1);
         expect(pointsNeeded('vline')).toBe(1);
-        for (const tool of ['ray', 'extended', 'cross', 'trendangle', 'info'] as const) {
+        // A cross is complete at one point: the renderer draws both arms from it.
+        expect(pointsNeeded('cross')).toBe(1);
+        for (const tool of ['ray', 'extended', 'trendangle', 'info'] as const) {
             expect(pointsNeeded(tool), tool).toBe(2);
         }
     });
@@ -387,6 +452,12 @@ describe('the words a new annotation carries', () => {
     it('carries nothing for a tool without words', () => {
         expect(annotationText('trend', 100, 'x')).toBeUndefined();
         expect(annotationText('pricenote', 100, 'x')).toBeUndefined();
+    });
+
+    it('keeps an uploaded picture as a data payload', () => {
+        const data = 'data:image/png;base64,iVBORw0KGgo=';
+        expect(annotationText('image', 100, data)).toBe(data);
+        expect(annotationText('image', 100, 'https://example.com/a.png')).toBe('https://example.com/a.png');
     });
 });
 
@@ -525,6 +596,14 @@ describe('the volume-based tools', () => {
         expect(volumeProfile(candles, 9000, 9500).rows).toEqual([]);
         expect(volumeProfile([], 0, 1).max).toBe(0);
     });
+
+    it('sizes the value area by the percentage a study asks for', () => {
+        const wide = volumeProfile(candles, 1000, 5000, 24, 0.95);
+        const narrow = volumeProfile(candles, 1000, 5000, 24, 0.5);
+        expect(wide.valueArea!.percent).toBeGreaterThan(narrow.valueArea!.percent);
+        // Nothing can hold more than all of it.
+        expect(volumeProfile(candles, 1000, 5000, 24, 1).valueArea!.percent).toBeLessThanOrEqual(100);
+    });
 });
 
 describe('the sticker and the pasted image', () => {
@@ -541,8 +620,10 @@ describe('the sticker and the pasted image', () => {
     it('only accepts a plain web address for an image', () => {
         expect(isImageUrl('https://example.com/a.png')).toBe(true);
         expect(isImageUrl('http://example.com/a.png')).toBe(true);
-        // A data: payload or a local path is not an address this chart will fetch.
-        expect(isImageUrl('data:image/png;base64,AAAA')).toBe(false);
+        // An uploaded picture is a data payload, and it is allowed; a local path is not.
+        expect(isImageUrl('data:image/png;base64,AAAA')).toBe(true);
+        expect(isImageUrl('data:image/jpeg;base64,/9j/4AAQ')).toBe(true);
+        expect(isImageUrl('data:text/html;base64,AAAA')).toBe(false);
         expect(isImageUrl('/tmp/a.png')).toBe(false);
         expect(isImageUrl('javascript:alert(1)')).toBe(false);
         expect(isImageUrl('https://example.com/a b.png')).toBe(false);
@@ -566,7 +647,9 @@ describe('how much wording a tool may keep', () => {
     });
 
     it('bounds the limit by the tool', () => {
-        expect(textLimit('image')).toBe(IMAGE_URL_MAX);
+        expect(textLimit('image')).toBe(IMAGE_DATA_MAX);
         expect(textLimit('text')).toBe(TEXT_MAX);
+        // A typed address is still short; the data payload is the reason the image cap is large.
+        expect(IMAGE_URL_MAX).toBeLessThan(IMAGE_DATA_MAX);
     });
 });

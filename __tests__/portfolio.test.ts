@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePositionMetrics, parseAmount, positionWeight, summarizePortfolio } from '@/lib/portfolio';
+import { computePositionMetrics, groupByCurrency, normalizeCurrency, parseAmount, positionWeight, sumByCurrency, summarizePortfolio } from '@/lib/portfolio';
 
 describe('computePositionMetrics', () => {
     it('measures a gain against the cost basis', () => {
@@ -84,6 +84,91 @@ describe('positionWeight', () => {
 
     it('is zero when there is nothing to divide by', () => {
         expect(positionWeight(250, 0)).toBe(0);
+    });
+});
+
+describe('normalizeCurrency', () => {
+    it('keeps a real ISO code and uppercases it', () => {
+        expect(normalizeCurrency('usd')).toBe('USD');
+        expect(normalizeCurrency(' SAR ')).toBe('SAR');
+    });
+
+    it('treats a missing or malformed code as dollars instead of a new bucket', () => {
+        expect(normalizeCurrency(undefined)).toBe('USD');
+        expect(normalizeCurrency(null)).toBe('USD');
+        expect(normalizeCurrency('')).toBe('USD');
+        expect(normalizeCurrency('$')).toBe('USD');
+        expect(normalizeCurrency('1234')).toBe('USD');
+    });
+});
+
+describe('groupByCurrency', () => {
+    const row = (currency: string, quantity: number, averageCost: number, price: number) => ({
+        currency,
+        quantity,
+        averageCost,
+        price,
+    });
+    const metrics = (r: ReturnType<typeof row>) => computePositionMetrics(r);
+
+    it('never adds two currencies together', () => {
+        const split = groupByCurrency(
+            [row('USD', 10, 100, 120), row('SAR', 10, 100, 90)],
+            (r) => r.currency,
+            metrics
+        );
+        expect(split.mixed).toBe(true);
+        expect(split.groups).toHaveLength(2);
+        expect(split.groups.find((g) => g.currency === 'USD')?.totals.marketValue).toBe(1200);
+        expect(split.groups.find((g) => g.currency === 'SAR')?.totals.marketValue).toBe(900);
+    });
+
+    it('names the currency carrying the most value as dominant', () => {
+        const split = groupByCurrency(
+            [row('USD', 1, 100, 100), row('SAR', 100, 100, 110)],
+            (r) => r.currency,
+            metrics
+        );
+        expect(split.dominant).toBe('SAR');
+    });
+
+    it('falls back to cost basis when nothing is priced yet', () => {
+        const split = groupByCurrency(
+            [row('USD', 1, 500, 0), row('SAR', 1, 100, 0)],
+            (r) => r.currency,
+            metrics
+        );
+        expect(split.dominant).toBe('USD');
+        expect(split.mixed).toBe(true);
+    });
+
+    it('is not mixed for a single currency, including a missing code', () => {
+        expect(groupByCurrency([row('', 1, 10, 20)], (r) => r.currency, metrics)).toMatchObject({ dominant: 'USD', mixed: false });
+        expect(groupByCurrency([], (r: { currency: string }) => r.currency, metrics).groups).toEqual([]);
+    });
+});
+
+describe('sumByCurrency', () => {
+    it('sums each currency on its own and rounds', () => {
+        const sales = [
+            { symbol: 'AAPL', pnl: 10.005 },
+            { symbol: '2222.SR', pnl: 5 },
+            { symbol: 'MSFT', pnl: 2.005 },
+        ];
+        const currencies: Record<string, string> = { AAPL: 'USD', '2222.SR': 'SAR', MSFT: 'USD' };
+        const sums = sumByCurrency(sales, (s) => currencies[s.symbol], (s) => s.pnl);
+        expect(sums.find((s) => s.currency === 'USD')?.value).toBe(12.01);
+        expect(sums.find((s) => s.currency === 'SAR')?.value).toBe(5);
+    });
+
+    it('drops non-finite values and sorts by absolute size', () => {
+        const sums = sumByCurrency(
+            [{ c: 'USD', v: 5 }, { c: 'SAR', v: -20 }, { c: 'USD', v: Number.NaN }],
+            (s) => s.c,
+            (s) => s.v
+        );
+        expect(sums.map((s) => s.currency)).toEqual(['SAR', 'USD']);
+        expect(sums[1].value).toBe(5);
     });
 });
 

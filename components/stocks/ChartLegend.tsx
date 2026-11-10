@@ -1,17 +1,18 @@
 'use client';
 
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
-import { compactVolume, type BarReadout } from '@/lib/chart-readout';
+import { compactVolume, type BarReadout } from '@/lib/chart/readout';
 import {
     STUDIES,
     describeStudy,
     studyColor,
+    studyLines,
     studyLineStyle,
     type ColorToken,
     type StudyConfig,
     type StudyId,
     type StudyLine,
-} from '@/lib/chart-studies';
+} from '@/lib/chart/studies';
 import { cn } from '@/lib/utils';
 
 // The chart's own reading of the bar under the crosshair: O H L C, the change against the previous
@@ -36,6 +37,8 @@ const ONE_DECIMAL: readonly StudyId[] = ['rsi', 'stoch', 'wr', 'adx', 'cci'];
 /** OBV is a running volume total, so it reads like the volume above it. */
 const measure = (study: StudyId, line: StudyLine, value: number, lang: Lang) => {
     if (study === 'obv') return arDigits(compactVolume(value), lang);
+    // A spread is a percentage: the sign carries the meaning, the unit says what it means.
+    if (study === 'spread') return `${arDigits(value.toFixed(2), lang)}%`;
     if (ONE_DECIMAL.includes(study)) return arDigits(value.toFixed(1), lang);
     if (line.key === 'macd' || line.key === 'signal' || line.key === 'histogram') {
         return arDigits(value.toFixed(Math.abs(value) < 1 ? 3 : 2), lang);
@@ -66,7 +69,9 @@ export default function ChartLegend({ lang, readout, studies, className }: Props
             className={cn(
                 // Physical `left`, not `start`: the plotting area is LTR in both languages (the
                 // price axis and the canvas labels depend on it), so the legend sits by its corner.
-                'pointer-events-none absolute left-3 top-2 z-[2] flex max-w-[calc(100%-5.5rem)] flex-col gap-0.5 text-[11px] leading-tight',
+                // Clear of the drawing rail (8px inset + a 30px strip): the legend used to start under it,
+                // which clipped the first characters of every line.
+                'pointer-events-none absolute left-12 top-2 z-[2] flex max-w-[calc(100%-7rem)] flex-col gap-0.5 text-[11px] leading-tight',
                 className,
             )}
         >
@@ -104,24 +109,29 @@ export default function ChartLegend({ lang, readout, studies, className }: Props
             </div>
 
             {studies.length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 whitespace-nowrap">
+                // One study per line. A formula's label is long enough to wrap, and sharing a line
+                // with the next study put its tail under this one's values.
+                <div className="flex flex-col gap-0.5 whitespace-nowrap">
                     {studies.map((study, index) => {
                         const def = STUDIES[study.id];
                         if (!def) return null;
-                        const values = def.lines
+                        const lines = studyLines(study);
+                        const values = lines
                             .map((line) => ({ line, value: readout.indicators[`${index}:${line.key}`] }))
                             .filter((entry): entry is { line: StudyLine; value: number } => typeof entry.value === 'number');
-                        if (values.length === 0) return null;
+                        // A study with no line at all (a volume profile) still belongs in the legend by
+                        // name; one whose lines are all still warming up has nothing to say yet.
+                        if (values.length === 0 && lines.length > 0) return null;
                         return (
-                            <span key={`${index}:${study.id}`} className="inline-flex items-baseline gap-1">
-                                <span className={LABEL_TONE[studyColor(study, def.lines[0])]}>{describeStudy(study, lang)}</span>
+                            <span key={`${index}:${study.id}`} className="flex min-w-0 items-baseline gap-1">
+                                <span className={cn('min-w-0 truncate', LABEL_TONE[lines[0] ? studyColor(study, lines[0]) : 'muted'])}>{describeStudy(study, lang)}</span>
                                 {values.map(({ line, value }) => (
                                     <span
                                         key={line.key}
                                         className="inline-flex items-baseline gap-1"
                                         title={t(line.name)}
                                     >
-                                        {def.lines.length > 1 && (
+                                        {lines.length > 1 && (
                                             <span aria-hidden="true" className={LABEL_TONE[studyLineStyle(study, line).color]}>
                                                 {line.short}
                                             </span>

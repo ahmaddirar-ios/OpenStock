@@ -1,6 +1,6 @@
 import Panel from '@/components/Panel';
 import { tx, arDigits, type Lang } from '@/lib/i18n';
-import { daysUntil, type SaudiFundamentals } from '@/lib/saudi-fundamentals';
+import { daysUntil, type SaudiFundamentals } from '@/lib/market/saudi-fundamentals';
 
 const money = (value: number, lang: Lang) =>
     arDigits(value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), lang);

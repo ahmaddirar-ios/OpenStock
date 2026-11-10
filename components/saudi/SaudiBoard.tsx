@@ -6,11 +6,11 @@ import { ArrowDownRight, ArrowUpRight, Activity } from "lucide-react";
 import ChangePill from "@/components/ChangePill";
 import Price from "@/components/Price";
 import DataFreshness from "@/components/DataFreshness";
-import { isQuoteLive } from "@/lib/market-data";
-import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { isQuoteLive } from "@/lib/market/data";
+import { saudiSymbolNameAr } from "@/lib/market/saudi-symbols";
 import { sectorLabel, tx, arDigits, type Lang } from "@/lib/i18n";
-import type { SaudiBoardPayload } from "@/lib/saudi-board";
-import type { SaudiQuote } from "@/lib/tradingview-scanner";
+import type { SaudiBoardPayload } from "@/lib/market/saudi-board";
+import type { SaudiQuote } from "@/lib/market/tradingview-scanner";
 
 const compact = (value: number) =>
     value >= 1e9 ? `${(value / 1e9).toFixed(1)}B` : value >= 1e6 ? `${(value / 1e6).toFixed(0)}M` : value >= 1e3 ? `${(value / 1e3).toFixed(0)}K` : `${Math.round(value)}`;

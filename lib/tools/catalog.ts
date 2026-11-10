@@ -1,4 +1,4 @@
-// One catalog for every tool the chart offers: the 74 drawings, the 27 studies, the 11 chart types
+// One catalog for every tool the chart offers: the 79 drawings, the 27 studies, the 11 chart types
 // and the 15 formula functions. It exists so that four things can never disagree about a tool again
 // — the rail, the menus, the search palette, and the guide that will be written from it.
 //
@@ -7,15 +7,15 @@
 // cannot infer: which section a tool belongs to, what a formula function's ready example looks
 // like, and how many clicks a drawing asks for.
 //
-// Nothing here holds behaviour. A drawing's geometry lives in lib/chart-drawings.ts, a study's maths
-// in lib/chart-studies.ts, an expression in lib/formula.ts — this file only knows they exist.
+// Nothing here holds behaviour. A drawing's geometry lives in lib/chart/drawings.ts, a study's maths
+// in lib/chart/studies.ts, an expression in lib/formula/formula.ts — this file only knows they exist.
 
-import { TOOL_DEFS, type ShapeTool, type ToolGroup } from '@/lib/chart-drawings';
-import { STUDIES, STUDY_IDS } from '@/lib/chart-studies';
-import { CHART_TYPE_KEYS, CHART_TYPES, type ChartType } from '@/lib/chart-view';
-import { FORMULA_FUNCTIONS } from '@/lib/formula';
-import { TOOL_SHORTCUTS } from '@/lib/chart-hotkeys';
-import { TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import { TOOL_DEFS, type ShapeTool, type ToolGroup } from '@/lib/chart/drawings';
+import { STUDIES, STUDY_IDS } from '@/lib/chart/studies';
+import { CHART_TYPE_KEYS, CHART_TYPES, type ChartType } from '@/lib/chart/view';
+import { FORMULA_FUNCTIONS } from '@/lib/formula/formula';
+import { TOOL_SHORTCUTS } from '@/lib/chart/hotkeys';
+import { TOOL_LABEL_KEYS } from '@/lib/chart/drawing-groups';
 import { tx, type Lang, type StringKey } from '@/lib/i18n';
 
 export type ToolFamily = 'drawing' | 'study' | 'chartType' | 'formula';
@@ -28,7 +28,8 @@ export type ToolSectionId =
     | 'formula.average'
     | 'formula.stat'
     | 'formula.cross'
-    | 'formula.math';
+    | 'formula.math'
+    | 'formula.logic';
 
 export type ToolEntry = {
     /** Unique across the four families: `drawing:trend`, `study:sma`, `chartType:pnf`. */
@@ -77,6 +78,7 @@ export const TOOL_SECTIONS: readonly ToolSection[] = [
     { id: 'formula.stat', family: 'formula', nameKey: 'tools.section.formula.stat' },
     { id: 'formula.cross', family: 'formula', nameKey: 'tools.section.formula.cross' },
     { id: 'formula.math', family: 'formula', nameKey: 'tools.section.formula.math' },
+    { id: 'formula.logic', family: 'formula', nameKey: 'tools.section.formula.logic' },
 ];
 
 /** Synonyms a trader would actually type, in both languages. The translated name is free. */
@@ -108,11 +110,13 @@ const DRAWING_KEYWORDS: Partial<Record<ShapeTool | 'select' | 'measure', readonl
     fibtime: ['time zones', 'zones', 'زمن فيبو', 'مناطق زمنية'],
     fibarc: ['arc', 'قوس فيبو', 'قوس'],
     fibspeed: ['speed', 'resistance fan', 'سرعات', 'مروحة سرعة'],
+    fibwedge: ['wedge', 'converging fan', 'وتد فيبو', 'مروحة متقاربة'],
     // gann and families
     gann: ['gann', 'جان'],
     gannfan: ['gann fan', 'مروحة جان'],
     gannbox: ['gann box', 'مربع جان'],
     gannsquare: ['square of nine', 'مربع التسعة'],
+    gannsquarefixed: ['fixed square', 'مربع غان ثابت', 'مربع ثابت'],
     pitchfork: ['fork', 'median', 'شوكة', 'اندروز', 'وسيط'],
     schiffpitchfork: ['schiff', 'شوكة شيف'],
     modpitchfork: ['modified', 'شوكة معدّلة'],
@@ -129,6 +133,7 @@ const DRAWING_KEYWORDS: Partial<Record<ShapeTool | 'select' | 'measure', readonl
     abcd: ['ab cd', 'نمط abcd'],
     triangle: ['مثلث'],
     drives3: ['three drives', 'ثلاث دفعات'],
+    wolfe: ['wolfe wave', 'wolfe', 'وولف', 'موجة وولف', 'موجات'],
     // elliott
     'ew-impulse': ['elliott', 'impulse', 'اليوت', 'دافعة', 'موجة'],
     'ew-abc': ['correction', 'abc', 'تصحيح'],
@@ -159,6 +164,7 @@ const DRAWING_KEYWORDS: Partial<Record<ShapeTool | 'select' | 'measure', readonl
     signpost: ['لافتة', 'علامة'],
     flag: ['علم'],
     pricenote: ['price label', 'سعر السهم'],
+    table: ['grid', 'stats', 'جدول', 'خلايا'],
     icon: ['sticker', 'رمز', 'ملصق'],
     image: ['صورة', 'لصق'],
     // brush
@@ -177,9 +183,10 @@ const hotkeyFor = new Map<string, string>(TOOL_SHORTCUTS.map((shortcut) => [shor
  */
 const FORMULA_SECTIONS: Record<string, ToolSectionId> = {
     sma: 'formula.average', ema: 'formula.average', rma: 'formula.average', sum: 'formula.average',
-    stdev: 'formula.stat', highest: 'formula.stat', lowest: 'formula.stat', change: 'formula.stat',
+    stdev: 'formula.stat', highest: 'formula.stat', lowest: 'formula.stat', change: 'formula.stat', rsi: 'formula.stat',
     crossover: 'formula.cross', crossunder: 'formula.cross',
     abs: 'formula.math', sqrt: 'formula.math', pow: 'formula.math', max: 'formula.math', min: 'formula.math',
+    if: 'formula.logic', nz: 'formula.logic',
 };
 
 /** A one-line use of every function: the example the palette drops into a new Formula study. */
@@ -189,6 +196,7 @@ const FORMULA_EXAMPLES: Record<string, string> = {
     rma: 'rma(close, 14)',
     sum: 'sum(volume, 20)',
     stdev: 'stdev(close, 20)',
+    rsi: 'rsi(close, 14)',
     highest: 'highest(high, 20)',
     lowest: 'lowest(low, 20)',
     change: 'change(close)',
@@ -199,6 +207,8 @@ const FORMULA_EXAMPLES: Record<string, string> = {
     pow: 'pow(close, 2)',
     max: 'max(close, sma(close, 20))',
     min: 'min(close, sma(close, 20))',
+    if: 'if(close > open, close - open, 0)',
+    nz: 'nz(close[1], close)',
 };
 
 const drawingEntries = (): ToolEntry[] => [
@@ -290,7 +300,8 @@ const foldArabic = (value: string): string => value
     .replace(/ؤ/g, 'و')
     .replace(/ة/g, 'ه');
 
-const normalise = (value: string): string =>
+/** Folded, punctuation-free text — shared with the command bar so both answer the same spellings. */
+export const normaliseSearch = (value: string): string =>
     foldArabic(value.toLowerCase())
         .replace(/[^\p{L}\p{N}\s]/gu, ' ')
         .replace(/\s+/g, ' ')
@@ -303,7 +314,7 @@ const haystack = (entry: ToolEntry): string[] => [
     entry.key,
     entry.example ?? '',
     ...entry.keywords,
-].map(normalise).filter(Boolean);
+].map(normaliseSearch).filter(Boolean);
 
 type Scored = { entry: ToolEntry; text: string[]; order: number };
 
@@ -320,7 +331,7 @@ const scoreOf = (hit: Scored, query: string): number => {
         }
     }
     // The family's own name is the last thing to answer, so a typed name always wins over an id.
-    if (best === 0 && normalise(hit.entry.key).includes(query)) best = 30;
+    if (best === 0 && normaliseSearch(hit.entry.key).includes(query)) best = 30;
     return best;
 };
 
@@ -329,7 +340,7 @@ const scoreOf = (hit: Scored, query: string): number => {
  * catalog in its own order, which is what the palette shows before anything is typed.
  */
 export function searchTools(query: string): ToolEntry[] {
-    const needle = normalise(query);
+    const needle = normaliseSearch(query);
     const entries = pickableTools().map((entry, order) => ({ entry, text: haystack(entry), order }));
     if (!needle) return entries.map((hit) => hit.entry);
     return entries

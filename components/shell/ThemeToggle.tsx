@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
  * Dark or light, remembered per browser. Rendered as dark (the default) on the server and corrected
  * on mount, so the markup the server sends and the first client render agree.
  */
-export default function ThemeToggle({ lang, className }: { lang: Lang; className?: string }) {
+export default function ThemeToggle({ lang, className, iconOnly }: { lang: Lang; className?: string; iconOnly?: boolean }) {
     const [theme, setTheme] = useState<Theme>('dark');
     const [mounted, setMounted] = useState(false);
 
@@ -35,12 +35,19 @@ export default function ThemeToggle({ lang, className }: { lang: Lang; className
             type="button"
             onClick={flip}
             aria-label={label}
-            title={label}
+            title={iconOnly ? undefined : label}
             data-mounted={mounted ? 'true' : 'false'}
-            className={cn('side-item h-8 w-full justify-start gap-2 font-semibold', className)}
+            className={cn(iconOnly ? 'rail-btn' : 'side-item h-8 w-full justify-start gap-2 font-semibold', className)}
         >
             {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
-            <span className="flex-1 text-start">{label}</span>
+            {iconOnly ? (
+                <>
+                    <span className="rail-label">{label}</span>
+                    <span className="rail-tip" aria-hidden="true">{label}</span>
+                </>
+            ) : (
+                <span className="flex-1 text-start">{label}</span>
+            )}
         </button>
     );
 }

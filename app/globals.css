@@ -198,14 +198,28 @@
 @layer components {
     /* ============ Shell ============ */
 
-    .shell {
+    /* The desk: a menu bar, a tape, the workspace, and a status line — the frame a terminal opens
+       with. Everything below the chrome is the same app it always was. */
+    .desk {
         display: grid;
-        grid-template-columns: 248px minmax(0, 1fr);
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto;
         height: 100dvh;
         overflow: hidden;
         background: var(--page);
     }
-    .shell > * { min-width: 0; min-height: 0; }
+    .desk > * { min-width: 0; min-height: 0; }
+
+    .desk-body {
+        display: grid;
+        grid-template-columns: 56px minmax(0, 1fr);
+        min-height: 0;
+    }
+    .desk.is-collapsed .desk-body { grid-template-columns: 0 minmax(0, 1fr); }
+    .desk.is-collapsed .desk-nav { display: none; }
+    /* Focus mode is for a chart: the chrome steps aside, the workspace keeps the whole window. */
+    .desk.is-focus .noticebar,
+    .desk.is-focus .quote-strip,
+    .desk.is-focus .statusbar { display: none; }
 
     .shell-container {
         height: 100%;
@@ -245,25 +259,414 @@
         max-width: 1680px;
     }
 
+    /* The chart workspace is the one page that must not scroll: the whole point of the grid is that
+       every pane is on screen at once, so the grid takes whatever height the chrome leaves. */
+    .workspace-inner.is-charts {
+        height: 100%;
+        min-height: 0;
+        padding-bottom: 12px;
+    }
+    .workspace-inner.is-charts .page-head { padding: 0 2px; }
+    .workspace-inner.is-charts .page-head > div {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 0;
+    }
+    .workspace-inner.is-charts .page-title { font-size: 15px; letter-spacing: -0.01em; }
+    .workspace-inner.is-charts .page-sub {
+        margin: 0;
+        font-size: 11.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
     @media (max-width: 1023px) {
-        .shell { grid-template-columns: minmax(0, 1fr); }
+        .workspace-inner.is-charts { height: auto; min-height: 100%; }
+        .workspace-inner.is-charts .page-head > div { display: block; }
+        .workspace-inner.is-charts .page-title { font-size: 21px; }
+    }
+
+    @media (max-width: 1023px) {
+        .desk-body { grid-template-columns: minmax(0, 1fr); }
         .shell-container { padding: 0; }
         .app { border-radius: 0; }
         .workspace-inner { padding: 12px; }
     }
 
-    /* ============ Sidebar ============ */
+    /* ============ Terminal chrome ============ */
 
-    .sidebar {
+    .noticebar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        height: 26px;
+        padding: 0 12px;
+        background: color-mix(in oklab, var(--down) 22%, var(--page));
+        border-bottom: 1px solid color-mix(in oklab, var(--down) 30%, transparent);
+        color: color-mix(in oklab, var(--text) 82%, var(--down));
+        font-size: 11.5px;
+        font-weight: 600;
+    }
+    /* Staff notices colour the bar by what they mean: a quiet note, a caution, or a stop. */
+    .noticebar.is-info {
+        background: color-mix(in oklab, var(--brand) 16%, var(--page));
+        border-bottom-color: color-mix(in oklab, var(--brand) 32%, transparent);
+        color: color-mix(in oklab, var(--text) 80%, var(--brand));
+    }
+    .noticebar.is-info .noticebar-link { background: color-mix(in oklab, var(--brand) 28%, transparent); }
+    .noticebar.is-warning {
+        background: color-mix(in oklab, var(--warn, oklch(0.82 0.16 84)) 18%, var(--page));
+        border-bottom-color: color-mix(in oklab, var(--warn, oklch(0.82 0.16 84)) 34%, transparent);
+        color: color-mix(in oklab, var(--text) 80%, var(--warn, oklch(0.82 0.16 84)));
+    }
+    .noticebar.is-warning .noticebar-link { background: color-mix(in oklab, var(--warn, oklch(0.82 0.16 84)) 30%, transparent); }
+    .noticebar-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-inline-start: auto;
+        flex: none;
+        padding: 0 8px;
+        height: 18px;
+        border-radius: 5px;
+        background: color-mix(in oklab, var(--down) 34%, transparent);
+        color: var(--text);
+        font-size: 10.5px;
+        font-weight: 700;
+    }
+    .noticebar-link:hover { background: color-mix(in oklab, var(--down) 46%, transparent); }
+
+    .menubar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 40px;
+        padding: 0 8px;
+        background: var(--side);
+        border-bottom: 1px solid var(--line);
+        user-select: none;
+    }
+
+    .menubar-brand {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px 0 4px;
+        color: var(--text);
+        flex: none;
+    }
+
+    .menubar-menus { display: flex; align-items: center; gap: 1px; min-width: 0; }
+
+    .menubar-menu { position: relative; }
+
+    .menubar-item {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        height: 28px;
+        padding: 0 9px;
+        border-radius: 6px;
+        color: color-mix(in oklab, var(--text) 72%, transparent);
+        font-size: 12.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: background-color 120ms var(--ui-ease), color 120ms var(--ui-ease);
+    }
+    .menubar-item:hover,
+    .menubar-item.is-open { background: color-mix(in oklab, var(--text) 9%, transparent); color: var(--text); }
+    /* The section that owns the current page, marked on the bar itself: TakeProfit and Lightspeed
+       both show where you are rather than making you open each menu to find out. */
+    .menubar-item.is-current { color: var(--text); }
+    .menubar-item.is-current::after {
+        content: '';
+        width: 4px;
+        height: 4px;
+        margin-inline-start: 1px;
+        border-radius: 50%;
+        background: var(--brand-ink);
+        opacity: 0.85;
+    }
+
+    .menubar-account { gap: 6px; padding-inline-end: 6px; }
+    .menubar-avatar {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--brand-soft);
+        color: var(--brand-ink);
+        font-size: 10.5px;
+        font-weight: 700;
+    }
+
+    .menubar-drop {
+        position: absolute;
+        inset-inline-start: 0;
+        top: 32px;
+        z-index: 60;
+        min-width: 208px;
+        padding: 4px;
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: 0 0 0 1px var(--line), 0 16px 40px oklch(0 0 0 / 0.45);
+    }
+    .menubar-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        height: 30px;
+        padding: 0 8px;
+        border-radius: 7px;
+        color: var(--muted);
+        font-size: 12.5px;
+        font-weight: 600;
+        text-align: start;
+    }
+    .menubar-row:hover { background: var(--hover); color: var(--text); }
+    /* Pinned to the far edge (the account door), the drop must open inward on both sides. */
+    .menubar-drop.is-end { inset-inline-start: auto; inset-inline-end: 0; min-width: 224px; }
+    .menubar-sep { display: block; height: 1px; margin: 4px 6px; background: var(--line); }
+    .menubar-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--brand-ink); }
+
+    .menubar-end {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-inline-start: auto;
+        min-width: 0;
+    }
+
+    .menubar-search {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        max-width: 280px;
+        min-width: 0;
+        padding: 0 8px;
+        border-radius: 6px;
+        background: color-mix(in oklab, var(--text) 6%, transparent);
+        color: color-mix(in oklab, var(--text) 55%, transparent);
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .menubar-search:hover { background: color-mix(in oklab, var(--text) 11%, transparent); color: var(--text); }
+    .menubar-search svg { width: 14px; height: 14px; flex: none; }
+    .menubar-search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .menubar-search .kbd { flex: none; }
+
+    .menubar-user-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .win-controls { display: flex; align-items: center; gap: 2px; flex: none; margin-inline-start: 4px; }
+    .win-btn {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        color: color-mix(in oklab, var(--text) 55%, transparent);
+        transition: background-color 120ms var(--ui-ease), color 120ms var(--ui-ease);
+    }
+    .win-btn:hover { background: color-mix(in oklab, var(--text) 10%, transparent); color: var(--text); }
+    .win-btn.is-close:hover { background: #c0392b; color: #fff; }
+    .win-btn svg { width: 14px; height: 14px; }
+
+    .quote-strip {
+        display: flex;
+        align-items: center;
+        height: 28px;
+        overflow: hidden;
+        /* The tape runs edge to edge; the fade makes a half-scrolled cell read as a tape rather
+           than as a broken first column. */
+        mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+        background: color-mix(in oklab, var(--text) 3%, var(--side));
+        border-bottom: 1px solid var(--line);
+        font-size: 11.5px;
+    }
+    .quote-strip.is-quiet { padding: 0 12px; color: var(--faint); }
+    .quote-track {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        width: max-content;
+        animation: quote-tape 70s linear infinite;
+    }
+    .quote-strip:hover .quote-track { animation-play-state: paused; }
+    .quote-cell {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+        padding: 0 12px;
+        border-inline-end: 1px solid color-mix(in oklab, var(--text) 7%, transparent);
+        white-space: nowrap;
+    }
+    .quote-name { color: var(--faint); font-weight: 700; letter-spacing: 0.02em; }
+    .quote-price { color: var(--text); font-weight: 600; }
+    .quote-change.is-up { color: var(--up); }
+    .quote-change.is-down { color: var(--down); }
+    @keyframes quote-tape {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+    }
+    [dir='rtl'] .quote-track { animation-name: quote-tape-rtl; }
+    @keyframes quote-tape-rtl {
+        from { transform: translateX(0); }
+        to { transform: translateX(50%); }
+    }
+
+    .statusbar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 26px;
+        padding: 0 12px;
+        background: var(--side);
+        border-top: 1px solid var(--line);
+        color: var(--faint);
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .statusbar-cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .statusbar-end { margin-inline-start: auto; }
+    [dir='rtl'] .statusbar-end { margin-inline-start: 0; margin-inline-end: auto; }
+
+    @media (max-width: 1100px) {
+        .menubar-search span, .menubar-search .kbd { display: none; }
+        .menubar-search { width: 28px; justify-content: center; padding: 0; }
+        .menubar-user-name { display: none; }
+    }
+    /* The top menu is the site, so it holds its ground: it only folds on a phone, where the
+       drawer is the navigation. It used to vanish below 900px, which is a normal laptop window
+       and left the strip looking empty. */
+    @media (max-width: 1040px) {
+        .menubar-item { padding: 0 7px; font-size: 12px; }
+    }
+    @media (max-width: 640px) {
+        .menubar > .menubar-menus { display: none; }
+        .menubar-end .menubar-menus .menubar-item { padding: 0 6px; }
+    }
+    @media (max-width: 720px) {
+        .noticebar { font-size: 10.5px; }
+        .noticebar-link { display: none; }
+        .quote-strip { display: none; }
+        .statusbar-date { display: none; }
+        .win-controls { display: none; }
+    }
+
+    /* ============ The rail ============ */
+
+    /* The menu bar carries every name, so the edge carries only glyphs: one per destination, a tip
+       on hover, a hairline between the market, your own pages and the analysis. */
+    .rail {
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        align-items: center;
+        gap: 2px;
         height: 100%;
-        padding: 18px 12px 12px;
-        overflow-y: auto;
+        padding: 10px 0 8px;
+        /* The tips live outside the column, so nothing here may clip: `overflow-y: auto` alone
+           silently turns `overflow-x` into auto and cuts every tip at 56px. Short windows get the
+           compact rhythm below instead of a scrollbar. */
+        overflow: visible;
         background: var(--page);
+    }
+
+    .rail-group { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; }
+
+    .rail-sep { width: 22px; height: 1px; margin: 6px 0; background: var(--line); flex: none; }
+
+    .rail-btn {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
         color: var(--muted);
-        scrollbar-width: none;
+        flex: none;
+        transition: background-color 140ms var(--ui-ease), color 140ms var(--ui-ease);
+    }
+    .rail-btn:hover { background: color-mix(in oklab, var(--text) 7%, transparent); color: var(--text); }
+    .rail-btn.is-active { background: color-mix(in oklab, var(--brand) 18%, transparent); color: var(--brand-ink); }
+    .rail-btn svg { width: 18px; height: 18px; }
+
+    .rail-avatar { margin-bottom: 2px; }
+
+    .rail-label { display: none; }
+
+    /* Eleven glyphs + the foot fit 900px comfortably; a laptop on a 720px window does not, and a
+       scrollbar in a 56px strip is worse than a tighter rhythm. */
+    @media (max-height: 780px) and (min-width: 1024px) {
+        .rail { padding: 6px 0 6px; }
+        .rail-btn { width: 34px; height: 34px; border-radius: 9px; }
+        .rail-btn svg { width: 16px; height: 16px; }
+        .rail-sep { margin: 4px 0; }
+    }
+
+    /* The tip is the only text in the rail: it lives outside the 56px column, toward the workspace,
+       so it never widens the frame. */
+    .rail-tip {
+        position: absolute;
+        /* Toward the workspace in both directions: the rail sits at inline-start, so the tip
+           starts one rail-width past it. */
+        inset-inline-start: calc(100% + 10px);
+        top: 50%;
+        transform: translateY(-50%) scale(0.98);
+        z-index: 70;
+        padding: 4px 9px;
+        border-radius: 6px;
+        background: var(--card);
+        box-shadow: 0 0 0 1px var(--line), 0 8px 24px oklch(0 0 0 / 0.4);
+        color: var(--text);
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms var(--ui-ease), transform 120ms var(--ui-ease);
+    }
+    .rail-btn:hover .rail-tip,
+    .rail-btn:focus-visible .rail-tip { opacity: 1; transform: translateY(-50%) scale(1); }
+
+    .rail-foot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        margin-top: auto;
+        padding-top: 6px;
+    }
+
+    /* Resources live in the menu bar on a desktop; the drawer repeats them, because the menu bar
+       folds to a hamburger there. */
+    .rail-res { display: none; }
+
+    /* The drawer is the same markup with its labels on: a list, because a phone has no hover. */
+    @media (max-width: 1023px) {
+        .rail { width: 100%; align-items: stretch; padding: 12px 10px; gap: 1px; overflow-y: auto; }
+        .rail-group { align-items: stretch; gap: 1px; }
+        .rail-sep { width: 100%; margin: 8px 0; }
+        .rail-btn {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            width: 100%;
+            height: 38px;
+            padding: 0 10px;
+        }
+        .rail-label { display: inline; flex: 1; font-size: 13px; font-weight: 600; }
+        .rail-tip { display: none; }
+        .rail-avatar { width: 100%; }
+        .rail-foot { align-items: stretch; padding-top: 10px; }
+        /* The drawer is the only place the resources appear: the menu bar folds to a hamburger. */
+        .rail-res { display: flex; }
     }
 
     .side-label {
@@ -290,22 +693,6 @@
     .side-item:active { transform: scale(0.97); }
     .side-item.is-active { background: color-mix(in oklab, var(--text) 8%, transparent); color: var(--text); }
     .side-item svg { flex: none; width: 17px; height: 17px; }
-
-    .side-cta {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 40px;
-        padding: 0 12px;
-        border-radius: 11px;
-        font-weight: 700;
-        color: var(--on-brand);
-        background: var(--brand);
-        box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.35), 0 6px 18px oklch(0.8 0.13 176 / 0.18);
-        transition: background-color 150ms var(--ui-ease), transform 150ms var(--ui-ease);
-    }
-    .side-cta:hover { background: var(--brand-ink); }
-    .side-cta:active { transform: scale(0.96); }
 
     .kbd {
         display: inline-flex;
@@ -442,7 +829,7 @@
         padding: var(--shell-pad);
         border-radius: calc(var(--inner-r) + var(--shell-pad));
         background:
-            repeating-linear-gradient(-45deg, oklch(0.42 0.008 240 / 0.11) 0 1px, transparent 1px 7px),
+            repeating-linear-gradient(-45deg, var(--hatch-weave, oklch(0.42 0.008 240 / 0.11)) 0 1px, transparent 1px 7px),
             var(--frame);
         box-shadow: 0 0 0 1px oklch(1 0 0 / 0.035), 0 6px 18px oklch(0 0 0 / 0.22);
     }
@@ -670,6 +1057,169 @@
     .data-table tbody tr:last-child td { border-bottom: 0; }
     .data-table .is-num { text-align: right; }
 
+    /* ============ Market watch table ============ */
+    /* market · symbol · name · last · change, the row tinted by its direction and the last price
+       filled in the same colour — the terminal's board, not a list of pills. */
+    .watch-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+    }
+    .watch-table th,
+    .watch-table td {
+        height: 24px;
+        padding: 0 8px;
+        text-align: start;
+        white-space: nowrap;
+    }
+    .watch-table .is-num { text-align: end; }
+
+    .watch-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        height: 24px;
+        padding: 0 8px;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--faint);
+    }
+    [dir='ltr'] .watch-table thead th { letter-spacing: 0.05em; text-transform: uppercase; }
+
+    /* A rankable header says so: the label and a faint pair of arrows, the arrows that light when
+       the column is the one doing the ranking. */
+    .watch-sort {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        transition: color 120ms var(--ui-ease);
+    }
+    .watch-sort:hover { color: var(--text); }
+    .watch-sort.is-active { color: var(--text); }
+    .watch-sort-mark { font-size: 9px; line-height: 1; opacity: 0.55; }
+    .watch-sort.is-active .watch-sort-mark { opacity: 1; color: var(--brand-ink); }
+
+    .watch-table tbody td {
+        border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+        font-size: 12px;
+    }
+    /* Rows stay neutral: the colour belongs to the two numbers that carry meaning — the last price
+       and the change block — not to a whole stripe that makes a table read as a heat map. */
+    .watch-table tbody tr:hover td { background: color-mix(in oklab, var(--text) 5%, transparent); }
+
+    .watch-table .watch-market {
+        width: 6.8rem;
+        max-width: 6.8rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--faint);
+        font-size: 11.5px;
+    }
+    .watch-table .watch-symbol {
+        width: 5.4rem;
+        color: var(--faint);
+    }
+    .watch-table .watch-symbol .mono { font-size: 11px; font-weight: 600; }
+    .watch-table .watch-name { width: 100%; }
+    .watch-table .watch-name-link {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 500;
+        color: var(--text);
+    }
+    .watch-table .watch-name-link:hover { color: var(--brand-ink); }
+
+    .watch-table .watch-last {
+        width: 5.6rem;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--text);
+    }
+    .watch-table tbody td.watch-last.is-up { color: var(--up); }
+    .watch-table tbody td.watch-last.is-down { color: var(--down); }
+    .watch-table tbody td.watch-last.is-flat { color: var(--text); }
+
+    .watch-table .watch-change {
+        width: 5rem;
+        padding: 0 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    /* The change is the one filled block in the row — the mark a trader's eye lands on first. */
+    .watch-table .watch-block {
+        display: inline-block;
+        min-width: 3.4rem;
+        padding: 1px 4px;
+        border-radius: 3px;
+        text-align: end;
+        font-variant-numeric: tabular-nums;
+    }
+    .watch-table .watch-change.is-up .watch-block { background: var(--up-soft); color: var(--up); }
+    .watch-table .watch-change.is-down .watch-block { background: var(--down-soft); color: var(--down); }
+    .watch-table .watch-change.is-flat .watch-block { background: var(--hover); color: var(--faint); }
+
+    /* The delayed mark before the symbol, the way the terminal flags every row. */
+    .watch-sym {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        vertical-align: middle;
+    }
+    .watch-d {
+        display: inline-grid;
+        place-items: center;
+        width: 13px;
+        height: 13px;
+        border-radius: 3px;
+        background: color-mix(in oklab, var(--brand) 22%, transparent);
+        color: var(--brand-ink);
+        font-size: 8.5px;
+        font-weight: 800;
+        vertical-align: 1px;
+    }
+
+    .watch-table .watch-section th {
+        padding: 0;
+        background: color-mix(in oklab, var(--brand) 9%, var(--card));
+        border-block: 1px solid var(--line);
+    }
+    .watch-table .watch-section-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0 8px;
+        height: 24px;
+    }
+    .watch-table .watch-section-name {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--text);
+    }
+    .watch-table .watch-section-count { font-size: 10px; color: var(--faint); }
+
+    /* Scrolling a long pane: the group you are in stays under the column headers. */
+    .watch-table.is-pane .watch-section th { position: sticky; top: 27px; z-index: 1; }
+    /* The pane is ~360px: fixed layout, so the change column can never be pushed out of view. */
+    .watch-table.is-pane { table-layout: fixed; }
+    .watch-table.is-pane .watch-market { display: none; }
+    .watch-table.is-pane .watch-name { width: auto; }
+    .watch-table.is-pane .watch-last { width: 4.7rem; }
+    .watch-table.is-pane .watch-change { width: 3.9rem; }
+    .watch-table.is-pane .watch-symbol { width: 4.4rem; }
+
+    @media (max-width: 640px) {
+        .watch-table.is-page .watch-market { display: none; }
+    }
+
     .row-list > * + * { border-top: 1px solid color-mix(in oklab, var(--text) 5%, transparent); }
 
     .logo-well {
@@ -729,6 +1279,385 @@
         color: var(--faint);
     }
     .tradingview-widget-copyright a { color: var(--muted); }
+
+    /* ============ Overview: one screen of chart + market watch ============ */
+
+    /* The dashboard is a workspace, not a document: the chart and the watch fill the window and
+       scroll inside themselves, so the page itself never scrolls. */
+    .workspace-inner.is-overview {
+        height: 100%;
+        gap: 8px;
+        padding: 10px;
+        max-width: none;
+    }
+
+    .overview {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 0;
+    }
+
+    /* Charts stay on the physical left in both languages, the way a broker lays a screen out, and
+       the panels inside keep their own reading direction (the watch is Arabic in Arabic). */
+    .overview-grid {
+        direction: ltr;
+        display: grid;
+        flex: 1;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+        gap: 8px;
+        /* The chart is the page, so it claims most of the window instead of shrinking to whatever
+           is left after the board. Anything below it scrolls. */
+        min-height: clamp(520px, calc(100dvh - 250px), 900px);
+    }
+
+    /* The board: the trader's own row of cards above the chart. Compact on purpose — it is a
+       glance, not a second dashboard, so the chart keeps most of the window. */
+    .board {
+        display: flex;
+        flex: none;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+    }
+    .board-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        height: 22px;
+    }
+    .board-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--faint);
+    }
+    .board-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-inline-start: auto;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        transition: background-color 120ms, color 120ms;
+    }
+    .board-action:hover { background: var(--hover); color: var(--text); }
+    .board-action.is-on { color: var(--brand-ink); background: var(--brand-soft); }
+    .board-restore .board-action { margin-inline-start: 0; }
+    .board-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px;
+        min-width: 0;
+    }
+    .board-card { position: relative; min-width: 0; }
+    .board-card > a { height: 100%; }
+    .board-tools {
+        position: absolute;
+        inset-inline-end: 4px;
+        top: 4px;
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 6px;
+        background: color-mix(in oklab, var(--page) 88%, transparent);
+        box-shadow: 0 0 0 1px var(--line);
+    }
+    .board-tools button {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        color: var(--muted);
+    }
+    .board-tools button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+    .board-tools button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .board-tools svg { width: 13px; height: 13px; }
+    .board-restore {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0;
+    }
+    @media (max-width: 1279px) {
+        .board-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 639px) {
+        .board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .overview-grid > * { min-width: 0; min-height: 0; }
+    [dir='rtl'] .overview-grid > * { direction: rtl; }
+
+    /* The market ribbon: one line of the day above the grid — what the index did, what the day is
+       worth. It is read in a glance and then ignored, so it carries no card of its own: a hairline,
+       a quiet label, and figures that line up. The grid below is where the work happens. */
+    .terminal-ribbon {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 12px;
+        height: 30px;
+        min-width: 0;
+        padding: 0 10px;
+        overflow: hidden;
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.04), 0 0 0 1px oklch(0 0 0 / 0.25);
+        font-size: 11px;
+    }
+    /* Nothing to say still holds the row: the grid must not jump when a feed comes back. */
+    .terminal-ribbon.is-empty { background: transparent; box-shadow: none; }
+
+    /* Dense panels: the terminal's shell. A 30px header, an 11px title, no hatch weave, no
+       subtitle — the texture that makes a page feel like a dashboard is exactly what makes a
+       screen read all day feel heavy. One hairline and a rule is enough. */
+    .hatch.is-dense {
+        --shell-pad: 1px;
+        --inner-r: 10px;
+        border-radius: calc(var(--inner-r) + var(--shell-pad));
+        background: var(--frame);
+        box-shadow: 0 0 0 1px oklch(1 0 0 / 0.03), 0 4px 12px oklch(0 0 0 / 0.18);
+    }
+    .hatch.is-dense .section-head {
+        align-items: center;
+        height: 30px;
+        padding: 0 9px;
+        gap: 8px;
+    }
+    .hatch.is-dense .section-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        white-space: nowrap;
+    }
+    [dir='ltr'] .hatch.is-dense .section-title { letter-spacing: 0.05em; text-transform: uppercase; }
+    .hatch.is-dense .section-sub { display: none; }
+    .hatch.is-dense .card { border-radius: 10px; }
+
+    .terminal-ribbon-quotes {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        list-style: none;
+    }
+    .terminal-ribbon-quotes > li {
+        display: flex;
+        flex: none;
+        align-items: baseline;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    .terminal-ribbon-sym {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--faint);
+    }
+    .terminal-ribbon-last {
+        font-weight: 600;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+    /* The change is the only place colour appears, and it sits in a soft block the way a terminal
+       prints it — a number you can find without reading the row. */
+    .terminal-ribbon-change {
+        padding: 1px 4px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+    }
+    .terminal-ribbon-quotes > li.is-up .terminal-ribbon-change { background: var(--up-soft); color: var(--up); }
+    .terminal-ribbon-quotes > li.is-down .terminal-ribbon-change { background: var(--down-soft); color: var(--down); }
+
+    /* The day's totals, on the far edge behind a rule: reference numbers, not headlines. */
+    .terminal-ribbon-stats {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 0 auto;
+        padding: 0 0 0 12px;
+        border-inline-start: 1px solid var(--line);
+    }
+    .terminal-ribbon-stats > div { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+    .terminal-ribbon-stats dt {
+        font-size: 10px;
+        letter-spacing: 0.02em;
+        color: var(--faint);
+    }
+    .terminal-ribbon-stats dd {
+        display: flex;
+        gap: 6px;
+        margin: 0;
+        font-weight: 600;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+    .terminal-ribbon-stats .is-up { color: var(--up); }
+    .terminal-ribbon-stats .is-down { color: var(--down); }
+
+    /* A narrow pane keeps the home index and the breadth — the two numbers a trader checks first —
+       and lets the neighbours and the totals go. Nothing wraps, nothing scrolls sideways. */
+    @media (max-width: 1100px) {
+        .terminal-ribbon-quotes { gap: 10px; }
+        .terminal-ribbon-stats > div:nth-child(2) { display: none; }
+    }
+    @media (max-width: 860px) {
+        .terminal-ribbon { gap: 8px; padding: 0 8px; }
+        .terminal-ribbon-quotes > li:nth-child(n + 3) { display: none; }
+        .terminal-ribbon-stats > div:nth-child(n + 2) { display: none; }
+    }
+    @media (max-width: 560px) {
+        .terminal-ribbon-quotes > li:nth-child(n + 2) { display: none; }
+        .terminal-ribbon-stats { padding-inline-start: 8px; }
+    }
+
+    /* The day's headlines, on one row above the status bar: a ticker of stories, not a page of them.
+       An empty feed draws nothing at all (NewsStrip returns null). */
+    .news-strip {
+        display: flex;
+        flex: none;
+        align-items: center;
+        min-width: 0;
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 0 0 1px oklch(0 0 0 / 0.25);
+    }
+    .news-strip-label {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 6px;
+        padding-inline-start: 10px;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+    }
+    /* The viewport is the row; the track holds the stories twice and travels one copy wide, so the
+       loop has no seam. A strip that fits stays scrollable by hand instead. */
+    .news-strip-viewport {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+        /* The belt runs right up to the label and the panel's edge: a soft edge on both sides stops
+           a headline from being cut mid-word against them. */
+        mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+    }
+    .news-strip-viewport::-webkit-scrollbar { display: none; }
+    .news-strip-viewport.is-rolling { overflow: hidden; }
+    .news-strip-track { display: flex; flex: none; width: max-content; }
+    .news-strip-track.is-rolling { animation: news-strip-roll linear infinite; }
+    /* The belt runs leftwards in both languages — the way every ticker the trader has watched
+       moves — so the stories sit on a physical left-to-right belt while each story keeps its own
+       right-to-left shape. Arabic still starts reading at the right edge of every headline. */
+    [dir='rtl'] .news-strip-viewport.is-rolling,
+    [dir='rtl'] .news-strip-viewport.is-rolling .news-strip-list { direction: ltr; }
+    [dir='rtl'] .news-strip-row { direction: rtl; }
+    /* Reading is why it stops: a headline the reader is pointing at must not slide away. */
+    .news-strip:hover .news-strip-track.is-rolling,
+    .news-strip:focus-within .news-strip-track.is-rolling,
+    .news-strip.is-paused .news-strip-track.is-rolling { animation-play-state: paused; }
+
+    @keyframes news-strip-roll {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+    }
+
+    .news-strip-list {
+        display: flex;
+        flex: none;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .news-strip-row { display: flex; flex: none; }
+    .news-strip-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-inline-start: 1px solid var(--line);
+        font-size: 12.5px;
+        color: var(--text);
+        transition: background-color 120ms;
+    }
+    .news-strip-item:hover { background: var(--hover); }
+    .news-strip-ticker {
+        flex: none;
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: var(--hover);
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+    }
+    .news-strip-headline {
+        max-width: 40ch;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 500;
+    }
+    .news-strip-meta {
+        flex: none;
+        font-size: 11px;
+        color: var(--faint);
+        white-space: nowrap;
+    }
+    /* WCAG 2.2.2: anything that moves on its own for more than five seconds can be stopped. */
+    .news-strip-toggle {
+        display: grid;
+        flex: none;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        margin-inline-end: 4px;
+        border-radius: 6px;
+        color: var(--faint);
+        transition: background-color 120ms, color 120ms;
+    }
+    .news-strip-toggle:hover { background: var(--hover); color: var(--text); }
+
+    /* A phone cannot hold two panes side by side: the chart keeps a trading height, the watch a
+       thumb-sized slice of the screen, and the page scrolls again. */
+    @media (max-width: 1023px) {
+        .workspace-inner.is-overview { height: auto; min-height: 100%; }
+        .overview { flex: none; }
+        .overview-grid {
+            direction: inherit;
+            flex: none;
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .overview-grid > :last-child { height: 55vh; min-height: 340px; }
+    }
+    @media (max-width: 639px) {
+        .news-strip-label { display: none; }
+        .news-strip-item { padding-inline: 10px; }
+        .news-strip-headline { max-width: 30ch; }
+    }
 }
 
 /* ============ Auth + forms (class names kept for existing forms) ============ */
@@ -911,6 +1840,78 @@ html[lang="ar"] [lang="en"] {
 /* ============================ Rovex polish ============================ */
 
 /*
+ * The quote header above the overview's chart: instrument, last print, the day's move, whether the
+ * market is open, whether the data is late. One line, tabular figures, no card — it answers "what am
+ * I looking at" in the place a trader looks first.
+ */
+.chart-quote {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+}
+.chart-quote-sym {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    transition: color 120ms var(--ui-ease);
+}
+.chart-quote-sym:hover { color: var(--brand-ink); }
+.chart-quote-last {
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+.chart-quote-change {
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.chart-quote-change.is-up { background: var(--up-soft); color: var(--up); }
+.chart-quote-change.is-down { background: var(--down-soft); color: var(--down); }
+.chart-quote-change.is-flat { background: var(--hover); color: var(--faint); }
+.chart-quote-loading { width: 64px; height: 12px; border-radius: 3px; background: var(--hover); }
+.chart-quote-spacer { flex: 1 1 0; min-width: 4px; }
+.chart-quote-phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--faint);
+    white-space: nowrap;
+}
+.chart-quote-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.chart-quote-phase.is-open { color: var(--up); }
+.chart-quote-phase.is-open .chart-quote-dot {
+    background: var(--up);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--up) 18%, transparent);
+}
+.chart-quote-chip {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--warn) 14%, transparent);
+    color: var(--warn);
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+@media (max-width: 639px) {
+    .chart-quote-chip { display: none; }
+    .chart-quote-last { font-size: 15px; }
+}
+
+/*
  * The chart toolbars hold twenty-odd controls. As separate pills that reads as a wall;
  * as quiet chips on one recessed bar it reads as a toolbar. The active state is the one
  * place the accent colour appears, so it always means "this is on".
@@ -943,7 +1944,126 @@ html[lang="ar"] [lang="en"] {
 .chart-toolbar > .pill svg,
 .chart-toolbar > .relative > .pill svg { width: 13px; height: 13px; }
 .chart-toolbar > .icon-btn { width: 26px; height: 26px; border-radius: 8px; }
-.chart-toolbar .tool-divider { width: 1px; height: 14px; margin: 0 4px; background: var(--line); }
+.chart-toolbar .tool-divider { width: 1px; height: 14px; margin: 0 3px; background: var(--line); }
+.chart-toolbar .chart-toolbar-spacer { flex: 1 1 0; min-width: 4px; }
+
+/* The pane the toolbar is speaking to. A hairline, not a glow: four panes already carry enough. */
+.chart-pane[data-active] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brand-ink) 45%, transparent);
+}
+/* A narrower chart pane keeps the controls, not their names: the glyph is the control, the tooltip
+   is the label. Nothing moves to a second row, because a bar that wraps stops reading as a bar. */
+@media (max-width: 1400px) {
+    .chart-toolbar-main .chart-toolbar-label { display: none; }
+    /* The keyboard sheet is a convenience, not a control: the palette and the help menu still
+       reach it, so the bar spends the pixel on the chart instead. */
+    .chart-toolbar-main .chart-toolbar-optional { display: none; }
+}
+
+/* The watch column gives the chart its 40px back before the toolbar has to wrap. Scoped to the
+   two-column range: below 1024px the grid stacks, and an unscoped rule here would win over the
+   stacking rule that comes earlier in the sheet and squeeze the chart to a sliver. */
+@media (min-width: 1024px) and (max-width: 1400px) {
+    .overview-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
+}
+
+/* A phone has no room for a 22rem dropdown hanging off a 66px button: the palette and the settings
+   sheet pin to the bottom of the screen, where the thumb already is, and span the width instead of
+   growing leftwards off the edge. */
+@media (max-width: 1023px) {
+    .tool-palette,
+    .chart-settings {
+        position: fixed;
+        inset-inline: 12px;
+        bottom: 12px;
+        top: auto;
+        width: auto;
+        max-width: none;
+        margin: 0;
+    }
+    .tool-palette { max-height: min(62vh, 26rem); }
+    .chart-settings { max-height: min(72vh, 34rem); }
+}
+
+/* The intervals are one choice, so they sit in one recessed track with the chosen segment raised —
+   a segmented control, not seven pills of equal weight. */
+.chart-periods {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 1px;
+    border-radius: 9px;
+    background: color-mix(in oklab, var(--text) 5%, transparent);
+    box-shadow: inset 0 0 0 1px var(--line);
+}
+.chart-periods .chart-tf-pill {
+    height: 24px;
+    min-width: 24px;
+    padding: 0 5px;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    transition: background-color 140ms var(--ui-ease), color 140ms var(--ui-ease);
+}
+.chart-periods .chart-tf-pill:hover { background: color-mix(in oklab, var(--text) 8%, transparent); color: var(--text); }
+.chart-periods .chart-tf-pill.is-up { background: var(--brand-soft); color: var(--brand-ink); }
+
+/* A switch, drawn from the same tokens as everything else: the track is the line, the knob the card. */
+.chart-switch {
+    appearance: none;
+    flex: none;
+    width: 32px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--line-strong);
+    cursor: pointer;
+    transition: background-color 140ms var(--ui-ease);
+}
+.chart-switch::after {
+    content: '';
+    display: block;
+    width: 14px;
+    height: 14px;
+    margin: 2px;
+    border-radius: 50%;
+    background: var(--card);
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.35);
+    transition: transform 140ms var(--ui-ease);
+}
+.chart-switch:checked { background: var(--brand); }
+.chart-switch:checked::after { transform: translateX(14px); }
+
+/* The phone fold. A narrow screen cannot spend five rows on chart controls before the chart, so the
+   main bar keeps the interval, the tool palette, the type and a More button; everything else waits
+   inside the fold. Nothing is restored here — when the fold opens the items simply keep their own
+   display, so a pill stays a flex row. The editing bar follows the same switch, and shows by itself
+   while a drawing is selected or a tool is armed (that is when its controls are the ones you want). */
+.chart-more,
+.chart-tf-pick { display: none; }
+
+@media (max-width: 767.98px) {
+    .chart-toolbar-main:not(.is-open) > :not(.keep-mobile) { display: none; }
+    /* The track is desktop furniture; a phone names its interval in the picker instead. Only the
+       bar's own track is hidden — the settings panel draws a segmented control of its own. */
+    .chart-toolbar-main > .chart-periods { display: none; }
+    .chart-tf-pick { display: block; }
+    .chart-more { display: inline-flex; }
+    .chart-toolbar.chart-toolbar-edit:not(.is-open) { display: none; }
+    /* A phone has no room for a 18rem dropdown hanging off a button in the middle of a wrapped
+       toolbar: the chart-template sheet pins to the bottom, where the thumb already is. */
+    .chart-layout-menu {
+        position: fixed !important;
+        inset-inline: 8px !important;
+        inset-block-start: auto !important;
+        inset-block-end: 8px !important;
+        width: auto !important;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+}
 
 /* Focus is a product surface, not an afterthought. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
@@ -1094,13 +2214,20 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Drawing rail — the vertical tool strip docked inside the plotting area.
-   The chart body is `dir="ltr"` on purpose, so `inset-inline-start` docks left in
-   every language (TradingView does the same) and never lands on the price scale.
+   The chart body is `dir="ltr"` on purpose, so the rail docks left in every
+   language (TradingView does the same) and never lands on the price scale.
+
+   Physical `left`, not `inset-inline-start`: the production build lowers logical
+   properties to `:lang(ar) { right: … }`, which follows the *document* language
+   and ignores the `dir="ltr"` on the chart body — the rail then sat on the price
+   axis on the Arabic site while looking right on a dev build. `left` cannot be
+   re-interpreted by a language selector.
    ───────────────────────────────────────────────────────────────────────────── */
 .draw-rail-root {
     position: absolute;
-    inset-block: 8px;
-    inset-inline-start: 8px;
+    top: 8px;
+    bottom: 8px;
+    left: 8px;
     z-index: 20;
     display: flex;
     align-items: flex-start;
@@ -1147,7 +2274,8 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 .draw-rail-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .draw-rail-flyout {
     position: absolute;
-    inset-inline-start: 44px;
+    /* Physical, for the same reason as the rail: the flyout opens to the right of the strip. */
+    left: 44px;
     z-index: 30;
     min-width: 208px;
     /* A group can hold fifteen tools (Fibonacci): the flyout scrolls instead of running past the
@@ -1175,5 +2303,103 @@ p, .page-sub, .section-sub { text-wrap: pretty; }
 }
 .draw-rail-item:hover { background: var(--hover); }
 .draw-rail-item.is-on { background: var(--brand-soft); color: var(--brand-ink); }
+.draw-rail-item-name { flex: 1; }
+/* The shortcut sits at the row's far edge, so the eye scans one column of keys. */
+.draw-rail-key {
+    flex: none;
+    min-width: 18px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--page);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+}
 .draw-rail-glyph { width: 16px; height: 12px; display: grid; place-items: center; color: var(--muted); flex: none; }
 .draw-rail-glyph > span { width: 14px; height: 0; display: block; }
+
+/* ---------------------------------------------------------------------------
+   The overview's chart on a phone
+   A phone stacks the two panes, and the chart gets a trading height rather than
+   the auto height its content asks for. This sits outside every @layer on
+   purpose: the panes carry Tailwind's `min-h-0`, and in Tailwind v4 the
+   utilities layer beats @layer components. Unlayered CSS always wins.
+--------------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+    .overview-grid > .hatch:first-child { min-height: max(480px, 62vh); }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Printing the chart. The sheet is already a white page on screen (see ChartPrintSheet), so print
+   only has to take off the app's chrome, the sheet's own buttons, and "fixed" positioning: a fixed
+   box is clipped to one page, and a chart taller than that would lose its lower pane.
+   --------------------------------------------------------------------------------------------- */
+@media print {
+    /* The page margin is the sheet's own padding, not @page's: a browser that ignores @page margins
+       would otherwise print the chart against the paper's edge. */
+    @page {
+        size: A4 landscape;
+        margin: 0;
+    }
+
+    html,
+    body {
+        background: #ffffff !important;
+        color: #111827 !important;
+    }
+
+    /* The sheet moves into the page flow, so it can run onto a second page when it must. */
+    [data-print-sheet] {
+        position: static !important;
+        inset: auto !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        height: 210mm !important;
+        padding: 10mm !important;
+        gap: 0 !important;
+        display: block !important;
+    }
+
+    [data-print-hide] {
+        display: none !important;
+    }
+
+    /* One page, always: the header and the footnote keep their height and the chart takes what is
+       left, letterboxed rather than cropped. A phone's tall chart would otherwise run to three
+       pages, and a print that spills is a print nobody keeps. */
+    [data-print-paper] {
+        max-width: none !important;
+        height: 190mm !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Anything that is not the sheet stays off the paper: the app shell, toolbars, toasts. */
+    body > *:not([data-print-sheet]) {
+        display: none !important;
+    }
+
+    /* The chart must keep its dark tile on paper, and never break across a page. */
+    [data-print-paper] img {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        object-fit: contain !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { tx, type Lang } from "@/lib/i18n";
 import { isAlertCondition, needsCandles, PARAM_BOUNDS, type AlertCondition } from "@/lib/alerts";
-import { DRAWING_BAND, DRAWING_CONDITIONS, anchorPriceAt, clampBand, isDrawingCondition, type DrawingAnchor } from "@/lib/drawing-alert";
+import { DRAWING_BAND, DRAWING_CONDITIONS, anchorPriceAt, clampBand, isDrawingCondition, type DrawingAnchor } from "@/lib/chart/drawing-alert";
 import { alertConditionLabel } from "@/lib/alert-labels";
 
 interface CreateAlertModalProps {
@@ -20,6 +20,9 @@ interface CreateAlertModalProps {
     onAlertCreated?: () => void;
     /** When given, the modal opens on the drawing rules for this snapshotted line instead of a price. */
     anchor?: DrawingAnchor | null;
+    /** Controlled opening, for a caller that is not a trigger (the chart's object menu). */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 // Labels live in the dictionary; the values are what the server stores. The quick modal offers
@@ -34,8 +37,9 @@ const CONDITIONS: AlertCondition[] = [
     'VOLUME_SPIKE',
 ];
 
-export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD', children, lang = 'en', onAlertCreated, anchor }: CreateAlertModalProps) {
-    const [open, setOpen] = useState(false);
+export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD', children, lang = 'en', onAlertCreated, anchor, open: controlledOpen, onOpenChange: controlledChange }: CreateAlertModalProps) {
+    const [innerOpen, setInnerOpen] = useState(false);
+    const open = controlledOpen ?? innerOpen;
     const [condition, setCondition] = useState<AlertCondition>('ABOVE');
     const [targetPrice, setTargetPrice] = useState('');
     const [period, setPeriod] = useState('');
@@ -56,7 +60,8 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
     const alreadyMet = distance !== null && (activeCondition === 'ABOVE' ? distance <= 0 : distance >= 0);
 
     const onOpenChange = (next: boolean) => {
-        setOpen(next);
+        if (controlledOpen === undefined) setInnerOpen(next);
+        controlledChange?.(next);
         if (!next) return;
         if (drawing) {
             setCondition('DRAWING_CROSS_UP');
@@ -88,7 +93,7 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
             toast.success(tx(lang, 'alertModal.created')
                 .replace('{s}', symbol)
                 .replace('{c}', `${alertConditionLabel(lang, rule)} ${price}`));
-            setOpen(false);
+            onOpenChange(false);
             onAlertCreated?.();
         } catch (error) {
             console.error(error);
@@ -147,13 +152,16 @@ export default function CreateAlertModal({ symbol, currentPrice, currency = 'USD
                             {drawing && (
                                 <div className="flex flex-col gap-2">
                                     <span className="form-label">{tx(lang, 'alertModal.target')}</span>
-                                    <span className="flex h-12 items-center gap-2 rounded-[11px] border border-line bg-page px-3">
-                                        <span className="mono text-faint">{currency}</span>
+                                    {/* formatPrice already carries the currency, so a chip beside it
+                                        would print "SAR 245.77 SAR". */}
+                                    <span className="flex h-12 items-center rounded-[11px] border border-line bg-page px-3">
                                         <span className="num text-lg font-semibold text-foreground">
-                                            {lineNow == null ? tx(lang, 'alertModal.noPrice') : formatPrice(lineNow, currency)}
+                                            {lineNow == null ? tx(lang, 'alertModal.noPrice') : formatPrice(lineNow, currency, lang)}
                                         </span>
                                     </span>
-                                    <span className="text-[12.5px] text-faint">{tx(lang, 'alertModal.drawingDesc')}</span>
+                                    <span className="text-[12.5px] text-faint">
+                                        {tx(lang, drawnCondition === 'DRAWING_TOUCH' ? 'alertModal.drawingTouchDesc' : 'alertModal.drawingDesc')}
+                                    </span>
                                     {drawnCondition === 'DRAWING_TOUCH' && (
                                         <label className="flex flex-col gap-2 pt-1">
                                             <span className="form-label">{tx(lang, 'alertModal.band')}</span>

@@ -3,10 +3,13 @@ import { getUserAlerts } from '@/lib/actions/alert.actions';
 import AlertsCentre, { type AlertRow } from '@/components/alerts/AlertsCentre';
 import { getLang } from '@/lib/i18n-server';
 import { arDigits, tx } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 // Alerts are read from Mongo and checked on arrival: the demo has no background cron, so opening
 // this page is what prices the rules. Cloud adds the five-minute cron and the e-mail on top.
 export default async function AlertsPage() {
+    await requireFeaturePage('page.alerts');
+
     const [alerts, lang] = await Promise.all([getUserAlerts(), getLang()]);
     const rows = alerts as AlertRow[];
 

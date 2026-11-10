@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
+import { Copy, Link2, Minimize2, Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import ChartPane, { type CrosshairSync, type RangeSync } from '@/components/charts/ChartPane';
 import LayoutPicker from '@/components/charts/LayoutPicker';
 import ChartStudiesMenu from '@/components/stocks/ChartStudiesMenu';
 import {
     CHART_LAYOUTS,
     INTERVAL_LABEL_KEYS,
+    MAX_PANES,
+    paneDrawingKey,
     paneSymbols,
     parseGridState,
     serializeGridState,
@@ -20,11 +22,12 @@ import {
     stepReplayTime,
     type GridLayoutId,
     type GridState,
-} from '@/lib/chart-grid';
-import { CANDLE_INTERVALS, type Candle } from '@/lib/yahoo-candles';
-import type { StudyConfig } from '@/lib/chart-studies';
-import { readStudies, writeStudies } from '@/lib/chart-studies-storage';
-import { REPLAY_SPEEDS, type ReplaySpeed } from '@/lib/replay';
+} from '@/lib/chart/grid';
+import { CANDLE_INTERVALS, type Candle } from '@/lib/market/yahoo-candles';
+import type { StudyConfig } from '@/lib/chart/studies';
+import { readPaneStudies, readStudies, writePaneStudies } from '@/lib/chart/studies-storage';
+
+import { REPLAY_SPEEDS, type ReplaySpeed } from '@/lib/chart/replay';
 import { arDigits, tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -49,9 +52,12 @@ const sameRange = (a: RangeSync, b: RangeSync) =>
     Math.abs(a.from - b.from) < 1e-6 && Math.abs(a.to - b.to) < 1e-6;
 
 /**
- * The screen that keeps several symbols in view. It owns the one shared state — interval, indicators
- * and the layout — and relays the crosshair and the visible range between panes, so every pane reads
- * the same moment without any pane owning another.
+ * The screen that keeps several charts in view. Every pane owns its symbol, its interval, its
+ * indicators and its drawings; the crosshair and the visible range still travel between panes, so
+ * four timeframes of one company read the same moment without any pane owning another.
+ *
+ * `linked` is the old behaviour kept as a choice: while it is on the interval buttons and the
+ * indicators menu speak to the whole screen, and the drawings stay per pane either way.
  */
 export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) {
     const router = useRouter();
@@ -59,18 +65,39 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
 
     const [layout, setLayout] = useState<GridLayoutId>(initial.layout);
     const [symbols, setSymbols] = useState<string[]>(initial.symbols);
-    const [intervalId, setIntervalId] = useState(initial.intervalId);
-    // One study list for the whole screen, the same one the symbol page uses.
-    const [studies, setStudies] = useState<StudyConfig[]>([]);
+    const [intervals, setIntervals] = useState<string[]>(initial.intervals);
+    const [focused, setFocused] = useState(0);
+    // A screen that arrives with different timeframes is already independent; a uniform one starts
+    // linked, which is the behaviour the grid shipped with.
+    const [linked, setLinked] = useState(() => initial.intervals.every((value) => value === initial.intervals[0]));
+    // One study list per pane, the same lists the symbol page uses. A study screen wants a
+    // different indicator on the weekly pane than on the five-minute one.
+    const [studiesByPane, setStudiesByPane] = useState<StudyConfig[][]>(() =>
+        Array.from({ length: MAX_PANES }, () => [] as StudyConfig[]),
+    );
     const updateStudies = (next: StudyConfig[]) => {
-        setStudies(next);
-        writeStudies(window.localStorage, next);
+        setStudiesByPane((current) => {
+            const panes = Array.from({ length: MAX_PANES }, (_, index) => current[index] ?? []);
+            const targets = linked ? panes.map((_, index) => index) : [focused];
+            targets.forEach((index) => {
+                panes[index] = next;
+            });
+            writePaneStudies(window.localStorage, panes);
+            return panes;
+        });
     };
-    // The list belongs to the browser, not the page: read it after mount so the server and the
-    // first client render agree on an empty chart, then the trader's own studies.
+    // The lists belong to the browser, not the page: read them after mount so the server and the
+    // first client render agree on an empty chart, then the trader's own indicators.
     useEffect(() => {
-        setStudies(readStudies(window.localStorage));
+        const stored = readPaneStudies(window.localStorage);
+        if (stored.length > 0) {
+            setStudiesByPane(Array.from({ length: MAX_PANES }, (_, index) => stored[index] ?? []));
+            return;
+        }
+        const seed = readStudies(window.localStorage);
+        setStudiesByPane(Array.from({ length: MAX_PANES }, () => seed));
     }, []);
+
     const [refreshNonce, setRefreshNonce] = useState(0);
     const [crosshair, setCrosshair] = useState<{ from: number; value: CrosshairSync | null } | null>(null);
     const [range, setRange] = useState<{ from: number; value: RangeSync } | null>(null);
@@ -99,14 +126,15 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
         try {
             const raw = window.localStorage.getItem(STORAGE_KEY);
             if (!raw) return;
-            const stored = JSON.parse(raw) as { l?: string; s?: string; i?: string };
+            const stored = JSON.parse(raw) as { l?: string; s?: string; i?: string; is?: string };
             const next = parseGridState(
-                { l: stored.l, s: stored.s, i: stored.i },
-                { symbols: initial.symbols },
+                { l: stored.l, s: stored.s, i: stored.i, is: stored.is },
+                { symbols: initial.symbols, intervalId: initial.intervalId },
             );
             setLayout(next.layout);
             setSymbols(next.symbols);
-            setIntervalId(next.intervalId);
+            setIntervals(next.intervals);
+            setLinked(next.intervals.every((value) => value === next.intervals[0]));
         } catch {
             /* private mode: the defaults from the server stand */
         }
@@ -117,13 +145,14 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     // The workspace lives in the URL and in this browser, written behind a short debounce so a burst
     // of clicks produces one history entry and one storage write.
     useEffect(() => {
-        const query = serializeGridState({ layout, symbols, intervalId });
+        const base = intervals[0] ?? initial.intervalId;
+        const query = serializeGridState({ layout, symbols, intervalId: base, intervals });
         const stored = serializeGridSymbols(symbols);
         const timer = window.setTimeout(() => {
             try {
                 window.localStorage.setItem(
                     STORAGE_KEY,
-                    JSON.stringify({ l: String(layout), s: stored, i: intervalId }),
+                    JSON.stringify({ l: String(layout), s: stored, i: base, is: intervals.join(',') }),
                 );
             } catch {
                 /* private mode: the workspace simply is not remembered */
@@ -133,14 +162,116 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
             }
         }, 300);
         return () => window.clearTimeout(timer);
-    }, [layout, symbols, intervalId, pathname, router]);
+    }, [layout, symbols, intervals, initial.intervalId, pathname, router]);
 
     const panes = CHART_LAYOUTS[layout].panes;
+    // On a phone the panes stack and each keeps a readable height. On a desktop the grid fills the
+    // window instead: a study screen that scrolls is a screen whose fourth chart is never seen.
+    const paneHeight = layout === 1 ? 'min-h-[clamp(460px,calc(100dvh-210px),920px)]' : 'min-h-[380px] lg:min-h-[220px]';
     const slots = useMemo(() => paneSymbols(symbols, panes), [symbols, panes]);
     const timeframes = useMemo(
         () => CANDLE_INTERVALS.map((item) => ({ id: item.id as string, label: t(INTERVAL_LABEL_KEYS[item.id] ?? 'chart.tf.1d') })),
         [t],
     );
+
+    const intervalOf = useCallback(
+        (index: number) => intervals[index] ?? intervals[0] ?? initial.intervalId,
+        [intervals, initial.intervalId],
+    );
+    const focusedInterval = intervalOf(focused);
+    // One pane filling the screen, the others put away. It is the reading mode of the grid: open a
+    // company on four horizons, then enlarge the one that matters without losing the workspace.
+    const [maximized, setMaximized] = useState<number | null>(null);
+    const isMaximized = maximized !== null && maximized < panes;
+    const shown = isMaximized ? [maximized as number] : slots.map((_, index) => index);
+
+    const toggleMaximize = (index: number) => {
+        setMaximized((current) => (current === index ? null : index));
+        setFocused(index);
+    };
+
+    // Alt+1..4 enlarges a pane and Alt+0 returns to the grid: the keyboard path for a screen that
+    // is read with both hands on the chart.
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if (!event.altKey || event.metaKey || event.ctrlKey) return;
+            if (event.key === '0') {
+                event.preventDefault();
+                setMaximized(null);
+                return;
+            }
+            const slot = Number(event.key);
+            if (slot < 1 || slot > panes) return;
+            event.preventDefault();
+            setFocused(slot - 1);
+            setMaximized((current) => (current === slot - 1 ? null : slot - 1));
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [panes]);
+
+    // Escape leaves the enlarged pane, like closing a maximized window.
+    useEffect(() => {
+        if (maximized === null) return;
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setMaximized(null);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [maximized]);
+
+    /** The interval buttons speak to the focused pane, or to every pane while the screen is linked. */
+    const chooseInterval = (id: string) => {
+        setIntervals((current) => {
+            const next = Array.from({ length: MAX_PANES }, (_, index) => current[index] ?? initial.intervalId);
+            if (linked) next.fill(id);
+            else next[focused] = id;
+            return next;
+        });
+    };
+
+    /** The pane's own dropdown: same rule as the toolbar, but it targets the pane it sits on. */
+    const setPaneInterval = (index: number, id: string) => {
+        setFocused(index);
+        setIntervals((current) => {
+            const next = Array.from({ length: MAX_PANES }, (_, slot) => current[slot] ?? initial.intervalId);
+            if (linked) next.fill(id);
+            else next[index] = id;
+            return next;
+        });
+    };
+
+    const toggleLink = () => {        setLinked((value) => {
+            // Linking a screen that had drifted brings every pane onto the focused one, which is
+            // what the next interval click would have done anyway.
+            if (!value) {
+                setIntervals((current) =>
+                    Array.from({ length: MAX_PANES }, () => current[focused] ?? initial.intervalId),
+                );
+            }
+            return !value;
+        });
+    };
+
+    /** The focused pane's company, in every pane: four timeframes of one name to study. */
+    const copySymbolToAll = () => {
+        const symbol = slots[focused];
+        if (!symbol) return;
+        setSymbols(Array.from({ length: panes }, () => symbol));
+    };
+
+    /**
+     * The study preset: one company on four horizons — a month, a week, a day and an hour — so the
+     * screen is a top-down read rather than four unrelated charts. Indicators stay per pane.
+     */
+    const applyFourTimeframes = () => {
+        const symbol = slots[focused];
+        setLayout(4);
+        setIntervals(['1mo', '1wk', '1d', '60m']);
+        setLinked(false);
+        setFocused(0);
+        if (symbol) setSymbols([symbol, symbol, symbol, symbol]);
+    };
 
     /** One render frame carries one crosshair update, however many pointers are moving. */
     const pendingCrosshair = useRef<{ from: number; value: CrosshairSync | null } | null>(null);
@@ -176,9 +307,13 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
 
     const chooseLayout = (id: GridLayoutId) => {
         setLayout(id);
+        // A new shape is a new reading of the screen; an enlarged pane has no meaning in it.
+        setMaximized(null);
         // The panes that are no longer shown are dropped, and a widened screen starts with empty
         // panes rather than inventing symbols, so the URL never claims more than the screen shows.
         setSymbols((current) => paneSymbols(current, CHART_LAYOUTS[id].panes));
+        // The toolbar cannot speak to a pane that just disappeared.
+        setFocused((current) => Math.min(current, CHART_LAYOUTS[id].panes - 1));
     };
 
     const seriesList = useCallback(() => [...seriesRef.current.values()], []);
@@ -278,23 +413,63 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
     };
 
     return (
-        <div className="flex flex-col gap-2.5">
+        <div className="chart-grid flex min-h-0 flex-1 flex-col gap-2.5">
             <div className="chart-toolbar" dir="ltr">
                 <LayoutPicker value={layout} onChange={chooseLayout} lang={lang} />
+                {isMaximized && (
+                    <button
+                        type="button"
+                        onClick={() => setMaximized(null)}
+                        className="pill is-up h-7 gap-1 px-2 text-[11.5px]"
+                        title={t('chart.grid.restore')}
+                    >
+                        <Minimize2 className="size-3.5" />
+                        {arDigits((maximized as number) + 1, lang)} · {t('chart.grid.restore')}
+                    </button>
+                )}
                 <span className="mx-1 h-4 w-px bg-line" />
                 {timeframes.map((timeframe) => (
                     <button
                         key={timeframe.id}
                         type="button"
-                        onClick={() => setIntervalId(timeframe.id)}
-                        className={cn('pill h-7 px-2.5 text-[12px]', intervalId === timeframe.id && 'is-up')}
-                        aria-pressed={intervalId === timeframe.id}
+                        onClick={() => chooseInterval(timeframe.id)}
+                        className={cn('pill h-7 px-2.5 text-[12px]', focusedInterval === timeframe.id && 'is-up')}
+                        aria-pressed={focusedInterval === timeframe.id}
                     >
                         {timeframe.label}
                     </button>
                 ))}
+                <button
+                    type="button"
+                    onClick={toggleLink}
+                    className={cn('pill h-7 gap-1 px-2 text-[11.5px]', linked && 'is-up')}
+                    aria-pressed={linked}
+                    title={tx(lang, linked ? 'chart.grid.linked' : 'chart.grid.unlinked')}
+                >
+                    <Link2 className="size-3.5" />
+                    {tx(lang, linked ? 'chart.grid.linkedShort' : 'chart.grid.unlinkedShort')}
+                </button>
                 <span className="mx-1 h-4 w-px bg-line" />
-                <ChartStudiesMenu lang={lang} studies={studies} onChange={updateStudies} />
+                <ChartStudiesMenu lang={lang} studies={studiesByPane[focused] ?? []} onChange={updateStudies} />
+                <button
+                    type="button"
+                    onClick={copySymbolToAll}
+                    disabled={!slots[focused]}
+                    className="icon-btn size-7 disabled:opacity-40"
+                    aria-label={t('chart.grid.copySymbol')}
+                    title={t('chart.grid.copySymbol')}
+                >
+                    <Copy className="size-3.5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={applyFourTimeframes}
+                    className="pill h-7 px-2 text-[11.5px]"
+                    aria-label={t('chart.grid.fourTimeframes')}
+                    title={t('chart.grid.fourTimeframes')}
+                >
+                    {t('chart.grid.fourTimeframes')}
+                </button>
                 <button
                     type="button"
                     onClick={toggleReplay}
@@ -383,17 +558,29 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                 </div>
             )}
 
-            <div className={cn('grid gap-2.5', CHART_LAYOUTS[layout].className)}>
-                {slots.map((symbol, index) => (
+            <div
+                className={cn(
+                    'grid min-h-0 flex-1 gap-2.5',
+                    isMaximized ? 'grid-cols-1' : CHART_LAYOUTS[layout].className,
+                )}
+            >
+                {shown.map((index) => {
+                    const symbol = slots[index] ?? '';
+                    return (
                     <ChartPane
                         key={index}
                         lang={lang}
                         paneIndex={index}
                         symbol={symbol}
-                        symbols={slots}
                         watchlist={watchlist}
-                        intervalId={intervalId}
-                        studies={studies}
+                        intervalId={intervalOf(index)}
+                        onInterval={(id) => setPaneInterval(index, id)}
+                        studies={studiesByPane[index] ?? []}
+                        drawingKey={paneDrawingKey(symbol, index)}
+                        active={focused === index}
+                        onFocus={() => setFocused(index)}
+                        maximized={maximized === index}
+                        onToggleMaximize={() => toggleMaximize(index)}
                         refreshNonce={refreshNonce}
                         crosshair={crosshair}
                         range={range}
@@ -404,9 +591,10 @@ export default function ChartGrid({ lang, initial, fromUrl, watchlist }: Props) 
                         replay={replay}
                         cursorTime={cursorTime}
                         onReplaySeries={onReplaySeries}
-                        className={index === 0 ? CHART_LAYOUTS[layout].firstClassName : undefined}
+                        className={cn(!isMaximized && index === 0 ? CHART_LAYOUTS[layout].firstClassName : undefined, paneHeight)}
                     />
-                ))}
+                    );
+                })}
             </div>
         </div>
     );

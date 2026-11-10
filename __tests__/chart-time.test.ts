@@ -8,8 +8,8 @@ import {
     tickLabel,
     timeLabel,
     writeTimeZone,
-} from '@/lib/chart-time';
-import { intervalStep, withSessionBreaks } from '@/lib/chart-sessions';
+} from '@/lib/chart/time';
+import { intervalStep, withSessionBreaks } from '@/lib/chart/sessions';
 
 describe('time zones', () => {
     it('accepts the listed zones and defaults to local', () => {

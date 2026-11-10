@@ -8,6 +8,7 @@ export const PUBLIC_EXACT_PATHS = [
     '/privacy',
     '/terms',
     '/api-docs',
+    '/api',
     '/s',
     '/compare',
 ] as const;

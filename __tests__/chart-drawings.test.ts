@@ -20,7 +20,10 @@ import {
     distanceToSegment,
     drawingColor,
     fibLevels,
+    fibWedgeLines,
     gannGuides,
+    gannSquareFixedCorner,
+    GANN_SQUARE_FIXED_SIDE,
     handleIndex,
     hitTest,
     isColorKey,
@@ -37,13 +40,17 @@ import {
     serializeDrawings,
     sinePoints,
     strokeWidthOf,
+    TABLE_MAX,
+    tableGrid,
+    tableGridText,
+    textLimit,
     toolDef,
     toolsInGroup,
     type Drawing,
     withPoint,
     withText,
     writeStayDrawing,
-} from '@/lib/chart-drawings';
+} from '@/lib/chart/drawings';
 
 const trend = (id: string, points: { time: number; price: number }[]): Drawing => ({ id, tool: 'trend', points });
 
@@ -91,6 +98,7 @@ describe('the tool registry', () => {
             'info',
         ]);
         expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fib');
+        expect(toolsInGroup('fib').map((d) => d.tool)).toContain('fibwedge');
         // The note, the annotation family, and the sticker and image that behave like them.
         expect(toolsInGroup('annotation').map((d) => d.tool)).toEqual([
             'text',
@@ -99,10 +107,11 @@ describe('the tool registry', () => {
             'signpost',
             'flag',
             'pricenote',
+            'table',
             'icon',
             'image',
         ]);
-        expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3']);
+        expect(toolsInGroup('patterns').map((d) => d.tool)).toEqual(['xabcd', 'cypher', 'hs', 'abcd', 'triangle', 'drives3', 'wolfe']);
         // The Gann flyout holds the angles, the pitchforks, the measured channels and the cycles,
         // in the order they sit in the registry (and so in the flyout). The original `gann` tool is
         // retired (hidden) now that the richer gannbox replaced it.
@@ -110,6 +119,7 @@ describe('the tool registry', () => {
             'gannfan',
             'gannbox',
             'gannsquare',
+            'gannsquarefixed',
             'pitchfork',
             'schiffpitchfork',
             'modpitchfork',
@@ -148,6 +158,15 @@ describe('colours', () => {
         expect(drawingColor({ tool: 'fib', color: 'red' })).toBe(DRAWING_COLORS.red);
         expect(drawingColor({ tool: 'gann' })).toBe(DRAWING_COLORS.violet);
     });
+
+    // A brush, a note and a vertical line default to white, which is invisible on the light chart.
+    it('follows the chart text colour when a white default would vanish on a light chart', () => {
+        expect(drawingColor({ tool: 'brush' })).toBe(DRAWING_COLORS.white);
+        expect(drawingColor({ tool: 'brush' }, '#3d3a34')).toBe('#3d3a34');
+        // A colour the trader picked stays exactly as picked.
+        expect(drawingColor({ tool: 'brush', color: 'white' }, '#3d3a34')).toBe(DRAWING_COLORS.white);
+        expect(drawingColor({ tool: 'fib' }, '#3d3a34')).toBe(DRAWING_COLORS.gold);
+    });
 });
 
 describe('fibLevels', () => {
@@ -182,6 +201,35 @@ describe('gannGuides', () => {
             { time: 1, price: 200 },
         ]);
         expect(midPrice).toBe(150);
+    });
+});
+
+describe('fibWedgeLines', () => {
+    it('runs every ratio from the apex to its point on the base line', () => {
+        const lines = fibWedgeLines({ time: 0, price: 100 }, { time: 10, price: 200 }, { time: 20, price: 0 });
+        expect(lines).toHaveLength(FIB_RATIOS.length);
+        // The first line ends at the near end of the base; the ratio-1 line lands on the far end.
+        expect(lines[0][0]).toEqual({ time: 20, price: 0 });
+        expect(lines[0][1]).toEqual({ time: 0, price: 100 });
+        const atOne = lines[FIB_RATIOS.indexOf(1)][1];
+        expect(atOne).toEqual({ time: 10, price: 200 });
+        // Ratios past 1 reach beyond the far end of the base.
+        expect(lines[lines.length - 1][1].time).toBeGreaterThan(10);
+        // Every line starts at the same apex, which is what makes it converge.
+        for (const [from] of lines) expect(from).toEqual({ time: 20, price: 0 });
+    });
+});
+
+describe('gannSquareFixedCorner', () => {
+    it('keeps one side whatever the drag, and only follows the quadrant', () => {
+        const a = { x: 100, y: 100 };
+        const near = gannSquareFixedCorner(a, { x: 110, y: 110 });
+        const far = gannSquareFixedCorner(a, { x: 500, y: 500 });
+        expect(near).toEqual(far);
+        expect(far).toEqual({ x: 100 + GANN_SQUARE_FIXED_SIDE, y: 100 + GANN_SQUARE_FIXED_SIDE });
+        // A drag up and to the left grows the square that way instead.
+        const back = gannSquareFixedCorner(a, { x: 20, y: 20 });
+        expect(back).toEqual({ x: 100 - GANN_SQUARE_FIXED_SIDE, y: 100 - GANN_SQUARE_FIXED_SIDE });
     });
 });
 
@@ -256,6 +304,17 @@ describe('hitTest', () => {
         const corners = [{ x: 0, y: 0 }, { x: 100, y: 50 }];
         expect(hitTest([rect], [corners], { x: 100, y: 25 }, 6)?.id).toBe('r');
         expect(hitTest([rect], [corners], { x: 50, y: 25 }, 6)).toBeNull();
+    });
+
+    it('also finds a box anywhere on its surface when the caller asks for it', () => {
+        // A right-click cannot pan, so the box as a whole is the target there.
+        const rect: Drawing = { id: 'r', tool: 'rectangle', points: [{ time: 0, price: 1 }, { time: 10, price: 2 }] };
+        const corners = [{ x: 0, y: 0 }, { x: 100, y: 50 }];
+        expect(hitTest([rect], [corners], { x: 50, y: 25 }, 6, undefined, true)?.id).toBe('r');
+        expect(hitTest([rect], [corners], { x: 160, y: 25 }, 6, undefined, true)).toBeNull();
+        // A line is still a line: the surface flag only opens up the boxes.
+        const line: Drawing = { id: 'l', tool: 'trend', points: [{ time: 0, price: 1 }, { time: 10, price: 2 }] };
+        expect(hitTest([line], [[{ x: 0, y: 0 }, { x: 100, y: 100 }]], { x: 50, y: 10 }, 6, undefined, true)).toBeNull();
     });
 
     it('finds a polyline pattern along any of its legs', () => {
@@ -577,5 +636,59 @@ describe('hiding a drawing, and the switch that keeps a tool armed', () => {
         expect(readStayDrawing(storage)).toBe(false);
         // A storage that refuses to answer never breaks the chart.
         expect(readStayDrawing({ getItem: () => { throw new Error('private mode'); } })).toBe(false);
+    });
+});
+
+describe('the table object', () => {
+    it('is a two-click annotation that carries its own text', () => {
+        expect(pointsNeeded('table')).toBe(2);
+        expect(toolDef('table').kind).toBe('table');
+        expect(textLimit('table')).toBe(TABLE_MAX);
+        expect(textLimit('text')).toBe(TEXT_MAX);
+    });
+
+    it('reads rows on lines and cells on bars, padding short rows', () => {
+        expect(tableGrid('A|B\nC|D')).toEqual([
+            ['A', 'B'],
+            ['C', 'D'],
+        ]);
+        // A short row is padded to the widest one, so the grid is always rectangular.
+        expect(tableGrid('A|B|C\nD')).toEqual([
+            ['A', 'B', 'C'],
+            ['D', '', ''],
+        ]);
+        // No text is still a one-cell grid, never a crash.
+        expect(tableGrid(undefined)).toEqual([['']]);
+    });
+
+    it('round-trips a grid through its stored text', () => {
+        const rows = [
+            ['Entry', '1.20'],
+            ['Stop', '1.10'],
+        ];
+        expect(tableGrid(tableGridText(rows))).toEqual(rows);
+    });
+
+    it('keeps line breaks when the text is cleaned, unlike a one-line note', () => {
+        expect(cleanText('A|B\nC|D', TABLE_MAX)).toBe('A|B\nC|D');
+        expect(cleanText('  A  |  B  \n  C  |  D  ', TABLE_MAX)).toBe('A|B\nC|D');
+        // A note still collapses to one line.
+        expect(cleanText('hello\nworld')).toBe('hello world');
+        // A table of nothing is not worth storing.
+        expect(cleanText('   \n  ', TABLE_MAX)).toBeNull();
+    });
+
+    it('caps rows and columns so a pasted block cannot grow without bound', () => {
+        const wide = Array.from({ length: 20 }, () => Array.from({ length: 10 }, () => 'x').join('|')).join('\n');
+        const grid = tableGrid(wide);
+        expect(grid.length).toBeLessThanOrEqual(12);
+        expect(grid[0].length).toBeLessThanOrEqual(6);
+    });
+
+    it('is grabbed by its sides like any other box', () => {
+        const table: Drawing = { id: 't1', tool: 'table', points: [{ time: 1, price: 10 }, { time: 2, price: 8 }], text: 'A|B' };
+        const screen = [[{ x: 10, y: 10 }, { x: 110, y: 60 }]];
+        expect(hitTest([table], screen, { x: 10, y: 35 }, 6)?.id).toBe('t1');
+        expect(hitTest([table], screen, { x: 60, y: 35 }, 6)).toBeNull();
     });
 });

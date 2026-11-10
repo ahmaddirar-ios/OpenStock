@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
-import { AFTER_END, CLOSE, DAY, OPEN, PRE, isWeekday, newYorkNow, sessionOf, type Phase } from "@/lib/market-session";
+import { AFTER_END, CLOSE, DAY, OPEN, PRE, isWeekday, newYorkNow, sessionOf, type Phase } from "@/lib/market/session";
 
 function useNewYorkClock() {
     const [now, setNow] = useState<ReturnType<typeof newYorkNow> | null>(null);

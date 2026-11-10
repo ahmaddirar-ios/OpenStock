@@ -3,8 +3,8 @@
 // which is instant and works signed out, and the account, which follows the trader to another device.
 // These tests pin the rules that decide who wins, because getting that wrong loses a trader's work.
 import { describe, expect, it } from 'vitest';
-import { MAX_DRAWINGS, type ShapeTool } from '@/lib/chart-drawings';
-import { MAX_STUDIES } from '@/lib/chart-studies';
+import { MAX_DRAWINGS, type ShapeTool } from '@/lib/chart/drawings';
+import { MAX_STUDIES } from '@/lib/chart/studies';
 import {
     SETUP_VERSION,
     mergeSetup,
@@ -13,7 +13,7 @@ import {
     setupDecision,
     writeSetupPending,
     type ChartSetup,
-} from '@/lib/chart-setup';
+} from '@/lib/chart/setup';
 
 const drawing = (id: string, tool: ShapeTool = 'trend') => ({
     id,

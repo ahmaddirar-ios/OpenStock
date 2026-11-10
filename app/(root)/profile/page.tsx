@@ -4,11 +4,14 @@ import { Bell, KeyRound, ShieldCheck, Star } from "lucide-react";
 import Panel from "@/components/Panel";
 import ProfileForm from "@/components/profile/ProfileForm";
 import PasswordForm from "@/components/profile/PasswordForm";
+import ApiKeysPanel from "@/components/profile/ApiKeysPanel";
 import { auth, getSession } from "@/lib/better-auth/auth";
+import { accessFor } from "@/lib/entitlements-server";
 import { getUserWatchlist } from "@/lib/actions/watchlist.actions";
 import { getUserAlerts } from "@/lib/actions/alert.actions";
+import { listApiKeys } from "@/lib/actions/api-key.actions";
 import { getLang } from "@/lib/i18n-server";
-import { methodLabel, tx, type Lang } from "@/lib/i18n";
+import { methodLabel, tx, type Lang, type StringKey } from "@/lib/i18n";
 import { arNumberDigits } from '@/lib/i18n';
 
 export const generateMetadata = async () => {
@@ -29,14 +32,16 @@ export default async function ProfilePage() {
     if (!session?.user) redirect('/sign-in');
     const { user } = session;
 
-    const [accounts, watchlist, alerts] = await Promise.all([
+    const [accounts, watchlist, alerts, apiKeys] = await Promise.all([
         auth.api.listUserAccounts({ headers: await headers() }).catch(() => []),
         getUserWatchlist(),
         getUserAlerts(),
+        listApiKeys().catch(() => []),
     ]);
     const linked = new Set(accounts.map((a: { providerId: string }) => a.providerId));
     const activeAlerts = alerts.filter((a: { triggered?: boolean }) => !a.triggered).length;
     const lang = await getLang();
+    const access = await accessFor(session.user.id);
     const memberSince = arNumberDigits(new Date(user.createdAt).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-nu-latn' : 'en-US', { month: 'long', year: 'numeric' }), lang);
 
     const stats = [
@@ -54,7 +59,10 @@ export default async function ProfilePage() {
                     </span>
                     <div className="min-w-0 flex-1">
                         <h1 className="truncate text-[22px] font-bold tracking-[-0.03em]">{user.name}</h1>
-                        <p className="truncate text-faint">{user.email} · {tx(lang, 'profile.since').replace('{d}', memberSince)}</p>
+                        <p className="flex flex-wrap items-center gap-2 text-faint">
+                            <span className="truncate">{user.email} · {tx(lang, 'profile.since').replace('{d}', memberSince)}</span>
+                            <span className="pill is-brand">{tx(lang, 'profile.plan')}: {tx(lang, `plan.${access.plan}` as StringKey)}</span>
+                        </p>
                     </div>
                 </div>
                 <div className="bento mt-[3px]">
@@ -101,6 +109,15 @@ export default async function ProfilePage() {
                     )}
                 </div>
             </div>
+
+            <Panel title={tx(lang, 'profile.api')} sub={tx(lang, 'profile.apiSub')}>
+                <ApiKeysPanel
+                    lang={lang}
+                    initialKeys={apiKeys}
+                    plan={access.plan}
+                    locked={!access.features.includes('api.rest')}
+                />
+            </Panel>
         </>
     );
 }

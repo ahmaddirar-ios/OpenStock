@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { MagnetStrength } from '@/lib/chart-magnet';
+import type { MagnetStrength } from '@/lib/chart/magnet';
 import {
     Brush,
     Circle,
     Eraser,
     EyeOff,
     Grid2x2,
+    Layers,
     Lock,
     Magnet,
     Minus,
@@ -25,15 +26,20 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toolsInGroup, toolDef, type ShapeTool, type ToolGroup } from '@/lib/chart-drawings';
-import { TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/drawing-groups';
+import { toolsInGroup, toolDef, type ShapeTool, type ToolGroup } from '@/lib/chart/drawings';
+import { TOOL_LABEL_KEYS, railGroupsWithTools } from '@/lib/chart/drawing-groups';
+import { canUseDrawing } from '@/lib/tools/access';
+import { useFeatures } from '@/components/shell/AccessContext';
+import { hotkeyForTool, MEASURE_KEY } from '@/lib/chart/hotkeys';
 import type { ActiveTool } from '@/components/stocks/ChartDrawings';
 import type { StringKey } from '@/lib/i18n';
 
 const GROUP_ICONS: Record<ToolGroup, LucideIcon> = {
     cursor: MousePointer2,
     lines: Minus,
-    fib: Waves,
+    // Fib and Elliott used the same wave glyph, so the two groups read as one. Fibonacci is a set of
+    // levels stacked over a range, which is what Layers says; the waves belong to Elliott.
+    fib: Layers,
     gann: Grid2x2,
     patterns: Shapes,
     elliott: Waves,
@@ -111,6 +117,12 @@ export default function DrawingRail({
     label,
     renderGroupExtra,
 }: Props) {
+    const features = useFeatures();
+    // Only the groups this account may use: a locked family never gets a button, so it cannot be
+    // armed by a stray hotkey either.
+    const groups = railGroupsWithTools().filter(({ group }) =>
+        toolsInGroup(group).some((entry) => canUseDrawing(features, entry.tool)),
+    );
     const [open, setOpen] = useState<RailPanel | null>(null);
     const [flyoutTop, setFlyoutTop] = useState(4);
     const rootRef = useRef<HTMLDivElement>(null);
@@ -200,21 +212,36 @@ export default function DrawingRail({
             danger = false,
             glyph,
             checkable = false,
-        }: { active?: boolean; disabled?: boolean; danger?: boolean; glyph?: ShapeTool; checkable?: boolean } = {},
-    ) => (
-        <button
-            key={key}
-            type="button"
-            role={checkable ? 'menuitemcheckbox' : 'menuitem'}
-            aria-checked={checkable ? active : undefined}
-            onClick={onClick}
-            disabled={disabled}
-            className={cn('draw-rail-item', active && 'is-on', danger && 'is-danger')}
-        >
-            {glyph ? <ToolGlyph tool={glyph} /> : <Icon className="size-[16px] shrink-0" />}
-            <span>{title}</span>
-        </button>
-    );
+            shortcut: explicit = undefined,
+        }: {
+            active?: boolean;
+            disabled?: boolean;
+            danger?: boolean;
+            glyph?: ShapeTool;
+            checkable?: boolean;
+            shortcut?: string | null;
+        } = {},
+    ) => {
+        // The key is shown, not just documented: a trader reads "Trend line   T" once and stops
+        // opening the help sheet to remember it.
+        const shortcut = explicit !== undefined ? explicit : glyph ? hotkeyForTool(glyph) : null;
+        return (
+            <button
+                key={key}
+                type="button"
+                role={checkable ? 'menuitemcheckbox' : 'menuitem'}
+                aria-checked={checkable ? active : undefined}
+                onClick={onClick}
+                disabled={disabled}
+                title={shortcut ? `${title} (${shortcut.toUpperCase()})` : title}
+                className={cn('draw-rail-item', active && 'is-on', danger && 'is-danger')}
+            >
+                {glyph ? <ToolGlyph tool={glyph} /> : <Icon className="size-[16px] shrink-0" />}
+                <span className="draw-rail-item-name">{title}</span>
+                {shortcut && <kbd className="draw-rail-key">{shortcut.toUpperCase()}</kbd>}
+            </button>
+        );
+    };
 
     const cursorActive = tool === 'select' || tool === 'measure' || magnetStrength !== 'off' || locked || hidden;
 
@@ -232,9 +259,9 @@ export default function DrawingRail({
 
                 <span className="draw-rail-sep" />
 
-                {railGroupsWithTools().map(({ group, label: groupLabel }) => {
+                {groups.map(({ group, label: groupLabel }) => {
                     const Icon = GROUP_ICONS[group];
-                    const groupActive = tool != null && toolsInGroup(group).some((d) => d.tool === tool);
+                    const groupActive = tool != null && toolsInGroup(group).some((d) => d.tool === tool && canUseDrawing(features, d.tool));
                     return stripBtn(group, label(groupLabel), Icon, { active: groupActive });
                 })}
 
@@ -252,7 +279,7 @@ export default function DrawingRail({
                     <div
                         ref={flyoutRef}
                         role="menu"
-                        aria-label={open === 'cursor' ? label('chart.group.cursor') : label(railGroupsWithTools().find((g) => g.group === open)?.label ?? 'chart.group.lines')}
+                        aria-label={open === 'cursor' ? label('chart.group.cursor') : label(groups.find((g) => g.group === open)?.label ?? 'chart.group.lines')}
                         className="draw-rail-flyout"
                         style={{ top: flyoutTop }}
                     >
@@ -265,7 +292,7 @@ export default function DrawingRail({
                                 {row('measure', label('chart.tool.measure'), Ruler, () => {
                                     onPick('measure');
                                     setOpen(null);
-                                }, { active: tool === 'measure' })}
+                                }, { active: tool === 'measure', shortcut: MEASURE_KEY })}
                                 {row(
                                     'magnet',
                                     label(magnetStrength === 'off' ? 'chart.tool.magnet' : magnetStrength === 'weak' ? 'chart.tool.magnetWeak' : 'chart.tool.magnetStrong'),
@@ -283,7 +310,7 @@ export default function DrawingRail({
                             </>
                         ) : (
                             <>
-                                {toolsInGroup(open).map((d) => {
+                                {toolsInGroup(open).filter((d) => canUseDrawing(features, d.tool)).map((d) => {
                                     const value = d.tool as ActiveTool;
                                     return row(
                                         d.tool,

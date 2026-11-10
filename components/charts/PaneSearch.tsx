@@ -3,15 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { compareYahooSymbol } from '@/lib/compare';
-import { paneOwning, searchUniverse, universeName } from '@/lib/chart-grid';
-import { arDigits, tx, type Lang } from '@/lib/i18n';
+import { searchUniverse, universeName } from '@/lib/chart/grid';
+import { tx, type Lang } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 type Props = {
     lang: Lang;
-    /** Every symbol on the screen, so a duplicate can be named instead of silently swapped. */
-    symbols: string[];
-    paneIndex: number;
     watchlist: string[];
     onPick: (symbol: string) => void;
     onClose: () => void;
@@ -21,8 +18,11 @@ type Props = {
  * The pane's symbol field. Matching happens against the local universe — 906 companies with their
  * Arabic names — so it answers on the first keystroke, and a suffix symbol outside the universe is
  * still accepted when it resolves. The watchlist row is the fast path for symbols already followed.
+ *
+ * The same symbol may sit in more than one pane now: four panes of one company, one per timeframe,
+ * is the study screen this grid exists for.
  */
-export default function PaneSearch({ lang, symbols, paneIndex, watchlist, onPick, onClose }: Props) {
+export default function PaneSearch({ lang, watchlist, onPick, onClose }: Props) {
     const [query, setQuery] = useState('');
     const [error, setError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -34,15 +34,6 @@ export default function PaneSearch({ lang, symbols, paneIndex, watchlist, onPick
     const results = useMemo(() => (query.trim() ? searchUniverse(query, 6) : []), [query]);
     const quickPicks = watchlist.slice(0, 8);
 
-    const choose = (symbol: string) => {
-        const owner = paneOwning(symbols, symbol, paneIndex);
-        if (owner >= 0) {
-            setError(tx(lang, 'chart.grid.duplicate').replace('{n}', arDigits(owner + 1, lang)));
-            return;
-        }
-        onPick(symbol);
-    };
-
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
         const symbol = compareYahooSymbol(query);
@@ -50,7 +41,7 @@ export default function PaneSearch({ lang, symbols, paneIndex, watchlist, onPick
             setError(tx(lang, 'chart.grid.searchError'));
             return;
         }
-        choose(symbol);
+        onPick(symbol);
     };
 
     return (
@@ -92,7 +83,7 @@ export default function PaneSearch({ lang, symbols, paneIndex, watchlist, onPick
                                 <li key={entry.symbol}>
                                     <button
                                         type="button"
-                                        onClick={() => choose(entry.symbol)}
+                                        onClick={() => onPick(entry.symbol)}
                                         className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-start hover:bg-hover"
                                     >
                                         <span className="mono text-[12px] font-semibold" dir="ltr">{entry.symbol}</span>
@@ -115,7 +106,7 @@ export default function PaneSearch({ lang, symbols, paneIndex, watchlist, onPick
                                 <button
                                     key={symbol}
                                     type="button"
-                                    onClick={() => choose(symbol)}
+                                    onClick={() => onPick(symbol)}
                                     title={universeName(symbol, lang) ?? symbol}
                                     className={cn('pill mono h-7 px-2 text-[11.5px]')}
                                 >

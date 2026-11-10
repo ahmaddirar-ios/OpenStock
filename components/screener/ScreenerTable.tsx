@@ -3,12 +3,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Download, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FlaskConical, RefreshCw, X } from "lucide-react";
 import Price from "@/components/Price";
 import ChangePill from "@/components/ChangePill";
 import { sectorLabel } from "@/lib/i18n";
-import { criteriaToQuery, filterRows, sortRows, toCsv, type ScreenerCriteria, type ScreenerRow, type ScreenerSortKey, type SortDirection } from "@/lib/screener";
+import { coverage, criteriaToQuery, filterRows, sortRows, toCsv, type ScreenerCriteria, type ScreenerRow, type ScreenerSortKey, type SortDirection } from "@/lib/screener";
 import { tx, arDigits, type Lang, type StringKey } from "@/lib/i18n";
+import { MAX_SCREEN_SYMBOLS, screenBatches } from "@/lib/formula/screener";
+import { checkFormula, describeFormulaError } from "@/lib/formula/formula";
+import { screenFormula } from "@/lib/actions/screener.actions";
+import { CANDLE_INTERVALS } from "@/lib/market/yahoo-candles";
+import { INTERVAL_LABEL_KEYS } from "@/lib/chart/grid";
 import { toast } from "sonner";
 import { runRefresh, type RefreshState } from "./runRefresh";
 
@@ -42,6 +47,10 @@ const COLUMNS: { key: ScreenerSortKey; label: StringKey; numeric?: boolean }[] =
 ];
 
 // Billions and millions the way a trader reads them, in whatever language the interface is in.
+// The one example the formula filter offers: it reads as a sentence and returns 0 or 1, which is
+// exactly what the screen wants from a formula.
+const SCREEN_EXAMPLE = 'close > sma(close, 50) and volume > sma(volume, 20)';
+
 const compact = (value: number) => (value >= 1e9 ? `${(value / 1e9).toFixed(1)}B` : value >= 1e6 ? `${(value / 1e6).toFixed(0)}M` : value > 0 ? `${Math.round(value / 1e3)}K` : '—');
 
 export default function ScreenerTable({ rows, criteria, sectors, total, lang }: {
@@ -66,6 +75,11 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
     const [sortKey, setSortKey] = useState<ScreenerSortKey>('symbol');
     const [sortDir, setSortDir] = useState<SortDirection>('asc');
     const [refresh, setRefresh] = useState<RefreshState>({ done: 0, total: 0, priced: 0, running: false });
+    // The formula filter is the one criterion that has to run: it reads history, not the snapshot.
+    const [formula, setFormula] = useState('');
+    const [formulaInterval, setFormulaInterval] = useState('1d');
+    const [screen, setScreen] = useState<{ running: boolean; done: number; total: number } | null>(null);
+    const [matches, setMatches] = useState<Map<string, number | null> | null>(null);
 
     const activeCriteria: ScreenerCriteria = useMemo(() => ({
         q: form.q,
@@ -85,7 +99,48 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
         router.replace(query ? `/screener?${query}` : '/screener', { scroll: false });
     }, [activeCriteria, router]);
 
-    const results = useMemo(() => sortRows(filterRows(rows, activeCriteria), sortKey, sortDir), [rows, activeCriteria, sortKey, sortDir]);
+    // How much of the universe the snapshot actually prices. The shortfall is stated, not smoothed
+    // over: a screen over 12 of 906 companies is a different search from one over all 906.
+    const known = useMemo(() => coverage(rows.filter((row) => row.price > 0).length, total), [rows, total]);
+
+    const narrowed = useMemo(() => filterRows(rows, activeCriteria), [rows, activeCriteria]);
+    const results = useMemo(() => {
+        const base = sortRows(narrowed, sortKey, sortDir);
+        return matches ? base.filter((row) => matches.has(row.symbol)) : base;
+    }, [narrowed, sortKey, sortDir, matches]);
+
+    const formulaCheck = useMemo(() => (formula.trim() ? checkFormula(formula) : null), [formula]);
+    const formulaError = formulaCheck && !formulaCheck.ok ? describeFormulaError(formulaCheck.error, lang) : null;
+    const screened = narrowed.slice(0, MAX_SCREEN_SYMBOLS);
+    const capped = narrowed.length > MAX_SCREEN_SYMBOLS;
+
+    const runScreen = async () => {
+        if (!formula.trim() || formulaError || screen?.running) return;
+        setScreen({ running: true, done: 0, total: screened.length });
+        setMatches(null);
+        const hit = new Map<string, number | null>();
+        let done = 0;
+        try {
+            for (const batch of screenBatches(screened.map((row) => row.symbol))) {
+                const hits = await screenFormula(batch, formula.trim(), formulaInterval);
+                for (const entry of hits) if (entry.match) hit.set(entry.symbol, entry.value);
+                done += batch.length;
+                setScreen({ running: true, done, total: screened.length });
+            }
+            setMatches(hit);
+        } catch (error) {
+            console.error(error);
+            toast.error(tx(lang, 'scr.formulaFailed'));
+            setMatches(hit);
+        } finally {
+            setScreen(null);
+        }
+    };
+
+    const clearScreen = () => {
+        setMatches(null);
+        setFormula('');
+    };
 
     const toggleSort = (key: ScreenerSortKey) => {
         if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -170,12 +225,78 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
                 </label>
             </div>
 
+            <div className="card flex flex-col gap-2 p-4">
+                <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex min-w-[240px] flex-1 flex-col gap-1.5">
+                        <span className="form-label flex items-center gap-1.5">
+                            <FlaskConical className="size-3.5 text-brand" /> {tx(lang, 'scr.formula')}
+                        </span>
+                        <input
+                            value={formula}
+                            onChange={(e) => setFormula(e.target.value)}
+                            placeholder={tx(lang, 'scr.formulaPlaceholder')}
+                            dir="ltr"
+                            spellCheck={false}
+                            className="mono h-10 w-full rounded-[11px] border border-line bg-page px-3 text-[13px] text-foreground outline-none focus:border-brand"
+                        />
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                        <span className="form-label">{tx(lang, 'scr.formulaInterval')}</span>
+                        <select value={formulaInterval} onChange={(e) => setFormulaInterval(e.target.value)} className="h-10 rounded-[11px] border border-line bg-page px-3 text-foreground outline-none focus:border-brand">
+                            {CANDLE_INTERVALS.map((interval) => (
+                                <option key={interval.id} value={interval.id}>{tx(lang, INTERVAL_LABEL_KEYS[interval.id] ?? 'chart.tf.1d')}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <button
+                        type="button"
+                        onClick={() => void runScreen()}
+                        disabled={!formula.trim() || formulaError !== null || screen !== null || narrowed.length === 0}
+                        className="btn btn-primary h-10 px-3.5 text-[13px] disabled:opacity-50"
+                    >
+                        {screen ? tx(lang, 'scr.formulaRunning') : tx(lang, 'scr.formulaApply')}
+                    </button>
+                    {(matches || formula) && (
+                        <button type="button" onClick={clearScreen} className="pill h-10 px-3">
+                            <X /> {tx(lang, 'scr.formulaClear')}
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+                    {formulaError ? (
+                        <span className="text-down">{formulaError}</span>
+                    ) : matches ? (
+                        <span className="num text-muted-foreground">
+                            {tx(lang, 'scr.formulaMatched').replace('{n}', arDigits(String(matches.size), lang)).replace('{total}', arDigits(String(screened.length), lang))}
+                        </span>
+                    ) : (
+                        <span className="text-faint">{tx(lang, 'scr.formulaNote')}</span>
+                    )}
+                    {screen && (
+                        <span className="num text-faint">
+                            {arDigits(String(screen.done), lang)} / {arDigits(String(screen.total), lang)}
+                        </span>
+                    )}
+                    {capped && <span className="text-warn">{tx(lang, 'scr.formulaCapped').replace('{n}', arDigits(String(MAX_SCREEN_SYMBOLS), lang))}</span>}
+                    <span className="text-faint">{tx(lang, 'scr.formulaExample')}</span>
+                    <button
+                        type="button"
+                        onClick={() => setFormula(SCREEN_EXAMPLE)}
+                        className="mono rounded-[4px] bg-page px-1.5 py-0.5 text-[10.5px] text-brand hover:underline"
+                        dir="ltr"
+                    >
+                        {SCREEN_EXAMPLE}
+                    </button>
+                </div>
+            </div>
+
             <section className="hatch">
                 <div className="section-head">
                     <div className="min-w-0">
                         <h2 className="section-title">{tx(lang, 'scr.results')}</h2>
                         <p className="section-sub num">
-                            {arDigits(results.length, lang)} {tx(lang, 'scr.of')} {arDigits(rows.length, lang)} · {tx(lang, 'scr.coverage').replace('{n}', arDigits(total, lang))}
+                            {arDigits(results.length, lang)} {tx(lang, 'scr.of')} {arDigits(rows.length, lang)} · {tx(lang, 'scr.coverage').replace('{n}', arDigits(known.priced, lang)).replace('{total}', arDigits(known.total, lang))}
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -187,6 +308,21 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
                         </button>
                     </div>
                 </div>
+                {known.partial ? (
+                    <p className="mx-3 mb-2 flex flex-wrap items-center gap-2 text-[12px] text-warn" dir="auto">
+                        <span className="num">{tx(lang, 'scr.gap').replace('{n}', arDigits(known.missing, lang))}</span>
+                        <button
+                            type="button"
+                            onClick={() => void onRefresh()}
+                            disabled={refresh.running}
+                            className="pill h-7 px-2.5 text-[11.5px] hover:bg-hover hover:text-foreground disabled:opacity-50"
+                        >
+                            <RefreshCw className={refresh.running ? 'animate-spin size-3.5' : 'size-3.5'} /> {tx(lang, 'scr.gapBuild')}
+                        </button>
+                    </p>
+                ) : (
+                    <p className="mx-3 mb-2 text-[12px] text-faint">{tx(lang, 'scr.complete')}</p>
+                )}
                 <div className="card overflow-x-auto rounded-[14px]">
                     <table className="data-table">
                         <thead>

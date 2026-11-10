@@ -284,6 +284,7 @@ The full table, and why some markets are limited, is in [MARKET_SUPPORT.md](MARK
 | `npm run lint` | ESLint |
 | `npx tsc --noEmit` | Type check. Builds skip type errors, so run this before opening a PR |
 | `npm run test:db` | Checks the MongoDB connection |
+| `npm run test:e2e` | Trader sweep: drives a browser over every destination and tool (see `scripts/e2e/README.md`) |
 | `node scripts/check-env.mjs` | Checks your `.env` |
 
 ## 🤝 Contributing <a name="contributing"></a>

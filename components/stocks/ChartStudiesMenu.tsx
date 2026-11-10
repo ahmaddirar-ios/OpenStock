@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Plus, Search, X } from 'lucide-react';
-import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_COLOR_TOKENS, STUDY_IDS, STUDY_LINE_DASHES, STUDY_WIDTHS, defaultStudy, describeStudy, studiesChoice, studiesParam, studiesText, studyLineStyle, studyWidth, type StudyConfig, type StudyId, type StudyLineStyle } from '@/lib/chart-studies';
+import { ChevronDown, Maximize2, Plus, Search, X } from 'lucide-react';
+import { MAX_FORMULA_LENGTH, MAX_STUDIES, STUDIES, STUDY_COLOR_SOURCES, STUDY_COLOR_TOKENS, STUDY_IDS, STUDY_LINE_DASHES, STUDY_WIDTHS, defaultStudy, describeStudy, studiesChoice, studiesParam, studiesText, studyLineStyle, studyLines, studyWidth, type StudyConfig, type StudyId, type StudyLineStyle } from '@/lib/chart/studies';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { checkFormula } from '@/lib/formula';
-import { addSavedFormula, loadSavedFormulas, removeSavedFormula, saveSavedFormulas, type SavedFormula } from '@/lib/formula-library';
+import { checkFormula, describeFormulaError } from '@/lib/formula/formula';
+import { addSavedFormula, loadSavedFormulas, removeSavedFormula, saveSavedFormulas, type SavedFormula } from '@/lib/formula/library';
+import FormulaStudio from '@/components/stocks/FormulaStudio';
+import { canUseStudy } from '@/lib/tools/access';
+import { useFeatures } from '@/components/shell/AccessContext';
 
 // The indicators menu: search a study, add it, tune its parameters, remove it. It owns no state of
 // its own beyond what is being typed — the list belongs to the page (and through it, the browser),
@@ -20,6 +23,7 @@ type Props = {
 };
 
 export default function ChartStudiesMenu({ lang, studies, onChange, className }: Props) {
+    const features = useFeatures();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     // Text being typed in a parameter box, kept per input so the box shows exactly what was typed
@@ -29,6 +33,8 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
     // The shelf of formulas this browser keeps: written once, applied to any chart after that.
     const [savedFormulas, setSavedFormulas] = useState<SavedFormula[]>([]);
     const [formulaName, setFormulaName] = useState('');
+    // The index of the formula study whose studio is open; null when the studio is closed.
+    const [studioIndex, setStudioIndex] = useState<number | null>(null);
 
     useEffect(() => {
         setSavedFormulas(loadSavedFormulas());
@@ -43,10 +49,13 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
             setDrafts({});
         };
         const onDown = (event: MouseEvent) => {
+            // The studio is a fixed panel outside this dropdown; a click in it must not close the menu
+            // that owns it, or the panel unmounts the moment it is used.
+            if (studioIndex !== null) return;
             if (box.current && !box.current.contains(event.target as Node)) dismiss();
         };
         const onKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') dismiss();
+            if (studioIndex === null && event.key === 'Escape') dismiss();
         };
         document.addEventListener('mousedown', onDown);
         document.addEventListener('keydown', onKey);
@@ -54,7 +63,7 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
             document.removeEventListener('mousedown', onDown);
             document.removeEventListener('keydown', onKey);
         };
-    }, [open]);
+    }, [open, studioIndex]);
 
     const add = (id: StudyId) => {
         if (studies.length >= MAX_STUDIES) return;
@@ -92,6 +101,16 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
         const next = raw.replace(/\s+/g, ' ').trim().slice(0, MAX_FORMULA_LENGTH);
         setDrafts((current) => ({ ...current, [`${index}:${key}`]: next }));
         if (!next || !checkFormula(next).ok) return;
+        onChange(studies.map((study, i) => (i === index ? { ...study, params: { ...study.params, [key]: next } } : study)));
+    };
+
+    /**
+     * A symbol is not a formula: it is committed as typed, without the checker's vocabulary, and
+     * uppercased because that is how the feed spells a ticker. Committed on blur rather than on
+     * every keystroke, so half a ticker never becomes a request.
+     */
+    const setSymbol = (index: number, key: string, raw: string) => {
+        const next = raw.replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 24);
         onChange(studies.map((study, i) => (i === index ? { ...study, params: { ...study.params, [key]: next } } : study)));
     };
 
@@ -146,13 +165,15 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
 
 
     const filtered = useMemo(() => {
+        // The account's studies first: a locked family is never offered, and a search cannot conjure it.
+        const allowed = STUDY_IDS.filter((id) => canUseStudy(features, id));
         const needle = query.trim().toLowerCase();
-        if (!needle) return STUDY_IDS;
-        return STUDY_IDS.filter((id) => {
+        if (!needle) return allowed;
+        return allowed.filter((id) => {
             const label = tx(lang, STUDIES[id].label).toLowerCase();
             return label.includes(needle) || id.includes(needle);
         });
-    }, [query, lang]);
+    }, [query, lang, features]);
 
     return (
         <div ref={box} className={cn('relative', className)}>
@@ -239,12 +260,14 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                         </div>
                                     </div>
                                     <div className="mt-1 flex flex-col gap-0.5">
-                                        {def.lines.map((line) => {
+                                        {/* A profile is drawn as bars, not lines: it has nothing to
+                                            recolour per plot, and an empty list is the honest rendering. */}
+                                        {studyLines(study).map((line) => {
                                             const style = studyLineStyle(study, line);
                                             return (
                                                 <div key={line.key} className="flex items-center gap-1.5 text-[10.5px] text-faint">
                                                     <span aria-hidden="true" className="w-6 shrink-0 text-faint">
-                                                        {def.lines.length > 1 ? line.short : t(line.name)}
+                                                        {studyLines(study).length > 1 ? line.short : t(line.name)}
                                                     </span>
                                                     <div
                                                         role="group"
@@ -313,6 +336,62 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                     {def.params.length > 0 && (
                                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                                             {def.params.map((param) => {
+                                                if (param.kind === 'text' && param.input === 'date') {
+                                                    const shown = drafts[`${index}:${param.key}`] ?? studiesText(study, param.key);
+                                                    return (
+                                                        <label key={param.key} className="flex items-center gap-1 text-[10.5px] text-faint">
+                                                            {t(param.label)}
+                                                            <input
+                                                                type="date"
+                                                                value={shown}
+                                                                onChange={(event) => {
+                                                                    setDrafts((current) => ({
+                                                                        ...current,
+                                                                        [`${index}:${param.key}`]: event.target.value,
+                                                                    }));
+                                                                    // A date is either a date or nothing: an empty box
+                                                                    // means "from the first bar", not "ignore me".
+                                                                    choose(index, param.key, event.target.value);
+                                                                }}
+                                                                aria-label={t(param.label)}
+                                                                title={param.hint ? t(param.hint) : undefined}
+                                                                className="num rounded-[6px] bg-page px-1 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                            />
+                                                        </label>
+                                                    );
+                                                }
+                                                if (param.kind === 'text' && param.input === 'symbol') {
+                                                    const value = studiesText(study, param.key);
+                                                    const shown = drafts[`${index}:${param.key}`] ?? value;
+                                                    return (
+                                                        <label key={param.key} className="flex items-center gap-1 text-[10.5px] text-faint">
+                                                            {t(param.label)}
+                                                            <input
+                                                                type="text"
+                                                                dir="ltr"
+                                                                value={shown}
+                                                                onChange={(event) =>
+                                                                    setDrafts((current) => ({
+                                                                        ...current,
+                                                                        [`${index}:${param.key}`]: event.target.value,
+                                                                    }))
+                                                                }
+                                                                // A ticker is committed on blur, uppercased, because
+                                                                // that is how the feed spells it.
+                                                                onBlur={(event) => {
+                                                                    setSymbol(index, param.key, event.target.value);
+                                                                    settle(index, param.key);
+                                                                }}
+                                                                onKeyDown={(event) => {
+                                                                    if (event.key === 'Enter') event.currentTarget.blur();
+                                                                }}
+                                                                aria-label={t(param.label)}
+                                                                title={param.hint ? t(param.hint) : undefined}
+                                                                className="mono w-24 rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] uppercase text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                            />
+                                                        </label>
+                                                    );
+                                                }
                                                 if (param.kind === 'text') {
                                                     const value = studiesText(study, param.key);
                                                     // The box holds the draft while the study holds the last committed
@@ -321,8 +400,18 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                     const shown = drafts[`${index}:${param.key}`] ?? value;
                                                     const checked = checkFormula(shown);
                                                     return (
-                                                        <label key={param.key} className="flex w-full flex-col gap-0.5 text-[10.5px] text-faint">
-                                                            {t(param.label)}
+                                                        <div key={param.key} className="flex w-full flex-col gap-0.5 text-[10.5px] text-faint">
+                                                            <span className="flex items-center justify-between gap-1">
+                                                                <span>{t(param.label)}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setStudioIndex(index)}
+                                                                    className="pill h-5 gap-1 px-1.5 text-[10px]"
+                                                                >
+                                                                    <Maximize2 className="size-2.5" />
+                                                                    {t('study.formulaStudio')}
+                                                                </button>
+                                                            </span>
                                                             <input
                                                                 type="text"
                                                                 dir="ltr"
@@ -337,7 +426,7 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                                 className="mono w-full rounded-[6px] bg-page px-1.5 py-0.5 text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                                             />
                                                             <span className={checked.ok ? 'text-faint' : 'text-down'}>
-                                                                {checked.ok ? (param.hint ? t(param.hint) : '') : checked.error}
+                                                                {checked.ok ? (param.hint ? t(param.hint) : '') : describeFormulaError(checked.error, lang)}
                                                             </span>
                                                             {/* Save the box as a named formula, or apply one already saved. */}
                                                             <span className="mt-0.5 flex items-center gap-1">
@@ -393,7 +482,7 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                                                                     ))}
                                                                 </span>
                                                             )}
-                                                        </label>
+                                                        </div>
                                                     );
                                                 }
                                                 if (param.kind === 'choice') {
@@ -488,6 +577,16 @@ export default function ChartStudiesMenu({ lang, studies, onChange, className }:
                         </p>
                     )}
                 </div>
+            )}
+
+            {studioIndex !== null && studies[studioIndex] && (
+                <FormulaStudio
+                    lang={lang}
+                    open
+                    initialExpression={studiesText(studies[studioIndex], 'expression')}
+                    onApply={(expression) => applyText(studioIndex, 'expression', expression)}
+                    onClose={() => setStudioIndex(null)}
+                />
             )}
         </div>
     );

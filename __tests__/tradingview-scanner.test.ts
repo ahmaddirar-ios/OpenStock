@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { saudiQuoteFromRow, scannerTicker } from '@/lib/tradingview-scanner';
+import { saudiQuoteFromRow, scannerTicker } from '@/lib/market/tradingview-scanner';
 
 describe('Tadawul on the TradingView scanner', () => {
     it('maps an app symbol to the scanner ticker', () => {

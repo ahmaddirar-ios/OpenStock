@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Download } from 'lucide-react';
-import { toCsv, type Trade } from '@/lib/strategies';
+import { toCsv, type Trade } from '@/lib/strategy/strategies';
 import { tx, arDigits, type Lang } from '@/lib/i18n';
 import { num, pct } from '@/components/strategies/format';
 import { cn } from '@/lib/utils';
@@ -106,7 +106,7 @@ export default function TradeTable({ trades, lang, fileStem }: { trades: Trade[]
                                         </td>
                                         <td className="num px-2 py-1.5 text-muted-foreground" dir="ltr">{arDigits(String(trade.bars), lang)}</td>
                                         <td className="px-2 py-1.5">
-                                            <span className={cn('pill h-5 px-1.5 text-[10.5px]', trade.reason === 'signal' && 'text-muted-foreground', trade.reason === 'stop' && 'text-down', trade.reason === 'target' && 'text-up')}>
+                                            <span className={cn('pill h-5 px-1.5 text-[10.5px]', trade.reason === 'signal' && 'text-muted-foreground', trade.reason === 'stop' && 'text-down', trade.reason === 'target' && 'text-up', trade.reason === 'trail' && 'text-warn')}>
                                                 {tx(lang, `strat.reason.${trade.reason}` as const)}
                                             </span>
                                         </td>

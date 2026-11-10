@@ -1,6 +1,6 @@
 'use client';
 
-import { CHART_LAYOUTS, LAYOUT_IDS, type GridLayoutId } from '@/lib/chart-grid';
+import { CHART_LAYOUTS, LAYOUT_IDS, type GridLayoutId } from '@/lib/chart/grid';
 import { tx, type Lang, type StringKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

@@ -5,10 +5,13 @@ import ScreenerTable from '@/components/screener/ScreenerTable';
 import BuildScreener from '@/components/screener/BuildScreener';
 import { getLang } from '@/lib/i18n-server';
 import { tx } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 // The snapshot is read from Mongo (instant); filtering and sorting happen in the browser over the
 // whole set. The first visit builds the snapshot row by row, behind a progress panel.
 export default async function ScreenerPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+    await requireFeaturePage('page.screener');
+
     const params = await searchParams;
     const criteria = parseCriteria(params);
     const [rows, lang] = await Promise.all([getScreenerRows(), getLang()]);

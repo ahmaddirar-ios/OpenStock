@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import StrategyLab from '@/components/strategies/StrategyLab';
-import { STRATEGY_LIBRARY, strategyById } from '@/lib/strategy-library';
+import { STRATEGY_LIBRARY, strategyById } from '@/lib/strategy/library';
 import { getLang } from '@/lib/i18n-server';
 import { tx, type Lang } from '@/lib/i18n';
 

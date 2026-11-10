@@ -11,7 +11,7 @@ import { useLiveQuotes } from "@/hooks/useLiveQuotes";
 import { computePositionMetrics, positionWeight, summarizePortfolio, type PortfolioTotals } from "@/lib/portfolio";
 import { deletePosition } from "@/lib/actions/portfolio.actions";
 import { tx, arDigits, type Lang } from "@/lib/i18n";
-import { saudiSymbolNameAr } from "@/lib/saudi-symbols";
+import { saudiSymbolNameAr } from "@/lib/market/saudi-symbols";
 import { toast } from "sonner";
 import PositionFormModal, { type PositionDraft } from "./PositionFormModal";
 
@@ -25,6 +25,10 @@ export type PortfolioRow = {
     changePercent: number;
     currency: string;
     logo?: string;
+    /** A ledger row was replayed from trades; a manual row was typed in. */
+    source?: 'ledger' | 'manual';
+    /** Profit already banked on this symbol, from closed lots. */
+    realizedPnl?: number;
 };
 
 const num = (value: number, lang: Lang, digits = 2) =>
@@ -104,6 +108,7 @@ export default function PortfolioTable({ initialRows, lang }: { initialRows: Por
         <>
             {groups.length > 0 && (
                 <div className="flex flex-col gap-3">
+                    {multiCurrency && <p className="text-[12px] text-faint">{tx(lang, 'pf.mixedRows')}</p>}
                     {groups.map(({ currency, totals }) => (
                         <div key={currency}>
                             {multiCurrency && <p className="kicker mb-1.5 text-faint" dir="ltr">{currency}</p>}
@@ -160,7 +165,12 @@ export default function PortfolioTable({ initialRows, lang }: { initialRows: Por
                                                             )}
                                                             <span className="min-w-0">
                                                                 <span dir="auto" className="block truncate font-semibold text-foreground group-hover:text-brand-ink transition-colors" title={company}>{company}</span>
-                                                                <span dir="ltr" className="mono block text-[12px] text-faint">{row.symbol}</span>
+                                                                <span className="flex items-center gap-1.5">
+                                                                    <span dir="ltr" className="mono block text-[12px] text-faint">{row.symbol}</span>
+                                                                    {row.source === 'ledger' && (
+                                                                        <span className="pill is-brand text-[10px]">{tx(lang, 'pf.fromLedger')}</span>
+                                                                    )}
+                                                                </span>
                                                             </span>
                                                         </Link>
                                                     </td>

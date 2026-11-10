@@ -1,21 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
-import ChangePill from '@/components/ChangePill';
 import DataFreshness from '@/components/DataFreshness';
-import { arDigits, tx, type Lang } from '@/lib/i18n';
-import { tradingViewSymbolUrl } from '@/lib/utils';
-import type { WorldBoardPayload } from '@/lib/world-board';
-import type { SectionId } from '@/lib/market-sections';
-
-/** An index is points, a currency is a rate: one number of decimals cannot serve both. */
-const decimalsFor = (section: SectionId, short: string): number => {
-    if (section === 'currencies') return short.includes('JPY') || short.includes('TRY') ? 2 : 4;
-    if (section === 'crypto') return 0;
-    return 2;
-};
+import MarketWatchTable from '@/components/markets/MarketWatchTable';
+import { tx, type Lang } from '@/lib/i18n';
+import type { WorldBoardPayload } from '@/lib/market/world-board';
 
 /**
  * The world board: five sections, each a small table of what a trader reads before the open.
@@ -53,53 +42,9 @@ export default function WorldBoard({ initial, lang }: { initial: WorldBoardPaylo
                 {board.stale && <span className="pill is-up text-[11px]">{tx(lang, 'world.stale')}</span>}
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-                {board.sections.map(({ section, quotes }) => (
-                    <section key={section.id} className="card flex flex-col p-0">
-                        <h2 className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-                            <span className="text-[13px] font-bold">{tx(lang, section.nameKey)}</span>
-                            <span className="num text-[11px] text-faint">
-                                {arDigits(quotes.length, lang)}/{arDigits(section.rows.length, lang)}
-                            </span>
-                        </h2>
-
-                        {quotes.length === 0 ? (
-                            <p className="px-4 py-6 text-[13px] text-faint">{tx(lang, 'world.empty')}</p>
-                        ) : (
-                            <ul className="flex flex-col p-1.5">
-                                {quotes.map((quote) => (
-                                    <li key={quote.ticker}>
-                                        <Link
-                                            href={tradingViewSymbolUrl(quote.ticker)}
-                                            target="_blank"
-                                            rel="noreferrer noopener"
-                                            className="group flex items-center gap-3 rounded-lg px-2.5 py-2 transition-colors hover:bg-hover/60"
-                                        >
-                                            <span className="mono w-[4.6rem] shrink-0 text-[11.5px] font-semibold text-faint" dir="ltr">
-                                                {quote.short}
-                                            </span>
-                                            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-                                                {tx(lang, quote.nameKey)}
-                                            </span>
-                                            <span className="text-end">
-                                                <span className="num block text-[13px] font-semibold" dir="ltr">
-                                                    {quote.price.toLocaleString('en-US', {
-                                                        minimumFractionDigits: decimalsFor(section.id, quote.short),
-                                                        maximumFractionDigits: decimalsFor(section.id, quote.short),
-                                                    })}
-                                                </span>
-                                                <span className="num block text-[11px]">
-                                                    <ChangePill value={quote.changePercent} lang={lang} />
-                                                </span>
-                                            </span>
-                                            <ExternalLink className="size-3 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100" />
-                                        </Link>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </section>
-                ))}
+            {/* One table, sections as header rows — the way the terminal docks its market watch. */}
+            <div className="card overflow-x-auto p-0">
+                <MarketWatchTable sections={board.sections} lang={lang} density="page" />
             </div>
 
             <p className="px-1 text-[11.5px] text-faint">{tx(lang, 'world.footer')}</p>

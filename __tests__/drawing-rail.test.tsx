@@ -5,8 +5,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import DrawingRail from '@/components/stocks/DrawingRail';
-import { toolsInGroup } from '@/lib/chart-drawings';
-import { railGroupsWithTools, TOOL_LABEL_KEYS } from '@/lib/drawing-groups';
+import { toolsInGroup } from '@/lib/chart/drawings';
+import { railGroupsWithTools, TOOL_LABEL_KEYS } from '@/lib/chart/drawing-groups';
 import { tx } from '@/lib/i18n';
 
 const label = (key: Parameters<typeof tx>[1]) => tx('en', key);
@@ -53,7 +53,10 @@ describe('DrawingRail', () => {
 
         fireEvent.click(screen.getByTitle('Lines'));
         const linesMenu = screen.getByRole('menu', { name: 'Lines' });
-        expect(within(linesMenu).getAllByRole('menuitem').map((row) => row.textContent)).toContain('Trend line');
+        const trendRow = within(linesMenu).getAllByRole('menuitem')[0];
+        // The row carries its hotkey, so the key is learned without opening the help sheet.
+        expect(trendRow.textContent).toBe('Trend lineT');
+        expect(trendRow.getAttribute('title')).toBe('Trend line (T)');
 
         // Opening another group replaces the first flyout instead of stacking them.
         fireEvent.click(screen.getByTitle('Fibonacci'));

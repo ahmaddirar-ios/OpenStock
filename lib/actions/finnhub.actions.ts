@@ -3,13 +3,13 @@
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCKS } from '@/lib/constants';
 import { cache } from 'react';
-import { quoteTtlSeconds } from '@/lib/market-data';
-import { hasFinnhubQuotes } from '@/lib/markets';
+import { quoteTtlSeconds } from '@/lib/market/data';
+import { hasFinnhubQuotes } from '@/lib/market/markets';
 import { getYahooDailyQuotes } from '@/lib/actions/yahoo.actions';
-import { isTadawulSymbol } from '@/lib/yahoo';
+import { isTadawulSymbol } from '@/lib/market/yahoo';
 import { getSession } from '@/lib/better-auth/auth';
-import { searchSaudiSymbols } from '@/lib/saudi-symbols';
-import { searchSaudiIndices } from '@/lib/saudi-indices';
+import { searchSaudiSymbols } from '@/lib/market/saudi-symbols';
+import { searchSaudiIndices } from '@/lib/market/saudi-indices';
 import { finnhubCanAnswer, mergeSearchResults } from '@/lib/search';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
@@ -434,3 +434,55 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
         return [];
     }
 });
+
+// -- Earnings dates ----------------------------------------------------------------------------
+//
+// The chart marks results days the way it marks dividends: a fact about a bar, printed on the bar.
+// Tadawul dates come from the TradingView scanner the stock page already reads; US dates come from
+// Finnhub's earnings calendar. Either source may be silent, and a missing date is not an error.
+
+export type EarningsDates = {
+    symbol: string;
+    /** Epoch ms of the last reported results, or null. */
+    last: number | null;
+    /** Epoch ms of the next scheduled results, or null. */
+    next: number | null;
+};
+
+export async function getEarningsDates(symbol: string): Promise<EarningsDates | null> {
+    const ticker = String(symbol ?? '').trim().toUpperCase();
+    if (!ticker) return null;
+
+    if (isTadawulSymbol(ticker)) {
+        try {
+            const { fetchSaudiFundamentals } = await import('@/lib/market/saudi-fundamentals');
+            const fundamentals = await fetchSaudiFundamentals([ticker]);
+            const entry = fundamentals[ticker];
+            if (!entry) return { symbol: ticker, last: null, next: null };
+            return { symbol: ticker, last: entry.lastEarningsDate, next: entry.nextEarningsDate };
+        } catch (error) {
+            console.error('Error fetching Saudi earnings dates:', error);
+            return null;
+        }
+    }
+
+    if (!finnhubCanAnswer(ticker)) return null;
+    try {
+        // A two-year window covers the last report and the next scheduled one for any listing.
+        const now = Date.now();
+        const from = new Date(now - 400 * 86_400_000).toISOString().slice(0, 10);
+        const to = new Date(now + 400 * 86_400_000).toISOString().slice(0, 10);
+        const url = `${FINNHUB_BASE_URL}/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${from}&to=${to}`;
+        const data = await request<{ earningsCalendar?: { date: string; hour?: string }[] }>(url, 21_600);
+        const dates = (data?.earningsCalendar ?? [])
+            .map((entry) => Date.parse(`${entry.date}T12:00:00Z`))
+            .filter((value) => Number.isFinite(value))
+            .sort((a, b) => a - b);
+        const last = [...dates].reverse().find((value) => value <= now) ?? null;
+        const next = dates.find((value) => value > now) ?? null;
+        return { symbol: ticker, last, next };
+    } catch (error) {
+        console.error('Error fetching earnings dates:', error);
+        return null;
+    }
+}

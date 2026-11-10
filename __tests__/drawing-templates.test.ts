@@ -8,7 +8,7 @@ import {
     styleOfDrawing,
     stylePatch,
     templateStyle,
-} from '@/lib/drawing-templates';
+} from '@/lib/chart/drawing-templates';
 
 const style = { color: 'orange' as const, width: 2 as const, dash: 'dashed' as const };
 

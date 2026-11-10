@@ -3,12 +3,12 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Play, RotateCcw } from 'lucide-react';
-import { backtest, barsPerYear, DEFAULT_COSTS, metrics as computeMetrics, type Backtest, type Metrics, type Params } from '@/lib/strategies';
+import { backtest, barsPerYear, DEFAULT_COSTS, metrics as computeMetrics, type Backtest, type Metrics, type Params } from '@/lib/strategy/strategies';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { compareYahooSymbol } from '@/lib/compare';
-import { CANDLE_INTERVALS } from '@/lib/yahoo-candles';
-import { INTERVAL_LABEL_KEYS } from '@/lib/chart-grid';
-import type { StrategyDoc } from '@/lib/strategy-library';
+import { CANDLE_INTERVALS } from '@/lib/market/yahoo-candles';
+import { INTERVAL_LABEL_KEYS } from '@/lib/chart/grid';
+import type { StrategyDoc } from '@/lib/strategy/library';
 import { tx, arDigits, type Lang } from '@/lib/i18n';
 import KpiGrid from '@/components/strategies/KpiGrid';
 import ResultCharts from '@/components/strategies/ResultCharts';
@@ -19,6 +19,8 @@ type Run = {
     symbol: string;
     intervalId: string;
     bars: number;
+    /** The series the buy-and-hold line follows: the symbol itself, or an index/peer. */
+    benchmark: string;
     result: Backtest;
     metrics: Metrics;
 };
@@ -40,6 +42,10 @@ export default function StrategyLab({ doc, lang, initialSymbol }: { doc: Strateg
     const [params, setParams] = useState<Params>(() => initialParams(doc));
     const [costs, setCosts] = useState({ ...DEFAULT_COSTS });
     const [riskFree, setRiskFree] = useState(0);
+    // The benchmark is a choice, not a constant: buy-and-hold of the symbol is the default, but an
+    // index or a peer is what a committee actually compares against.
+    const [benchmark, setBenchmark] = useState('self');
+    const [customBenchmark, setCustomBenchmark] = useState('');
     const [running, setRunning] = useState(false);
     const [error, setError] = useState<'badSymbol' | 'noCandles' | null>(null);
     const [run, setRun] = useState<Run | null>(null);
@@ -67,7 +73,19 @@ export default function StrategyLab({ doc, lang, initialSymbol }: { doc: Strateg
                 setRunning(false);
                 return;
             }
-            const result = backtest(set.candles, doc.id, clean, costs);
+            // The benchmark is fetched on the same interval, so the two curves share an x-axis. A
+            // benchmark that cannot be read falls back to the symbol itself rather than failing the
+            // whole run: the strategy's own numbers are still worth seeing.
+            const benchSymbol =
+                benchmark === 'self' ? null : benchmark === 'custom' ? compareYahooSymbol(customBenchmark) : benchmark;
+            let benchCandles: { time: number; close: number }[] | undefined;
+            if (benchSymbol) {
+                const benchSet = await getStrategyCandles(benchSymbol, intervalId).catch(() => null);
+                if (benchSet && benchSet.candles.length > 0) {
+                    benchCandles = benchSet.candles.map((candle) => ({ time: candle.time, close: candle.close }));
+                }
+            }
+            const result = backtest(set.candles, doc.id, clean, costs, benchCandles);
             if (!result) {
                 setError('noCandles');
                 setRunning(false);
@@ -78,6 +96,7 @@ export default function StrategyLab({ doc, lang, initialSymbol }: { doc: Strateg
                 symbol: resolved,
                 intervalId,
                 bars: set.candles.length,
+                benchmark: benchCandles ? (benchSymbol ?? resolved) : resolved,
                 result,
                 metrics: computeMetrics(result, perYear, riskFree / 100),
             });
@@ -123,6 +142,32 @@ export default function StrategyLab({ doc, lang, initialSymbol }: { doc: Strateg
                                 ))}
                             </select>
                         </label>
+
+                        <label className="flex flex-col gap-1">
+                            <span className="text-[11px] text-faint">{t('strat.lab.benchmark')}</span>
+                            <select
+                                value={benchmark}
+                                onChange={(event) => setBenchmark(event.target.value)}
+                                className="h-8 rounded-[8px] bg-page px-2 text-[12.5px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:ring-2 focus:ring-ring"
+                            >
+                                <option value="self">{t('strat.lab.benchmarkSelf')}</option>
+                                <option value="TASI">TASI</option>
+                                <option value="SPY">S&amp;P 500 (SPY)</option>
+                                <option value="custom">{t('strat.lab.benchmarkCustom')}</option>
+                            </select>
+                        </label>
+                        {benchmark === 'custom' && (
+                            <label className="flex flex-col gap-1">
+                                <span className="text-[11px] text-faint">{t('strat.lab.benchmarkSymbol')}</span>
+                                <input
+                                    value={customBenchmark}
+                                    onChange={(event) => setCustomBenchmark(event.target.value.toUpperCase())}
+                                    dir="ltr"
+                                    placeholder="2222.SR"
+                                    className="mono h-8 w-28 rounded-[8px] bg-page px-2 text-[12.5px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:ring-2 focus:ring-ring"
+                                />
+                            </label>
+                        )}
 
                         <div className="flex items-end gap-1.5">
                             <label className="flex flex-col gap-1">
@@ -213,6 +258,9 @@ export default function StrategyLab({ doc, lang, initialSymbol }: { doc: Strateg
                         <span className="pill h-6 px-2 text-[11px]">{t(INTERVAL_LABEL_KEYS[run.intervalId] ?? 'chart.tf.1d')}</span>
                         <span className="num text-[11.5px] text-faint">
                             {t('strat.lab.bars').replace('{n}', arDigits(String(run.bars), lang))}
+                        </span>
+                        <span className="pill h-6 px-2 text-[11px]" dir="ltr">
+                            {t('strat.lab.benchmarkShort')} {run.benchmark}
                         </span>
                         <Link
                             href={`/stocks/${encodeURIComponent(run.symbol)}?strategy=${doc.id}`}

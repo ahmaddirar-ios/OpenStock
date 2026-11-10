@@ -8,7 +8,7 @@ import {
     createHistory,
     redoHistory,
     undoHistory,
-} from '@/lib/chart-history';
+} from '@/lib/chart/history';
 
 describe('history', () => {
     it('starts with nothing to undo or redo', () => {

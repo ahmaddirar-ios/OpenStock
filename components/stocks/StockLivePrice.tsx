@@ -4,7 +4,7 @@ import ChangePill from "@/components/ChangePill";
 import DataFreshness from "@/components/DataFreshness";
 import PriceFlash from "@/components/PriceFlash";
 import { useLiveQuotes, type LiveQuote } from "@/hooks/useLiveQuotes";
-import { isTadawulSymbol } from "@/lib/yahoo";
+import { isTadawulSymbol } from "@/lib/market/yahoo";
 import type { Lang } from "@/lib/i18n";
 import { arDigits } from "@/lib/i18n";
 import Price from "@/components/Price";

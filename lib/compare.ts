@@ -1,7 +1,7 @@
 // Compare: plot a symbol against others as percent change from the first bar of the shared range,
 // so a Saudi stock and a US stock can be read on the same axis. Pure and IO-free.
 
-import { yahooCandleSymbol, type Candle } from '@/lib/yahoo-candles';
+import { yahooCandleSymbol, type Candle } from '@/lib/market/yahoo-candles';
 
 export type ComparePoint = { time: number; value: number };
 

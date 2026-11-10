@@ -1,6 +1,6 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
-import { alertsEnabled } from "@/lib/market-data";
+import { alertsEnabled } from "@/lib/market/data";
 import { sendWeeklyNewsSummary, sendSignUpEmail, checkStockAlerts, checkInactiveUsers, refreshScreener } from "@/lib/inngest/functions";
 
 export const { GET, POST, PUT } = serve({

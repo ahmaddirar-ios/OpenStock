@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, toolForKey } from '@/lib/chart-hotkeys';
+import { TOOL_SHORTCUTS, EDIT_SHORTCUTS, MEASURE_KEY, hotkeyForTool, toolForKey } from '@/lib/chart/hotkeys';
 
 describe('chart hotkeys', () => {
     it('arms a tool from a bare letter, in either case', () => {
@@ -8,6 +8,15 @@ describe('chart hotkeys', () => {
         expect(toolForKey('f')).toBe('fib');
         expect(toolForKey('esc')).toBeNull();
         expect(toolForKey('')).toBeNull();
+    });
+
+    it('answers the key of a tool, and nothing for a tool with none', () => {
+        expect(hotkeyForTool('trend')).toBe('t');
+        expect(hotkeyForTool('fib')).toBe('f');
+        // Every shortcut is reversible, so the rail and the handler read one table.
+        for (const shortcut of TOOL_SHORTCUTS) expect(toolForKey(hotkeyForTool(shortcut.tool)!)).toBe(shortcut.tool);
+        // A pattern tool lives only in the rail.
+        expect(hotkeyForTool('triangle' as never)).toBeNull();
     });
 
     it('never maps two tools to the same key', () => {
@@ -19,6 +28,12 @@ describe('chart hotkeys', () => {
         for (const shortcut of TOOL_SHORTCUTS) expect(shortcut.key).toMatch(/^[a-z]$/);
     });
 
+    it('gives the ruler a bare letter of its own', () => {
+        expect(MEASURE_KEY).toMatch(/^[a-z]$/);
+        expect(toolForKey(MEASURE_KEY)).toBeNull();
+        expect(TOOL_SHORTCUTS.some((shortcut) => shortcut.key === MEASURE_KEY)).toBe(false);
+    });
+
     it('keeps the editing list free of tool letters', () => {
         // A bare letter must never mean two things; every editor shortcut carries a modifier or is Esc/?.
         for (const shortcut of EDIT_SHORTCUTS) {
@@ -27,7 +42,7 @@ describe('chart hotkeys', () => {
     });
 });
 
-import { textStyleOf, parseDrawingList, TEXT_SIZES } from '@/lib/chart-drawings';
+import { textStyleOf, parseDrawingList, TEXT_SIZES } from '@/lib/chart/drawings';
 
 describe('note text styling', () => {
     const note = (extra: Record<string, unknown> = {}) => ({
@@ -59,7 +74,7 @@ describe('note text styling', () => {
     });
 });
 
-import { MAGNET_PIXELS_BY_STRENGTH, magnetPixels, nextMagnetStrength } from '@/lib/chart-magnet';
+import { MAGNET_PIXELS_BY_STRENGTH, magnetPixels, nextMagnetStrength } from '@/lib/chart/magnet';
 
 describe('magnet strength', () => {
     it('cycles off → weak → strong → off', () => {
@@ -76,7 +91,7 @@ describe('magnet strength', () => {
     });
 });
 
-import { FILL_OPACITIES, fillOf, hasFill, parseDrawingList as parseDrawings2, textStyleOf as styleOf } from '@/lib/chart-drawings';
+import { FILL_OPACITIES, fillOf, hasFill, parseDrawingList as parseDrawings2, textStyleOf as styleOf } from '@/lib/chart/drawings';
 
 describe('fill and italic', () => {
     const box = (extra: Record<string, unknown> = {}) => ({
@@ -110,7 +125,7 @@ describe('fill and italic', () => {
     });
 });
 
-import { visibleOn } from '@/lib/chart-drawings';
+import { visibleOn } from '@/lib/chart/drawings';
 
 describe('drawing visibility by interval', () => {
     it('shows everywhere by default', () => {
@@ -139,7 +154,7 @@ describe('note background', () => {
     });
 });
 
-import { fibLevels, fibRatiosOf, hasFibLevels, MAX_FIB_LEVELS } from '@/lib/chart-drawings';
+import { fibLevels, fibRatiosOf, hasFibLevels, MAX_FIB_LEVELS } from '@/lib/chart/drawings';
 
 describe('Fibonacci levels', () => {
     const fib = (extra: Record<string, unknown> = {}) => ({
@@ -181,7 +196,7 @@ describe('Fibonacci levels', () => {
     });
 });
 
-import { textColorOf } from '@/lib/chart-drawings';
+import { textColorOf } from '@/lib/chart/drawings';
 
 describe('text colour', () => {
     it('follows the stroke until a colour of its own is chosen', () => {
@@ -200,7 +215,7 @@ describe('text colour', () => {
     });
 });
 
-import { translateDrawing } from '@/lib/chart-drawings';
+import { translateDrawing } from '@/lib/chart/drawings';
 
 describe('moving a whole drawing', () => {
     const line = {
@@ -225,7 +240,7 @@ describe('moving a whole drawing', () => {
     });
 });
 
-import { CUSTOM_COLOR, drawingColor } from '@/lib/chart-drawings';
+import { CUSTOM_COLOR, drawingColor } from '@/lib/chart/drawings';
 
 describe('custom colours', () => {
     const line = (extra: Record<string, unknown> = {}) => ({

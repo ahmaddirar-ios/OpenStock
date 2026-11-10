@@ -9,6 +9,9 @@ import {
     studiesChoice,
     studyColor,
     studyLineStyle,
+    studyLines,
+    studySymbols,
+    bandSegments,
     studyWantsPane,
     studyWidth,
     STUDY_COLOR_TOKENS,
@@ -17,12 +20,17 @@ import {
     parseStudies,
     studiesParam,
     type StudyId,
-} from '@/lib/chart-studies';
+} from '@/lib/chart/studies';
 import { tx } from '@/lib/i18n';
-import type { Candle } from '@/lib/yahoo-candles';
+import type { Candle } from '@/lib/market/yahoo-candles';
 
 /** Studies that answer from the first bars instead of waiting for a window to fill. */
-const IMMEDIATE = new Set<StudyId>(['vwap', 'obv', 'sar', 'pivots']);
+const IMMEDIATE = new Set<StudyId>(['vwap', 'obv', 'sar', 'pivots', 'avwap']);
+
+const studiesWith = (id: StudyId, params: Record<string, number | string>) => ({
+    id,
+    params: { ...defaultStudy(id).params, ...params },
+});
 
 const candles: Candle[] = Array.from({ length: 80 }, (_, i) => ({
     time: 1_600_000_000 + i * 86_400,
@@ -39,7 +47,15 @@ describe('the registry', () => {
         for (const id of STUDY_IDS) {
             const def = STUDIES[id];
             expect(def.id).toBe(id);
-            expect(def.lines.length).toBeGreaterThan(0);
+            // A profile is drawn as bars against the pane edge, so it is the one kind with no lines.
+            if (def.profile) expect(def.lines).toEqual([]);
+            else expect(def.lines.length).toBeGreaterThan(0);
+            // A fill has to name two lines that exist, or the host paints nothing and says nothing.
+            if (def.fill) {
+                const keys = def.lines.map((line) => line.key);
+                expect(keys).toContain(def.fill.upper);
+                expect(keys).toContain(def.fill.lower);
+            }
             for (const param of def.params) {
                 if (param.kind === 'choice') {
                     expect(param.choices.length).toBeGreaterThan(1);
@@ -47,8 +63,12 @@ describe('the registry', () => {
                     continue;
                 }
                 // Only a number carries bounds; a formula's bounds are the language's grammar.
+                // A date or a symbol may default to empty: "no anchor", "compare to nothing", are
+                // real choices rather than missing defaults.
                 if (param.kind === 'text') {
-                    expect(param.default.trim().length).toBeGreaterThan(0);
+                    if (param.input !== 'date' && param.input !== 'symbol') {
+                        expect(param.default.trim().length).toBeGreaterThan(0);
+                    }
                     continue;
                 }
                 expect(param.default).toBeGreaterThanOrEqual(param.min);
@@ -61,6 +81,7 @@ describe('the registry', () => {
     it('draws exactly the lines it declares, one value per candle', () => {
         for (const id of STUDY_IDS) {
             const def = STUDIES[id];
+            if (def.profile) continue;
             const result = def.compute(candles, defaultStudy(id).params);
             expect(Object.keys(result).sort()).toEqual(def.lines.map((line) => line.key).sort());
             for (const [key, series] of Object.entries(result)) {
@@ -74,6 +95,7 @@ describe('the registry', () => {
         const short = candles.slice(0, 3);
         for (const id of STUDY_IDS) {
             const def = STUDIES[id];
+            if (def.profile) continue;
             const result = def.compute(short, defaultStudy(id).params);
             for (const series of Object.values(result)) {
                 expect(series).toHaveLength(3);
@@ -103,7 +125,10 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('donchian'), 'en')).toBe('Donchian Channel 20');
         expect(describeStudy(defaultStudy('keltner'), 'en')).toBe('Keltner Channel 20 · 2 · Close');
         expect(describeStudy(defaultStudy('sar'), 'en')).toBe('Parabolic SAR 0.02 · 0.2');
-        expect(describeStudy(defaultStudy('pivots'), 'en')).toBe('Pivot Points');
+        expect(describeStudy(defaultStudy('pivots'), 'en')).toBe('Pivot Points Previous bar');
+        expect(describeStudy(defaultStudy('stochrsi'), 'en')).toBe('Stochastic RSI 14 · 14 · 3 · 3 · Close');
+        expect(describeStudy(defaultStudy('ao'), 'en')).toBe('Awesome Oscillator 5 · 34');
+        expect(describeStudy(defaultStudy('cmf'), 'en')).toBe('Chaikin Money Flow 20');
         expect(describeStudy(defaultStudy('wma'), 'en')).toBe('WMA 20 · Close');
         expect(describeStudy(defaultStudy('hma'), 'en')).toBe('HMA 9 · Close');
         expect(describeStudy(defaultStudy('vwma'), 'en')).toBe('VWMA 20 · Close');
@@ -112,6 +137,13 @@ describe('describeStudy', () => {
         expect(describeStudy(defaultStudy('aroon'), 'en')).toBe('Aroon 14');
         expect(describeStudy(defaultStudy('trix'), 'en')).toBe('TRIX 15 · Close');
         expect(describeStudy(defaultStudy('mfi'), 'en')).toBe('Money Flow Index 14');
+        // An empty anchor is left out of the name rather than printed as a gap.
+        expect(describeStudy(defaultStudy('avwap'), 'en')).toBe('Anchored VWAP 2');
+        expect(describeStudy(studiesWith('avwap', { anchor: '2026-01-02' }), 'en')).toBe('Anchored VWAP 2026-01-02 · 2');
+        expect(describeStudy(defaultStudy('vprofile'), 'en')).toBe('Volume Profile 24 · 70 · Right');
+        expect(describeStudy({ ...defaultStudy('vprofile'), params: { rows: 40, side: 'left' } }, 'en')).toBe(
+            'Volume Profile 40 · 70 · Left',
+        );
     });
 
     it('names a choice by its label, not by a number', () => {
@@ -144,6 +176,16 @@ describe('the dictionary', () => {
                     }
                 }
                 for (const line of def.lines) expect(tx(lang, line.name)).not.toBe('');
+                for (const line of studyLines({ id, params: defaultStudy(id).params })) {
+                    expect(tx(lang, line.name)).not.toBe('');
+                }
+                if (def.profile) {
+                    // The rows, the value area and the side are the profile's only controls.
+                    expect(def.params.map((param) => param.key)).toContain(def.profile.rowsParam);
+                }
+                for (const param of def.params) {
+                    if (param.kind === 'text' && param.hint) expect(tx(lang, param.hint)).not.toBe('');
+                }
                 expect(describeStudy(defaultStudy(id), lang)).toContain(tx(lang, def.label));
                 for (const key of ['study.width', 'study.colour'] as StringKey[]) {
                     expect(tx(lang, key), `${lang} ${key}`).not.toBe('');
@@ -158,6 +200,29 @@ describe('the dictionary', () => {
                 }
             }
         }
+    });
+});
+
+describe('bandSegments', () => {
+    const bar = (i: number) => ({ time: 1_600_000_000 + i * 86_400 }) as Candle;
+    const bars = Array.from({ length: 5 }, (_, i) => bar(i));
+
+    it('keeps one run when both edges exist all the way', () => {
+        const runs = bandSegments(bars, [3, 4, 5, 6, 7], [1, 2, 3, 4, 5]);
+        expect(runs).toHaveLength(1);
+        expect(runs[0]).toHaveLength(5);
+        expect(runs[0][0]).toEqual({ time: bars[0].time, upper: 3, lower: 1 });
+    });
+
+    it('breaks the ribbon where an edge is missing instead of drawing through it', () => {
+        // Two runs of two either side of the gap; the lone bar at the end has no area, so no run.
+        const runs = bandSegments(bars, [3, 4, null, 6, 7], [1, 2, null, 4, 5]);
+        expect(runs.map((run) => run.map((point) => point.upper))).toEqual([[3, 4], [6, 7]]);
+        expect(bandSegments(bars, [3, 4, 5, null, 7], [1, 2, 3, 4, 5]).map((run) => run.length)).toEqual([3]);
+    });
+
+    it('drops a run of one point, which has no area to fill', () => {
+        expect(bandSegments(bars, [3, null, null, null, null], [1, null, null, null, null])).toEqual([]);
     });
 });
 
@@ -355,5 +420,82 @@ describe('source', () => {
     it('starts a formula in its own pane, so a first try does not flatten the candles', () => {
         expect(defaultStudy('formula').params.placement).toBe('pane');
         expect(studiesChoice(defaultStudy('formula'), 'placement')).toBe('pane');
+    });
+});
+
+describe('the formula study draws what its text plots', () => {
+    const formula = (expression: string) => ({ id: 'formula' as const, params: { expression, placement: 'pane' } });
+
+    it('declares one line per plot, with distinct colours', () => {
+        const lines = studyLines(formula('plot(close); plot(sma(close, 5)); plot(low)'));
+        expect(lines.map((line) => line.key)).toEqual(['p1', 'p2', 'p3']);
+        expect(new Set(lines.map((line) => line.color)).size).toBe(3);
+    });
+
+    it('keeps the single value line for a formula without plots', () => {
+        const lines = studyLines(formula('close - sma(close, 20)'));
+        expect(lines.map((line) => line.key)).toEqual(['value']);
+    });
+
+    it('computes a series for every declared line, and nothing for a broken one', () => {
+        const plots = STUDIES.formula.compute(candles, formula('plot(close); plot(open)').params);
+        expect(Object.keys(plots).sort()).toEqual(['p1', 'p2']);
+        expect(plots.p1[0]).toBe(candles[0].close);
+        expect(plots.p2[0]).toBe(candles[0].open);
+
+        const broken = STUDIES.formula.compute(candles, formula('plot(').params);
+        expect(Object.values(broken).every((series) => series.every((value) => value == null))).toBe(true);
+    });
+
+    it('washes a warm-up bar to a gap rather than a zero', () => {
+        const plots = STUDIES.formula.compute(candles, formula('plot(sma(close, 20))').params);
+        expect(plots.p1[0]).toBeNull();
+        expect(typeof plots.p1[30]).toBe('number');
+    });
+});
+
+describe('comparing a study to another symbol', () => {
+    const partner = (close: (candle: Candle, index: number) => number) => ({
+        candles: candles.map((candle, index) => ({ ...candle, close: close(candle, index) })),
+    });
+    const only = (symbol: string, set: { candles: Candle[] }) => ({
+        candlesFor: (asked: string) => (asked.trim().toUpperCase() === symbol ? set.candles : null),
+    });
+
+    it('answers +1 for the same move and -1 for its mirror', () => {
+        const params = studiesWith('correlation', { period: 20, symbol: 'AAPL' }).params;
+        const same = STUDIES.correlation.compute(candles, params, only('AAPL', partner((candle) => candle.close)));
+        expect(same.value.at(-1)).toBeCloseTo(1, 6);
+
+        const mirrored = STUDIES.correlation.compute(
+            candles,
+            params,
+            only('AAPL', partner((candle) => 1_000 - candle.close)),
+        );
+        expect(mirrored.value.at(-1)).toBeCloseTo(-1, 6);
+    });
+
+    it('draws nothing rather than a guess before the other symbol arrives', () => {
+        const params = studiesWith('correlation', { period: 20, symbol: 'AAPL' }).params;
+        const cold = STUDIES.correlation.compute(candles, params);
+        expect(cold.value.every((value) => value == null)).toBe(true);
+
+        const missing = STUDIES.correlation.compute(candles, params, { candlesFor: () => null });
+        expect(missing.value.every((value) => value == null)).toBe(true);
+    });
+
+    it('reads the spread as a share of the other symbol, in percent', () => {
+        const params = studiesWith('spread', { symbol: 'AAPL' }).params;
+        const result = STUDIES.spread.compute(candles, params, only('AAPL', partner((candle) => candle.close * 1.1)));
+        expect(result.value[0]).toBeCloseTo(((11 - 12.1) / 12.1) * 100, 6);
+        expect(result.value).toHaveLength(candles.length);
+    });
+
+    it('asks the host for the ticker it was given, uppercased once', () => {
+        const study = studiesWith('correlation', { period: 20, symbol: 'aapl' });
+        expect(studySymbols(study)).toEqual(['AAPL']);
+        expect(describeStudy(study, 'en')).toBe('Correlation 20 · aapl');
+        expect(studySymbols(studiesWith('correlation', { symbol: '  ' }))).toEqual([]);
+        expect(studySymbols(defaultStudy('correlation'))).toEqual([]);
     });
 });

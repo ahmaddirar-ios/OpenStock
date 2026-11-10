@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatSpan, sessionOf } from '@/lib/market-session';
+import { formatSpan, sessionOf } from '@/lib/market/session';
 
 const at = (h: number, m = 0) => h * 60 + m;
 
@@ -27,7 +27,7 @@ describe('NYSE session', () => {
     });
 });
 
-import { getMarket, hasFinnhubQuotes, isMarketOpen } from '@/lib/markets';
+import { getMarket, hasFinnhubQuotes, isMarketOpen } from '@/lib/market/markets';
 
 describe('markets', () => {
     it('knows which symbols Finnhub free can price', () => {

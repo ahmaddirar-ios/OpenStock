@@ -3,7 +3,8 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { ChartSetupModel } from '@/database/models/chart-setup.model';
 import { requireUserId } from '@/lib/better-auth/auth';
-import { SETUP_VERSION, parseChartSetup, type ChartSetup } from '@/lib/chart-setup';
+import { SETUP_VERSION, parseChartSetup, type ChartSetup } from '@/lib/chart/setup';
+import { accessFor, filterSetupByFeatures } from '@/lib/entitlements-server';
 
 /**
  * The account's half of the chart setup: read the drawings and studies a trader has on a symbol, and
@@ -47,7 +48,10 @@ export async function loadChartSetup(symbol: string): Promise<LoadedChartSetup> 
         if (!doc) return { ok: true, setup: null, updatedAt: null };
         // A row in a format this build does not know reads as nothing at all, and the next save replaces
         // it in the current format.
-        const setup = parseChartSetup({ v: doc.v, drawings: doc.drawings, studies: doc.studies });
+        const parsed = parseChartSetup({ v: doc.v, drawings: doc.drawings, studies: doc.studies });
+        // A downgrade trims the stored setup: a locked tool must never render again, even from an old row.
+        const access = await accessFor(userId);
+        const setup = parsed ? filterSetupByFeatures(parsed, access.features) : null;
         return { ok: true, setup, updatedAt: doc.updatedAt ? new Date(doc.updatedAt).getTime() : null };
     } catch {
         return { ok: false, reason: 'failed' };
@@ -70,10 +74,14 @@ export async function saveChartSetup(symbol: string, payload: unknown): Promise<
     }
 
     try {
+        // Server actions are public endpoints: the plan is read here, never sent by the browser, and a
+        // drawing or study outside it is dropped rather than written.
+        const access = await accessFor(userId);
+        const allowed = filterSetupByFeatures(setup, access.features);
         await connectToDatabase();
         const doc = await ChartSetupModel.findOneAndUpdate(
             { userId, symbol: clean },
-            { $set: { v: SETUP_VERSION, drawings: setup.drawings, studies: setup.studies } },
+            { $set: { v: SETUP_VERSION, drawings: allowed.drawings, studies: allowed.studies } },
             { upsert: true, new: true, setDefaultsOnInsert: true },
         ).lean();
         return { ok: true, updatedAt: doc?.updatedAt ? new Date(doc.updatedAt).getTime() : Date.now() };

@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { CalendarDays, Download, Pause, Play, RotateCcw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarDays, Download, Ghost, Pause, Play, RotateCcw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import {
     DEFAULT_COSTS,
     REPLAY_SPEEDS,
@@ -13,11 +13,11 @@ import {
     type OrderFailure,
     type PaperAccount,
     type ReplaySpeed,
-} from '@/lib/replay';
+} from '@/lib/chart/replay';
 import { cn, formatPrice } from '@/lib/utils';
 import { arDigits, fillReasonLabel, tx, type Lang, type StringKey } from '@/lib/i18n';
-import type { Candle } from '@/lib/yahoo-candles';
-import type { Bracket, OrderType, ReplayIntent } from '@/lib/replay';
+import type { Candle } from '@/lib/market/yahoo-candles';
+import type { Bracket, OrderType, ReplayIntent } from '@/lib/chart/replay';
 
 type Props = {
     lang: Lang;
@@ -36,6 +36,9 @@ type Props = {
     onCursor: (time: number) => void;
     onTogglePlay: () => void;
     onSpeed: (speed: ReplaySpeed) => void;
+    /** Whether the bars after the cursor are painted faintly. */
+    ghost: boolean;
+    onToggleGhost: () => void;
     onStart: (time: number) => void;
     onFirst: () => void;
     onRandom: () => void;
@@ -43,6 +46,8 @@ type Props = {
     onBuy: (quantity: number) => void;
     onSell: (quantity: number) => void;
     onPlacePending: (type: OrderType, price: number, quantity: number) => void;
+    /** Entry, stop and target as one order: the bracket arms the moment the entry fills. */
+    onBracketOrder: (entry: { type: OrderType; price?: number }, quantity: number, bracket: Bracket) => void;
     onCancelOrder: () => void;
     onSetBracket: (bracket: Bracket) => void;
     onClearBracket: () => void;
@@ -52,6 +57,7 @@ type Props = {
 const ORDER_FAILURES: Record<OrderFailure, StringKey> = {
     badQuantity: 'replay.order.badQuantity',
     badPrice: 'replay.order.badPrice',
+    badBracket: 'replay.order.badBracket',
     insufficientFunds: 'replay.order.insufficientFunds',
     noPosition: 'replay.order.noPosition',
     notEnoughShares: 'replay.order.notEnoughShares',
@@ -90,6 +96,8 @@ export default function ReplayPanel({
     onCursor,
     onTogglePlay,
     onSpeed,
+    ghost,
+    onToggleGhost,
     onStart,
     onFirst,
     onRandom,
@@ -97,6 +105,7 @@ export default function ReplayPanel({
     onBuy,
     onSell,
     onPlacePending,
+    onBracketOrder,
     onCancelOrder,
     onSetBracket,
     onClearBracket,
@@ -108,6 +117,9 @@ export default function ReplayPanel({
     const [orderPrice, setOrderPrice] = useState('');
     const [stopPrice, setStopPrice] = useState('');
     const [targetPrice, setTargetPrice] = useState('');
+    // The entry bracket: stop and target decided before the position exists. Hidden while a
+    // position is open — there the same two fields adjust the protection already in place.
+    const [bracketEntry, setBracketEntry] = useState(false);
     const [startDay, setStartDay] = useState('');
     const [orderError, setOrderError] = useState<OrderFailure | null>(null);
 
@@ -117,6 +129,13 @@ export default function ReplayPanel({
     const fills = useMemo(() => [...account.fills].reverse().slice(0, 12), [account.fills]);
     const lastDay = candles.length > 0 ? dayOf(candles[candles.length - 1].time) : '';
     const firstDay = candles.length > 0 ? dayOf(candles[0].time) : '';
+    const holding = summary.quantity > 0;
+
+    /** The stop and target as typed, with an empty box meaning "not set". */
+    const entryBracket = (): Bracket => ({
+        ...(stopPrice.trim() === '' ? {} : { stopLoss: Number(stopPrice) }),
+        ...(targetPrice.trim() === '' ? {} : { takeProfit: Number(targetPrice) }),
+    });
 
     const place = (side: 'buy' | 'sell') => {
         const parsed = parseQuantity(quantity);
@@ -129,10 +148,59 @@ export default function ReplayPanel({
             onSell(parsed);
             return;
         }
+        // A bracket order is one order: the stop and target ride with the entry.
+        if (bracketEntry && !holding) {
+            const bracket = entryBracket();
+            if (bracket.stopLoss == null && bracket.takeProfit == null) {
+                setOrderError('badBracket');
+                return;
+            }
+            onBracketOrder(
+                orderType === 'market' ? { type: 'market' } : { type: orderType, price: Number(orderPrice) },
+                parsed,
+                bracket,
+            );
+            return;
+        }
         // A market buy fills on this bar; a limit or a stop is armed and waits for a later one.
         if (orderType === 'market') onBuy(parsed);
         else onPlacePending(orderType, Number(orderPrice), parsed);
     };
+
+    /**
+     * The replay trading keys. Shift keeps them apart from the drawing shortcuts, and the handler
+     * stands aside in a field so typing a quantity never places an order.
+     */
+    const actions = useRef({ place, flatten: () => onSell(summary.quantity), toggle: onTogglePlay });
+    actions.current = { place, flatten: () => onSell(summary.quantity), toggle: onTogglePlay };
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            if (event.code === 'Space' && !(target && target.tagName === 'BUTTON')) {
+                event.preventDefault();
+                actions.current.toggle();
+                return;
+            }
+            if (!event.shiftKey) return;
+            // `code`, not `key`: an Arabic keyboard layout sends "ب" for the B key, and a trader
+            // should not have to switch layouts to place an order.
+            if (event.repeat) return;
+            if (event.code === 'KeyB') {
+                event.preventDefault();
+                actions.current.place('buy');
+            } else if (event.code === 'KeyS') {
+                event.preventDefault();
+                actions.current.place('sell');
+            } else if (event.code === 'KeyX') {
+                event.preventDefault();
+                actions.current.flatten();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     /** The price a limit/stop is armed at, defaulting to the bar the trader is looking at. */
     const defaultOrderPrice = () => {
@@ -203,6 +271,18 @@ export default function ReplayPanel({
                                 {value}×
                             </button>
                         ))}
+                        <span className="mx-1 h-4 w-px bg-line" />
+                        {/* The ghost feed: the bars ahead, faint. Off by default — a replay should not
+                            show the future unless the trader asks for it. */}
+                        <button
+                            type="button"
+                            onClick={onToggleGhost}
+                            aria-pressed={ghost}
+                            className={cn('pill h-6 gap-1 px-2 text-[11.5px]', ghost && 'is-up')}
+                            title={t('replay.ghostHint')}
+                        >
+                            <Ghost className="size-3.5" /> {t('replay.ghost')}
+                        </button>
                         <button type="button" onClick={onExit} className="pill ms-auto h-7 gap-1.5 px-2.5 text-[12px]" title={t('replay.jumpLive')}>
                             <X className="size-3.5" /> {t('replay.jumpLive')}
                         </button>
@@ -328,14 +408,67 @@ export default function ReplayPanel({
                                 className="mono h-7 w-24 rounded-full bg-page px-2.5 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                             <button type="button" onClick={fillMax} className="pill h-7 px-2 text-[11.5px]">{t('replay.max')}</button>
-                            <button type="button" onClick={() => place('buy')} className="pill h-7 px-3 text-[12px] text-up">{t('replay.buy')}</button>
+                            {/* An entry bracket exists only while flat: once a position is open, the
+                                row below adjusts the protection already in place. */}
+                            {!holding && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setBracketEntry((value) => !value);
+                                        setOrderError(null);
+                                    }}
+                                    aria-pressed={bracketEntry}
+                                    title={t('replay.bracketOrder.hint')}
+                                    className={cn('pill h-7 px-2 text-[11.5px]', bracketEntry && 'is-up')}
+                                >
+                                    {t('replay.bracketOrder')}
+                                </button>
+                            )}
+                            {!holding && bracketEntry && (
+                                <>
+                                    <input
+                                        value={stopPrice}
+                                        onChange={(event) => setStopPrice(event.target.value)}
+                                        inputMode="decimal"
+                                        aria-label={t('replay.bracket.stop')}
+                                        placeholder={t('replay.bracket.stop')}
+                                        className="mono h-7 w-20 rounded-full bg-page px-2.5 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    />
+                                    <input
+                                        value={targetPrice}
+                                        onChange={(event) => setTargetPrice(event.target.value)}
+                                        inputMode="decimal"
+                                        aria-label={t('replay.bracket.target')}
+                                        placeholder={t('replay.bracket.target')}
+                                        className="mono h-7 w-20 rounded-full bg-page px-2.5 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    />
+                                </>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => place('buy')}
+                                title={`${t('replay.key.buy')} · ⇧B`}
+                                className="pill h-7 px-3 text-[12px] text-up"
+                            >
+                                {t('replay.buy')}
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => place('sell')}
                                 disabled={summary.quantity <= 0}
+                                title={`${t('replay.key.sell')} · ⇧S`}
                                 className={cn('pill h-7 px-3 text-[12px] text-down', summary.quantity <= 0 && 'cursor-not-allowed opacity-40')}
                             >
                                 {t('replay.sell')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onSell(summary.quantity)}
+                                disabled={summary.quantity <= 0}
+                                title={`${t('replay.key.flatten')} · ⇧X`}
+                                className={cn('pill h-7 px-2.5 text-[11.5px]', summary.quantity <= 0 && 'cursor-not-allowed opacity-40')}
+                            >
+                                {t('replay.flatten')}
                             </button>
                             <button type="button" onClick={onReset} className="icon-btn" title={t('replay.reset')} aria-label={t('replay.reset')}>
                                 <RotateCcw />
@@ -363,11 +496,19 @@ export default function ReplayPanel({
                                     .replace('{p}', price(intent.order.price))
                                     .replace('{q}', arDigits(trimQuantity(intent.order.quantity), lang))}
                             </span>
+                            {/* The protection that rides with the entry, so the trader can see the
+                                whole order before it fills, not just its first leg. */}
+                            {intent.order.bracket?.stopLoss != null && (
+                                <span>{t('replay.bracket.stop')} {price(intent.order.bracket.stopLoss)}</span>
+                            )}
+                            {intent.order.bracket?.takeProfit != null && (
+                                <span>{t('replay.bracket.target')} {price(intent.order.bracket.takeProfit)}</span>
+                            )}
                             <button type="button" onClick={onCancelOrder} className="pill h-6 px-2 text-[11px]">{t('replay.cancelOrder')}</button>
                         </div>
                     )}
 
-                    {summary.quantity > 0 && (
+                    {holding && (
                         <div className="flex flex-wrap items-center gap-1.5" dir="ltr">
                             <span className="text-[11px] font-semibold text-faint">{t('replay.bracket')}</span>
                             <input
@@ -407,7 +548,7 @@ export default function ReplayPanel({
                         </div>
                     )}
 
-                    {intent.bracket && summary.quantity > 0 && (
+                    {intent.bracket && holding && (
                         <p className="text-[11.5px] text-faint">
                             {intent.bracket.stopLoss != null && `${t('replay.bracket.stop')} ${price(intent.bracket.stopLoss)}`}
                             {intent.bracket.stopLoss != null && intent.bracket.takeProfit != null && ' · '}

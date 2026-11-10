@@ -3,8 +3,8 @@ import { getSession } from "@/lib/better-auth/auth";
 import { getLiveQuotes } from "@/lib/actions/finnhub.actions";
 import { getYahooQuotes } from "@/lib/actions/yahoo.actions";
 import { isRateLimited } from "@/lib/rate-limit";
-import { hasFinnhubQuotes } from "@/lib/markets";
-import { isSaudiQuote } from "@/lib/market-data";
+import { hasFinnhubQuotes } from "@/lib/market/markets";
+import { isSaudiQuote } from "@/lib/market/data";
 
 const MAX_SYMBOLS = 25;
 const SYMBOL_PATTERN = /^[A-Z0-9.:\-]{1,20}$/;

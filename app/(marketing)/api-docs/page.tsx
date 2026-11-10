@@ -1,4 +1,5 @@
 import { BarChart2, Clock, Mail, UserX } from 'lucide-react';
+import Link from 'next/link';
 import PageHero from '@/components/marketing/PageHero';
 import SectionHead from '@/components/marketing/SectionHead';
 import IconCard from '@/components/marketing/IconCard';
@@ -122,6 +123,19 @@ export default function ArchitecturePage() {
                                 <span className="text-muted-foreground">{body}</span>
                             </a>
                         ))}
+                    </div>
+                </div>
+            </section>
+
+            <section className="mx-auto mt-24 max-w-[1200px] px-5 pb-24">
+                <div className="hatch">
+                    <div className="card flex flex-wrap items-center justify-between gap-4 p-8">
+                        <div>
+                            <p className="kicker text-brand-ink">For customers</p>
+                            <h2 className="mt-2 text-[26px] font-bold tracking-[-0.04em]">Looking for the REST API?</h2>
+                            <p className="mt-1 text-[15px] text-muted-foreground">Candles, quotes and indicators for your own scripts, on Pro and Premium.</p>
+                        </div>
+                        <Link href="/api" className="btn btn-primary h-11 px-5 text-[15px]">Read the API docs</Link>
                     </div>
                 </div>
             </section>

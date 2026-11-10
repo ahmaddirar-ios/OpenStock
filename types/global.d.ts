@@ -100,6 +100,8 @@ declare global {
         params: Promise<{
             symbol: string;
         }>;
+        /** The scanner's hand-off: `?pattern=<token>`, read once and drawn on the chart. */
+        searchParams: Promise<Record<string, string | string[] | undefined>>;
     };
 
     type WatchlistButtonProps = {

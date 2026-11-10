@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { Plus } from 'lucide-react';
-import { getUserWatchlist } from '@/lib/actions/watchlist.actions';
+import { getUserWatchlist, type WatchlistItemRecord } from '@/lib/actions/watchlist.actions';
 import { getUserAlerts } from '@/lib/actions/alert.actions';
 import { getWatchlistData } from '@/lib/actions/finnhub.actions';
 import { getWatchlistNews } from '@/lib/actions/news.actions';
@@ -14,6 +14,7 @@ import { SearchButton } from '@/components/SearchCommand';
 import { getLang } from '@/lib/i18n-server';
 import { arDigits } from '@/lib/i18n';
 import { tx, type Lang } from '@/lib/i18n';
+import { requireFeaturePage } from '@/lib/entitlements-server';
 
 const RowsSkeleton = ({ rows = 4 }: { rows?: number }) => (
     <div className="row-list" aria-busy="true">
@@ -27,8 +28,9 @@ const RowsSkeleton = ({ rows = 4 }: { rows?: number }) => (
     </div>
 );
 
-async function Symbols({ symbols, lang }: { symbols: string[]; lang: Lang }) {
-    return <WatchlistTable initialRows={await getWatchlistData(symbols)} lang={lang} />;
+async function Symbols({ items, lang }: { items: WatchlistItemRecord[]; lang: Lang }) {
+    const symbols = items.map((item) => item.symbol);
+    return <WatchlistTable initialRows={await getWatchlistData(symbols)} items={items} lang={lang} />;
 }
 
 async function News({ symbols, lang }: { symbols: string[]; lang: Lang }) {
@@ -37,6 +39,8 @@ async function News({ symbols, lang }: { symbols: string[]; lang: Lang }) {
 
 // DB reads render first; everything from Finnhub streams in behind skeletons.
 export default async function WatchlistPage() {
+    await requireFeaturePage('page.watchlist');
+
     const [items, alerts] = await Promise.all([getUserWatchlist(), getUserAlerts()]);
     const symbols: string[] = items.map((item: { symbol: string }) => item.symbol);
     const activeAlerts = alerts.filter((a: { triggered?: boolean }) => !a.triggered).length;
@@ -58,7 +62,7 @@ export default async function WatchlistPage() {
                 <div className="flex min-w-0 flex-col gap-3">
                     <Panel title={tx(lang, 'wl.symbols')} sub={tx(lang, 'wl.symbolsSub')}>
                         <Suspense fallback={<RowsSkeleton rows={Math.max(1, Math.min(symbols.length, 6))} />}>
-                            <Symbols symbols={symbols} lang={lang} />
+                            <Symbols items={items as WatchlistItemRecord[]} lang={lang} />
                         </Suspense>
                     </Panel>
                     <Panel title={tx(lang, 'wl.news')} sub={symbols.length ? tx(lang, 'wl.newsSub') : tx(lang, 'wl.newsGeneral')}>

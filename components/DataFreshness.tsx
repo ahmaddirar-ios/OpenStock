@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { isQuoteLive, isRealtime } from "@/lib/market-data";
+import { isQuoteLive, isRealtime } from "@/lib/market/data";
 import { arNumberDigits, tx, type Lang } from "@/lib/i18n";
 
 // Honest label for how old a number is: "Live" in realtime mode, otherwise the time of the last trade.
