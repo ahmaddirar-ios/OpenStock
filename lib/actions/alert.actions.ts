@@ -173,10 +173,13 @@ export async function createAlert(params: AlertInput) {
     }
 }
 
-/** Edits a rule. Changing what it watches clears the remembered value, so a stale cross cannot fire. */
+/**
+ * Edits a rule: what it watches (symbol), how it watches it (condition and its second number) and
+ * the target. Changing any of those clears the remembered value, so a stale cross cannot fire.
+ */
 export async function updateAlert(
     alertId: string,
-    patch: { targetPrice?: number; condition?: AlertCondition; active?: boolean; params?: AlertParams },
+    patch: { symbol?: string; targetPrice?: number; condition?: AlertCondition; active?: boolean; params?: AlertParams },
 ) {
     const userId = await requireUserId();
     await connectToDatabase();
@@ -187,6 +190,16 @@ export async function updateAlert(
     const condition = patch.condition ?? (existing.condition as AlertCondition);
     if (!isAlertCondition(condition)) fail('invalidCondition');
 
+    // A symbol sent by the client is validated exactly as it is on create: it must have a quote
+    // source. The stored symbol is trusted — the schema requires one and only the server wrote it.
+    const requestedSymbol = patch.symbol == null ? null : alertStoredSymbol(patch.symbol);
+    if (patch.symbol != null && (!requestedSymbol || !alertSource(requestedSymbol))) fail('unsupportedSymbol');
+    const symbol = requestedSymbol ?? String(existing.symbol ?? '');
+    const symbolChanged = requestedSymbol != null && requestedSymbol !== existing.symbol;
+    // A drawing alert's line belongs to the chart it was drawn on; moving it to another symbol
+    // would keep a level that means nothing there.
+    if (symbolChanged && existing.anchor) fail('invalidAnchor');
+
     const targetPrice = patch.targetPrice == null ? existing.targetPrice : Number(patch.targetPrice);
     if (!validateAlertTarget(condition, targetPrice)) fail('invalidTarget');
 
@@ -195,15 +208,50 @@ export async function updateAlert(
         : normalizeAlertParams(condition, patch.params);
     if (!validateAlertParams(condition, ruleParams)) fail('invalidTarget');
 
+    // A series rule needs candles as well as a quote, and the new symbol may not have them.
+    if (symbolChanged && needsCandles(condition) && !compareYahooSymbol(symbol)) fail('unsupportedSymbol');
+
     const update: Record<string, unknown> = { condition, targetPrice, params: ruleParams };
+    if (symbolChanged) update.symbol = symbol;
     if (typeof patch.active === 'boolean') update.active = patch.active;
 
     // Changing what the rule watches invalidates the remembered value; pausing and resuming must
     // not, or a cross rule would need two more checks after every pause.
-    const ruleChanged = condition !== existing.condition
+    const ruleChanged = symbolChanged
+        || condition !== existing.condition
         || ruleParams.period !== ((existing.params ?? {}) as AlertParams).period
         || ruleParams.window !== ((existing.params ?? {}) as AlertParams).window;
     if (ruleChanged) update.lastPrice = null;
+
+    // A drawing rule that becomes a price rule (or the reverse) has no line to keep.
+    if (isDrawingCondition(condition) !== isDrawingCondition(existing.condition)) {
+        update.anchor = null;
+        update.lastGap = null;
+    }
+
+    // A firing belongs to the symbol that fired; pointing the rule at another one starts clean.
+    if (symbolChanged) {
+        update.triggered = false;
+        update.triggeredAt = null;
+        update.triggeredPrice = null;
+        update.seen = false;
+    }
+
+    // The document's own fields mirror its first rule, and the centre reads the rule list first.
+    // Keeping only the top level in step would show the old rule after an edit.
+    const plain = (rule: unknown): Record<string, unknown> => {
+        const candidate = rule as { toObject?: () => Record<string, unknown> };
+        return typeof candidate?.toObject === 'function' ? candidate.toObject() : (rule as Record<string, unknown>);
+    };
+    const storedRules = Array.isArray(existing.rules) ? existing.rules : [];
+    if (storedRules.length > 0) {
+        update.rules = storedRules.map((rule, index) => {
+            const entry = plain(rule);
+            return index === 0
+                ? { ...entry, condition, targetPrice, params: ruleParams, lastValue: ruleChanged ? null : entry.lastValue }
+                : entry;
+        });
+    }
 
     // Reactivating a fired rule means "watch again", so clear the firing exactly as the
     // re-arm button does (the same rule reachable from an API caller).

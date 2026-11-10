@@ -68,6 +68,58 @@ export function countByGroup(items: { group?: string }[]): { group: string; coun
     return groupNames(items).map((group) => ({ group, count: counts.get(group) ?? 0 }));
 }
 
+// -- Sorting -----------------------------------------------------------------------------------
+
+export type WatchlistSortKey = 'symbol' | 'price' | 'changePercent' | 'change' | 'marketCap';
+export type SortDirection = 'asc' | 'desc';
+
+export const WATCHLIST_SORT_KEYS: WatchlistSortKey[] = ['symbol', 'price', 'changePercent', 'change', 'marketCap'];
+
+/** Only these keys can be remembered from a previous visit; anything else falls back to the default. */
+export const isWatchlistSortKey = (value: unknown): value is WatchlistSortKey =>
+    typeof value === 'string' && (WATCHLIST_SORT_KEYS as string[]).includes(value);
+
+export type SortableRow = {
+    symbol: string;
+    price?: number;
+    change?: number;
+    changePercent?: number;
+    marketCap?: number;
+};
+
+/** A row that arrived without a quote carries no number for the price columns. */
+const missingValue = (row: SortableRow, key: Exclude<WatchlistSortKey, 'symbol'>): boolean => {
+    const value = row[key];
+    if (key === 'price' || key === 'marketCap') return !value || !Number.isFinite(value);
+    return value == null || !Number.isFinite(value);
+};
+
+/**
+ * Sorts the watchlist. A row with no quote sorts to the bottom in both directions — an unpriced
+ * symbol is never allowed to lead a "top gainers" list by accident. Ties keep their incoming
+ * order, so the same table always reads the same way.
+ */
+export function sortWatchlist<T extends SortableRow>(
+    rows: readonly T[],
+    key: WatchlistSortKey,
+    direction: SortDirection = 'asc'
+): T[] {
+    const sign = direction === 'desc' ? -1 : 1;
+    return rows
+        .map((row, index) => ({ row, index }))
+        .sort((a, b) => {
+            if (key === 'symbol') {
+                return a.row.symbol.localeCompare(b.row.symbol) * sign || a.index - b.index;
+            }
+            const aMissing = missingValue(a.row, key);
+            const bMissing = missingValue(b.row, key);
+            if (aMissing !== bMissing) return aMissing ? 1 : -1;
+            if (aMissing && bMissing) return a.index - b.index;
+            return ((a.row[key] as number) - (b.row[key] as number)) * sign || a.index - b.index;
+        })
+        .map((entry) => entry.row);
+}
+
 // -- CSV ---------------------------------------------------------------------------------------
 
 const csvCell = (value: string | number): string => {

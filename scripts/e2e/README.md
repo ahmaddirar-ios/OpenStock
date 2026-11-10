@@ -51,7 +51,7 @@ node scripts/e2e/tools.mjs
 | File | What it covers |
 | --- | --- |
 | `chart-tools.mjs` | 15 destinations; add a study, chart type, draw/undo, the object menu, lock/hide/layers, copy-paste, templates, CSV export, the four-pane grid |
-| `tools.mjs` | Portfolio (position + trade add/remove, cash set/clear), alerts (create, pause, resume, delete, a rule that fires), custom-strategy studio (run, save, delete), watchlist (add/remove), screener (filter, coverage line, CSV export) |
+| `tools.mjs` | Portfolio (position + trade add/remove, cash set/clear), alerts (create, pause, resume, edit symbol + condition, delete, a rule that fires), custom-strategy studio (run, save, delete, basket run), watchlist (add/remove, column sort, remembered order), screener (filter, coverage line, CSV export) |
 | `depth.mjs` | Screener formula filter over history, strategy KPIs and charts, the parameter-grid optimizer, the portfolio curve, and mixed currencies staying separate |
 | `boards.mjs` | The command palette, the dashboard board (arrange/move/reset), the Saudi board, the pattern scanner |
 

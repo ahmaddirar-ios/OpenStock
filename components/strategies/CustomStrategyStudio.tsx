@@ -2,20 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Download, Play, Plus, RotateCcw, Save, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, Download, Layers, Play, Plus, RotateCcw, Save, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
 import {
     DEFAULT_CUSTOM_STRATEGY,
     MAX_CUSTOM_PARAMS,
     OBJECTIVES,
     backtestCustom,
+    basketSummary,
     checkRule,
     customMetrics,
+    MAX_BASKET_SYMBOLS,
     optimize,
     paramValues,
+    parseBasket,
     parseCustomStrategy,
     serializeStrategy,
     sourcePosition,
     walkForward,
+    type BasketMember,
     type CustomStrategy,
     type Objective,
     type OptimizerResult,
@@ -53,6 +57,13 @@ import { cn } from '@/lib/utils';
 // engine only ever sees the result.
 
 type Run = { symbol: string; intervalId: string; bars: number; result: Backtest; metrics: Metrics };
+type BasketRun = {
+    intervalId: string;
+    members: BasketMember[];
+    summary: ReturnType<typeof basketSummary>;
+    /** Symbols the basket asked for that could not be priced, so the run never pretends they were. */
+    skipped: string[];
+};
 type Account = 'checking' | 'ready' | 'local';
 type Notice = 'savedAccount' | 'savedLocal' | 'saveFailed' | 'invalid' | 'full' | 'importFailed' | 'nameRequired' | 'loadFailed' | null;
 
@@ -114,6 +125,12 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
     const [running, setRunning] = useState(false);
     const [error, setError] = useState<'badSymbol' | 'noCandles' | null>(null);
     const [run, setRun] = useState<Run | null>(null);
+
+    // A basket runs the same rules across several names and reports one aggregate beside each row.
+    const [basket, setBasket] = useState('');
+    const [basketRun, setBasketRun] = useState<BasketRun | null>(null);
+    const [basketBusy, setBasketBusy] = useState(false);
+    const basketSymbols = useMemo(() => parseBasket(basket), [basket]);
 
     const [optimizer, setOptimizer] = useState<OptimizerResult | null>(null);
     const [optimizing, setOptimizing] = useState(false);
@@ -177,6 +194,9 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
 
     const patch = (next: Partial<CustomStrategy>) => {
         setStrategy((current) => ({ ...current, ...next }));
+        // A result belongs to the rules that produced it; editing them retires it rather than
+        // leaving a number on screen that no longer matches what the editor says.
+        setBasketRun(null);
         setNotice(null);
     };
 
@@ -252,6 +272,56 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
             setWalk(null);
         } finally {
             setRunning(false);
+        }
+    };
+
+    /**
+     * Runs the rules on every symbol of the basket and pools the result. A symbol with no quote is
+     * reported as skipped rather than counted as a flat run, so the aggregate is never diluted by a
+     * name the app could not price.
+     */
+    const runBasket = async () => {
+        if (!checks.valid) {
+            setNotice('invalid');
+            return;
+        }
+        if (basketSymbols.symbols.length === 0) return;
+        setBasketBusy(true);
+        setError(null);
+        try {
+            const members: BasketMember[] = [];
+            const skipped: string[] = [];
+            for (const raw of basketSymbols.symbols) {
+                const resolved = compareYahooSymbol(raw);
+                if (!resolved) {
+                    skipped.push(raw);
+                    continue;
+                }
+                try {
+                    const set = await getStrategyCandles(resolved, intervalId);
+                    const result = set && set.candles.length >= 2 ? backtestCustom(set.candles, strategy, costs) : null;
+                    if (!result) {
+                        skipped.push(raw);
+                        continue;
+                    }
+                    members.push({ symbol: resolved, result, metrics: customMetrics(result, intervalId, riskFree / 100) });
+                } catch {
+                    skipped.push(raw);
+                }
+            }
+            setBasketRun({
+                intervalId,
+                members,
+                summary: basketSummary(members, intervalId, riskFree / 100),
+                skipped,
+            });
+            // One result at a time: a single-symbol run left on screen would hide the basket it
+            // was just replaced by.
+            setRun(null);
+            setOptimizer(null);
+            setWalk(null);
+        } finally {
+            setBasketBusy(false);
         }
     };
 
@@ -345,6 +415,7 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
     const loadOne = (entry: SavedStrategy) => {
         setStrategy({ ...entry.strategy, params: entry.strategy.params.map((param) => ({ ...param })) });
         setRun(null);
+        setBasketRun(null);
         setOptimizer(null);
         setWalk(null);
         setNotice(null);
@@ -366,6 +437,7 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
             }
             setStrategy(next);
             setRun(null);
+            setBasketRun(null);
             setOptimizer(null);
             setWalk(null);
             setNotice(null);
@@ -377,6 +449,7 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
     const reset = () => {
         setStrategy({ ...DEFAULT_CUSTOM_STRATEGY, params: DEFAULT_CUSTOM_STRATEGY.params.map((param) => ({ ...param })) });
         setRun(null);
+        setBasketRun(null);
         setOptimizer(null);
         setWalk(null);
         setNotice(null);
@@ -666,6 +739,35 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
 
                     <section className="card flex flex-col gap-2 p-3">
                         <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-[12.5px] font-semibold">{t('cs.basket')}</h3>
+                            <span className="num text-[10.5px] text-faint">
+                                {arDigits(basketSymbols.symbols.length, lang)} / {arDigits(MAX_BASKET_SYMBOLS, lang)}
+                            </span>
+                        </div>
+                        <p className="text-[10.5px] leading-snug text-faint">{t('cs.basketHint')}</p>
+                        <textarea
+                            value={basket}
+                            onChange={(event) => setBasket(event.target.value.toUpperCase())}
+                            placeholder="2222.SR, 2010.SR, AAPL"
+                            aria-label={t('cs.basket')}
+                            dir="ltr"
+                            rows={2}
+                            spellCheck={false}
+                            className="mono w-full resize-y rounded-[7px] bg-page px-2 py-1.5 text-[11.5px] shadow-[inset_0_0_0_1px_var(--line)] outline-none placeholder:text-faint focus:ring-2 focus:ring-ring"
+                        />
+                        {basketSymbols.truncated && <p className="text-[10.5px] text-warn">{t('cs.basketTruncated')}</p>}
+                        <button
+                            type="button"
+                            onClick={() => void runBasket()}
+                            disabled={basketBusy || !checks.valid || basketSymbols.symbols.length === 0}
+                            className="pill h-8 w-fit gap-1 px-2.5 text-[12px] disabled:opacity-50"
+                        >
+                            <Layers className="size-3.5" /> {basketBusy ? t('strat.lab.running') : t('cs.basketRun')}
+                        </button>
+                    </section>
+
+                    <section className="card flex flex-col gap-2 p-3">
+                        <div className="flex items-center justify-between gap-2">
                             <h3 className="text-[12.5px] font-semibold">{t('cs.saved')}</h3>
                             <span className="num text-[10.5px] text-faint">{arDigits(saved.length, lang)} / {arDigits(MAX_SAVED_STRATEGIES, lang)}</span>
                         </div>
@@ -869,6 +971,73 @@ export default function CustomStrategyStudio({ lang, initialSymbol, initialLoad 
                                 )}
                             </section>
 
+                            <p className="px-0.5 text-[11px] text-faint">{t('strat.disclaimer')}</p>
+                        </div>
+                    ) : basketRun ? (
+                        <div className="flex flex-col gap-3" aria-live="polite">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-0.5">
+                                <h2 className="flex items-center gap-1.5 text-[14px] font-semibold">
+                                    <Layers className="size-4 text-brand" /> {t('cs.basketResult')}
+                                </h2>
+                                <span className="pill h-6 px-2 text-[11px]">{t(INTERVAL_LABEL_KEYS[basketRun.intervalId] ?? 'chart.tf.1d')}</span>
+                                <span className="num text-[11.5px] text-faint">
+                                    {t('cs.basketCount').replace('{n}', arDigits(basketRun.members.length, lang))}
+                                    {' · '}
+                                    {t('cs.basketTraded').replace('{n}', arDigits(basketRun.summary.traded, lang))}
+                                </span>
+                            </div>
+
+                            {basketRun.members.length === 0 ? (
+                                <p className="rounded-[10px] bg-page px-3 py-2 text-[12px] text-warn shadow-[inset_0_0_0_1px_var(--line)]">{t('cs.basketNone')}</p>
+                            ) : (
+                                <>
+                                    <KpiGrid metrics={basketRun.summary.metrics} lang={lang} />
+                                    {(basketRun.summary.best || basketRun.summary.worst) && (
+                                        <p className="num px-0.5 text-[11.5px] text-muted-foreground">
+                                            {basketRun.summary.best && (
+                                                <span className="me-3">{t('cs.basketBest').replace('{s}', basketRun.summary.best)}</span>
+                                            )}
+                                            {basketRun.summary.worst && (
+                                                <span>{t('cs.basketWorst').replace('{s}', basketRun.summary.worst)}</span>
+                                            )}
+                                        </p>
+                                    )}
+                                    <div className="card overflow-x-auto p-0">
+                                        <table className="w-full min-w-[520px] border-collapse text-[11.5px]">
+                                            <thead>
+                                                <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
+                                                    <th className="px-2 py-1.5 text-start font-medium">{t('wl.symbol')}</th>
+                                                    <th className="px-2 py-1.5 text-end font-medium">{t('strat.m.totalReturn')}</th>
+                                                    <th className="px-2 py-1.5 text-end font-medium">{t('strat.m.sharpe')}</th>
+                                                    <th className="px-2 py-1.5 text-end font-medium">{t('strat.m.maxDD')}</th>
+                                                    <th className="px-2 py-1.5 text-end font-medium">{t('strat.m.trades')}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {basketRun.members.map((member) => (
+                                                    <tr key={member.symbol} className="border-b border-line last:border-0">
+                                                        <td className="mono px-2 py-1.5 text-start text-foreground" dir="ltr">
+                                                            <Link href={`/stocks/${member.symbol}`} className="hover:text-brand-ink">{member.symbol}</Link>
+                                                        </td>
+                                                        <td className={cn('num px-2 py-1.5 text-end', (member.metrics.totalReturn ?? 0) >= 0 ? 'text-up' : 'text-down')}>
+                                                            {pct(member.metrics.totalReturn, lang)}
+                                                        </td>
+                                                        <td className="num px-2 py-1.5 text-end">{num(member.metrics.sharpe, lang)}</td>
+                                                        <td className="num px-2 py-1.5 text-end">{pct(member.metrics.maxDrawdown == null ? null : -member.metrics.maxDrawdown, lang)}</td>
+                                                        <td className="num px-2 py-1.5 text-end">{arDigits(member.metrics.trades, lang)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            )}
+
+                            {basketRun.skipped.length > 0 && (
+                                <p className="rounded-[10px] bg-page px-3 py-2 text-[11.5px] text-warn shadow-[inset_0_0_0_1px_var(--line)]" dir="auto">
+                                    {t('cs.basketSkipped').replace('{s}', basketRun.skipped.join(', '))}
+                                </p>
+                            )}
                             <p className="px-0.5 text-[11px] text-faint">{t('strat.disclaimer')}</p>
                         </div>
                     ) : (

@@ -21,12 +21,12 @@ This is a behavioural pass, not a replacement for `npm test` (Vitest, unit and c
 | Suite | Checks | Result |
 | --- | --- | --- |
 | `chart-tools.mjs` | 34 | 34/34 |
-| `tools.mjs` | 26 | 26/26 |
+| `tools.mjs` | 30 | 30/30 |
 | `depth.mjs` | 11 | 11/11 |
 | `boards.mjs` | 11 | 11/11 |
-| **Total** | **82** | **82/82, zero page errors** |
+| **Total** | **86** | **86/86, zero page errors** |
 
-Alongside these, the repository's own gate is green: `npm test` (1,598 passed / 4 skipped across 104
+Alongside these, the repository's own gate is green: `npm test` (1,627 passed / 4 skipped across 104
 files), `npx tsc --noEmit`, `npm run lint`, `npm run build`.
 
 ## What was checked
@@ -63,6 +63,11 @@ Create a rule from the centre, pause it, resume it, delete it. Create a rule tha
 watch it fire on `Check now` (a fired rule stays removable). Conditions come from the shared label
 list, including candle-based and formula rules.
 
+The edit row changes what a rule watches, not only its target: the symbol and the condition are both
+editable, and the row is re-read after saving to confirm it shows the new symbol and the new rule
+(`MSFT` above 99,999 → `AAPL` at or below 1). A drawing rule keeps its own condition in the list,
+because its line belongs to one chart; moving it to another symbol is refused by the server.
+
 ### Custom-strategy studio
 
 Run a backtest on real candles and read the KPI grid (total return, CAGR, Sharpe, Sortino, max
@@ -70,9 +75,18 @@ drawdown, profit factor, expectancy, win rate, exposure, trades) and the equity/
 the parameter-grid optimizer (a full grid of 1,386 combinations), take the best row, save the
 strategy to the account and delete it.
 
+A basket run applies the same rules to several names at once (`2222.SR, AAPL`) and reports one pooled
+result: the aggregate KPI grid, a per-symbol row (return, Sharpe, max drawdown, trades), the best and
+worst name, and a warning listing any symbol that could not be priced. A symbol with no history is
+left out of the aggregate rather than counted as a flat run, and the basket result replaces the
+single-symbol panel so only one result is ever on screen.
+
 ### Watchlist and screener
 
-Add a symbol from its stock page, see it on the watchlist, remove it. On the screener: filter, run a
+Add a symbol from its stock page, see it on the watchlist, remove it. The table sorts by any column
+(symbol, price, today, change, market cap) with `aria-sort` on the active header, and the chosen
+order survives a reload because it is remembered in `localStorage`; a row with no quote always sorts
+to the bottom. On the screener: filter, run a
 formula over each symbol's history (`close > sma(close, 20)` → "9 of 12 matched"), export the
 current results as CSV, and check the results line states how much of the universe is priced
 (`12 of 906 priced`) instead of claiming the whole universe is covered.

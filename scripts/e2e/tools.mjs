@@ -127,6 +127,29 @@ const EXEC = resolveChromium();
     check('alerts: pause', pauseOk);
     check('alerts: resume', resumeOk);
 
+    // The edit row changes what a rule watches, not only its target.
+    let edited = false;
+    const editBtn = page.getByRole('button', { name: 'Edit rule', exact: true }).first();
+    if (await editBtn.count()) {
+        await editBtn.click();
+        const symbolField = page.getByLabel('Symbol', { exact: true }).nth(1);
+        await symbolField.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+        if (await symbolField.count()) {
+            await symbolField.fill('AAPL');
+            await page.getByLabel('Condition', { exact: true }).nth(1).selectOption('BELOW').catch(() => {});
+            await page.getByLabel('Target', { exact: true }).last().fill('1');
+            await page.getByRole('button', { name: 'Save', exact: true }).last().click();
+            // The row must show the new symbol and the new rule once the re-render lands.
+            const t0 = Date.now();
+            while (Date.now() - t0 < 20000) {
+                await page.waitForTimeout(500);
+                const txt = await body();
+                if (/AAPL/.test(txt) && /Price at or below/.test(txt)) { edited = true; break; }
+            }
+        }
+    }
+    check('alerts: edit symbol and condition', edited, edited ? '' : 'row kept the old rule');
+
     let del = page.getByRole('button', { name: 'Delete', exact: true }).first();
     let hasDel = await del.count();
     if (hasDel) { await del.click(); await waitText(/No alerts yet/, 15000); }
@@ -169,6 +192,34 @@ const EXEC = resolveChromium();
     const sdGone = !new RegExp(name).test(await body());
     check('studio: delete strategy', hasSd && sdGone, hasSd ? (sdGone ? '' : 'still listed') : 'no delete button');
 
+    // A basket runs the same rules on several names and reports one pooled result. The result
+    // replaces the single-symbol panel, so wait for its own heading, and read the button back
+    // rather than assuming the first click landed.
+    let basketRan = false;
+    const basketField = page.getByLabel('Basket', { exact: true }).first();
+    const hasBasket = (await basketField.count()) > 0;
+    if (hasBasket) {
+        await basketField.fill('2222.SR, AAPL');
+        const runBasket = page.getByRole('button', { name: 'Run basket', exact: true }).first();
+        const enabled = await runBasket.isEnabled().catch(() => false);
+        if (enabled) {
+            await runBasket.click();
+            // The button flips to Running… while it works; once it is back the result is on screen.
+            await page.getByRole('button', { name: 'Run basket', exact: true }).first().waitFor({ state: 'visible', timeout: 90000 }).catch(() => {});
+            basketRan = await waitText(/Basket result/i, 60000);
+        }
+        if (!basketRan) {
+            const alertTxt = ((await body()).match(/Entry.*?$/m) || [''])[0].slice(0, 120);
+            check('studio: basket runs', false, enabled ? `no basket result (${alertTxt})` : 'Run basket stayed disabled');
+        }
+    }
+    if (basketRan) {
+        const basketTxt = await body();
+        check('studio: basket runs', /Basket result/i.test(basketTxt) && /symbols priced/i.test(basketTxt));
+    } else if (!hasBasket) {
+        check('studio: basket runs', false, 'no basket field');
+    }
+
     // ---------- 5. watchlist: add then remove ------------------------------------------
     await page.goto(BASE + '/stocks/AAPL', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3500);
@@ -187,6 +238,27 @@ const EXEC = resolveChromium();
     const star = page.getByRole('button', { name: 'Watching AAPL', exact: true }).first();
     const inList = (await star.count()) > 0;
     check('watchlist: symbol appears', inList);
+
+    // Sorting: the first click on a numeric header orders ascending and marks the column.
+    const priceHeader = page.getByRole('button', { name: 'Price', exact: true }).first();
+    let sorted = false;
+    if (await priceHeader.count()) {
+        await priceHeader.click();
+        await page.waitForTimeout(600);
+        const th = page.locator('th[aria-sort="ascending"]');
+        sorted = (await th.count()) > 0;
+    }
+    check('watchlist: sorts by a column', sorted, sorted ? '' : 'no aria-sort on the header');
+
+    // The chosen order survives a reload: it is remembered, not just held in state.
+    let remembered = false;
+    if (sorted) {
+        await page.waitForTimeout(400);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(2500);
+        remembered = (await page.locator('th[aria-sort="ascending"]').count()) > 0;
+    }
+    check('watchlist: order is remembered', remembered, remembered ? '' : 'sort reset on reload');
 
     if (inList) { await star.click(); await page.waitForTimeout(3000); }
     const wGone = (await page.getByRole('button', { name: 'Watching AAPL', exact: true }).count()) === 0;

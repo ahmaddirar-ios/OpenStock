@@ -3,10 +3,12 @@ import {
     DEFAULT_GROUP,
     countByGroup,
     groupNames,
+    isWatchlistSortKey,
     normalizeGroup,
     normalizeNote,
     normalizeTags,
     parseWatchlistCsv,
+    sortWatchlist,
     watchlistToCsv,
 } from '@/lib/watchlist';
 
@@ -100,5 +102,43 @@ describe('parseWatchlistCsv', () => {
         const original = [{ symbol: 'AAPL', company: 'Apple', group: 'Core', note: 'hold, long', tags: ['tech', 'us'] }];
         const { items } = parseWatchlistCsv(watchlistToCsv(original));
         expect(items[0]).toMatchObject({ symbol: 'AAPL', group: 'Core', note: 'hold, long', tags: ['tech', 'us'] });
+    });
+});
+
+describe('sortWatchlist', () => {
+    const rows = [
+        { symbol: 'MSFT', price: 400, change: 2, changePercent: 0.5, marketCap: 3_000 },
+        { symbol: 'AAPL', price: 200, change: -3, changePercent: -1.5, marketCap: 2_800 },
+        { symbol: '2222.SR', price: 28, change: 0.4, changePercent: 1.4, marketCap: 90 },
+    ];
+
+    it('orders symbols alphabetically in both directions', () => {
+        expect(sortWatchlist(rows, 'symbol').map((r) => r.symbol)).toEqual(['2222.SR', 'AAPL', 'MSFT']);
+        expect(sortWatchlist(rows, 'symbol', 'desc').map((r) => r.symbol)).toEqual(['MSFT', 'AAPL', '2222.SR']);
+    });
+
+    it('orders numbers by value', () => {
+        expect(sortWatchlist(rows, 'price').map((r) => r.symbol)).toEqual(['2222.SR', 'AAPL', 'MSFT']);
+        expect(sortWatchlist(rows, 'price', 'desc').map((r) => r.symbol)).toEqual(['MSFT', 'AAPL', '2222.SR']);
+        expect(sortWatchlist(rows, 'changePercent', 'desc').map((r) => r.symbol)).toEqual(['2222.SR', 'MSFT', 'AAPL']);
+    });
+
+    it('keeps unpriced rows at the bottom in both directions', () => {
+        const withBlank = [...rows, { symbol: 'ZZZ' }];
+        expect(sortWatchlist(withBlank, 'price', 'desc').at(-1)?.symbol).toBe('ZZZ');
+        expect(sortWatchlist(withBlank, 'price').at(-1)?.symbol).toBe('ZZZ');
+        expect(sortWatchlist(withBlank, 'marketCap', 'desc').at(-1)?.symbol).toBe('ZZZ');
+    });
+
+    it('never mutates the rows it was given', () => {
+        const copy = [...rows];
+        sortWatchlist(rows, 'price', 'desc');
+        expect(rows).toEqual(copy);
+    });
+
+    it('remembers only a real key and direction', () => {
+        expect(isWatchlistSortKey('price')).toBe(true);
+        expect(isWatchlistSortKey('price; drop table')).toBe(false);
+        expect(isWatchlistSortKey(42)).toBe(false);
     });
 });

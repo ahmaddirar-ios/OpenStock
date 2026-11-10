@@ -31,8 +31,30 @@ Goal: no headline number on the portfolio or the screener may be wrong or mislea
 - [x] `npm run test:e2e` green: 82/82 (chart-tools 34, tools 26, depth 11, boards 11), no page errors.
 - [x] `tsc`, `lint` (new files), `vitest` (1610 passed / 4 skipped), `build`.
 
-## Follow-ups (Phase B/C, not in this phase)
+## Phase B · The three workflow gaps the sweep found
 
-- Watchlist sorting; full alert edit (condition + symbol); multi-symbol backtest; bar replay.
+- [x] **Full alert edit.** `updateAlert` accepts `symbol`, `condition` and `params`; a client-sent
+      symbol is validated exactly as on create, a drawing alert refuses to move (its line belongs to
+      one chart), a symbol change clears the stale cross and firing, and `rules[0]` is kept in step
+      with the document. The edit row now has a symbol field and a condition select; a text rule
+      (formula/strategy) hides the number inputs, and a drawing rule keeps its own condition.
+- [x] **Watchlist sorting.** `sortWatchlist` (pure) orders by symbol, price, today, change or market
+      cap; unpriced rows always sort last in both directions and ties keep their incoming order.
+      Headers are buttons with `aria-sort`, and the chosen order is remembered in `localStorage`.
+- [x] **Multi-symbol backtest.** `parseBasket` (comma/space/semicolon/newline, de-duplicated, capped
+      at `MAX_BASKET_SYMBOLS = 10`) and `basketSummary` (pooled trades, averaged equity curve,
+      best/worst). The studio runs the same rules across the basket, shows the aggregate KPI grid and
+      a per-symbol table, and lists symbols it could not price instead of counting them as flat runs.
+
+## Tests / gate (Phase B)
+
+- [x] Vitest: 1,627 passed / 4 skipped (104 files) — +6 `updateAlert`, +5 `sortWatchlist`,
+      +4 `parseBasket`/`basketSummary`.
+- [x] `npm run test:e2e` green: 86/86 (chart-tools 34, tools 30, depth 11, boards 11), no page errors.
+- [x] `tsc`, `lint` (new files), `build`.
+
+## Follow-ups (Phase C, not done)
+
+- Bar replay (step through history bar by bar) — the one remaining gap a discretionary trader named.
 - An FX rate, if one is ever added, would let a single account-wide total exist — until then the
   per-currency rule stands.

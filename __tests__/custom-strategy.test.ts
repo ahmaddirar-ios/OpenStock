@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+    MAX_BASKET_SYMBOLS,
     MAX_CUSTOM_PARAMS,
     MAX_OPTIMIZER_COMBOS,
     backtestCustom,
+    basketSummary,
+    parseBasket,
     checkCustomStrategy,
     checkRule,
     customMetrics,
@@ -18,6 +21,8 @@ import {
     walkForward,
     type CustomStrategy,
 } from '@/lib/strategy/custom';
+import { DEFAULT_CUSTOM_STRATEGY } from '@/lib/strategy/custom';
+import { DEFAULT_COSTS } from '@/lib/strategy/strategies';
 import type { Candle } from '@/lib/market/yahoo-candles';
 
 const candle = (time: number, open: number, high: number, low: number, close: number): Candle => ({
@@ -403,5 +408,61 @@ describe('serializeStrategy', () => {
         const original = strategy({ name: 'Round trip', entry: 'close > sma(close, {fast})', params: [{ key: 'fast', value: 20, min: 5, max: 40, step: 5 }] });
         const parsed = parseCustomStrategy(JSON.parse(serializeStrategy(original)))!;
         expect(parsed).toEqual(original);
+    });
+});
+
+describe('parseBasket', () => {
+    it('splits on commas, spaces, semicolons and new lines', () => {
+        expect(parseBasket('2222.SR, 2010.SR AAPL\nMSFT;NVDA').symbols).toEqual(['2222.SR', '2010.SR', 'AAPL', 'MSFT', 'NVDA']);
+    });
+
+    it('upper-cases and collapses duplicates', () => {
+        expect(parseBasket('aapl, AAPL , aapl').symbols).toEqual(['AAPL']);
+    });
+
+    it('caps the list and says it did', () => {
+        const raw = Array.from({ length: MAX_BASKET_SYMBOLS + 3 }, (_, i) => `S${i}`).join(',');
+        const parsed = parseBasket(raw);
+        expect(parsed.symbols).toHaveLength(MAX_BASKET_SYMBOLS);
+        expect(parsed.truncated).toBe(true);
+        expect(parseBasket('AAPL').truncated).toBe(false);
+    });
+
+    it('reads nothing from an empty field', () => {
+        expect(parseBasket('')).toEqual({ symbols: [], truncated: false });
+        expect(parseBasket(null)).toEqual({ symbols: [], truncated: false });
+    });
+});
+
+describe('basketSummary', () => {
+    const strategy: CustomStrategy = { ...DEFAULT_CUSTOM_STRATEGY, params: DEFAULT_CUSTOM_STRATEGY.params.map((param) => ({ ...param })), exit: 'close < 0' };
+    /** A straight line of bars from `from`, one unit a day — up when the step is positive. */
+    const line = (from: number, step = 1) =>
+        Array.from({ length: 60 }, (_, i) => candle(i, from + i * step, from + i * step + 1, from + i * step - 1, from + i * step));
+
+    it('pools every trade and names the best and worst symbols', () => {
+        // A rising series and a falling one: the same long-only rule wins on the first, loses on the second.
+        const up = backtestCustom(line(100), { ...strategy, entry: 'close > 0' }, { ...DEFAULT_COSTS })!;
+        const down = backtestCustom(line(100, -1), { ...strategy, entry: 'close > 0' }, { ...DEFAULT_COSTS })!;
+        const members = [
+            { symbol: 'AAA', result: up, metrics: customMetrics(up, '1d') },
+            { symbol: 'BBB', result: down, metrics: customMetrics(down, '1d') },
+        ];
+        const summary = basketSummary(members, '1d');
+        // One pooled record: every trade of every symbol, never averaged away.
+        expect(summary.metrics.trades).toBe(up.trades.length + down.trades.length);
+        expect(summary.traded).toBe(2);
+        expect(summary.best).toBe('AAA');
+        expect(summary.worst).toBe('BBB');
+        // The pooled record's return follows the pooled equity, not either symbol alone.
+        expect(summary.metrics.totalReturn).not.toBeNull();
+    });
+
+    it('never counts a symbol that did not run as a flat return', () => {
+        const summary = basketSummary([], '1d');
+        expect(summary.traded).toBe(0);
+        expect(summary.best).toBeNull();
+        expect(summary.worst).toBeNull();
+        expect(summary.metrics.trades).toBe(0);
     });
 });

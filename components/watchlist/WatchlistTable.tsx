@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Download, Pencil, Search, Star, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Bell, Download, Pencil, Search, Star, Upload } from "lucide-react";
 import CreateAlertModal from "./CreateAlertModal";
 import WatchlistItemModal from "./WatchlistItemModal";
 import WatchlistButton from "@/components/WatchlistButton";
@@ -16,7 +16,7 @@ import { alertSource } from "@/lib/alerts";
 import { tx, type Lang } from "@/lib/i18n";
 import { arDigits } from "@/lib/i18n";
 import { saudiSymbolNameAr } from "@/lib/market/saudi-symbols";
-import { DEFAULT_GROUP, groupNames, normalizeGroup, watchlistToCsv, type WatchlistMeta } from "@/lib/watchlist";
+import { DEFAULT_GROUP, groupNames, isWatchlistSortKey, normalizeGroup, sortWatchlist, watchlistToCsv, type SortDirection, type WatchlistMeta, type WatchlistSortKey } from "@/lib/watchlist";
 import { importWatchlistCsv, type WatchlistItemRecord } from "@/lib/actions/watchlist.actions";
 import type { getWatchlistData } from "@/lib/actions/finnhub.actions";
 import Price from "@/components/Price";
@@ -24,6 +24,17 @@ import { toast } from "sonner";
 
 type Row = Awaited<ReturnType<typeof getWatchlistData>>[number];
 const SUGGESTIONS = ['AAPL', 'NVDA', 'MSFT', 'TSLA', 'AMZN'];
+/** Where the chosen order is remembered between visits. */
+const SORT_STORAGE = 'openstock-watchlist-sort';
+
+/** The columns that can order the table, in the order they are drawn. */
+const SORT_COLUMNS: { key: WatchlistSortKey; label: 'wl.symbol' | 'wl.price' | 'wl.today' | 'wl.change' | 'wl.mcap'; numeric: boolean }[] = [
+    { key: 'symbol', label: 'wl.symbol', numeric: false },
+    { key: 'price', label: 'wl.price', numeric: true },
+    { key: 'changePercent', label: 'wl.today', numeric: true },
+    { key: 'change', label: 'wl.change', numeric: true },
+    { key: 'marketCap', label: 'wl.mcap', numeric: true },
+];
 
 export default function WatchlistTable({
     initialRows,
@@ -38,6 +49,8 @@ export default function WatchlistTable({
     const [baseRows, setBaseRows] = useState(initialRows);
     const [meta, setMeta] = useState(items);
     const [group, setGroup] = useState<string>('all');
+    const [sortKey, setSortKey] = useState<WatchlistSortKey>('symbol');
+    const [sortDir, setSortDir] = useState<SortDirection>('asc');
     const [busy, setBusy] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
     const live = useLiveQuotes(baseRows.map((r) => r.symbol));
@@ -46,15 +59,47 @@ export default function WatchlistTable({
     useEffect(() => setBaseRows(initialRows), [initialRows]);
     useEffect(() => setMeta(items), [items]);
 
+    // The order a trader chose survives a reload: it lives in localStorage, not only in state.
+    useEffect(() => {
+        try {
+            const saved = window.localStorage.getItem(SORT_STORAGE);
+            if (!saved) return;
+            const parsed = JSON.parse(saved) as { key?: unknown; dir?: unknown };
+            if (isWatchlistSortKey(parsed.key)) setSortKey(parsed.key);
+            if (parsed.dir === 'asc' || parsed.dir === 'desc') setSortDir(parsed.dir);
+        } catch {
+            // A corrupt or unavailable store is not worth a message; the default order stands.
+        }
+    }, []);
+
+    const chooseSort = (key: WatchlistSortKey) => {
+        // First click on a column sorts ascending; clicking the active column flips the direction.
+        const nextDir: SortDirection = key === sortKey && sortDir === 'asc' ? 'desc' : 'asc';
+        setSortKey(key);
+        setSortDir(nextDir);
+        try {
+            window.localStorage.setItem(SORT_STORAGE, JSON.stringify({ key, dir: nextDir }));
+        } catch {
+            // Storage can be full or blocked; the sort still works for this session.
+        }
+    };
+
     const metaBySymbol = useMemo(() => new Map(meta.map((item) => [item.symbol, item])), [meta]);
     const groups = useMemo(() => groupNames(meta), [meta]);
 
-    const rows = baseRows.map((r) => {
-        const q = live[r.symbol];
-        return q?.c ? { ...r, price: q.c, change: q.d ?? r.change, changePercent: q.dp ?? r.changePercent } : r;
-    });
+    const rows = useMemo(
+        () =>
+            baseRows.map((r) => {
+                const q = live[r.symbol];
+                return q?.c ? { ...r, price: q.c, change: q.d ?? r.change, changePercent: q.dp ?? r.changePercent } : r;
+            }),
+        [baseRows, live]
+    );
 
-    const visible = group === 'all' ? rows : rows.filter((row) => normalizeGroup(metaBySymbol.get(row.symbol)?.group) === group);
+    const visible = useMemo(() => {
+        const filtered = group === 'all' ? rows : rows.filter((row) => normalizeGroup(metaBySymbol.get(row.symbol)?.group) === group);
+        return sortWatchlist(filtered, sortKey, sortDir);
+    }, [rows, group, metaBySymbol, sortKey, sortDir]);
 
     const handleExport = () => {
         const payload: WatchlistMeta[] = rows.map((row) => {
@@ -172,11 +217,23 @@ export default function WatchlistTable({
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th>{tx(lang, 'wl.company')}</th>
-                                <th className="is-num">{tx(lang, 'wl.price')}</th>
-                                <th className="is-num">{tx(lang, 'wl.today')}</th>
-                                <th className="is-num">{tx(lang, 'wl.change')}</th>
-                                <th className="is-num">{tx(lang, 'wl.mcap')}</th>
+                                {SORT_COLUMNS.map((column) => {
+                                    const active = sortKey === column.key;
+                                    const Arrow = sortDir === 'asc' ? ArrowUp : ArrowDown;
+                                    return (
+                                        <th key={column.key} className={column.numeric ? 'is-num' : undefined} aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button
+                                                type="button"
+                                                onClick={() => chooseSort(column.key)}
+                                                aria-label={`${tx(lang, column.label)}${active ? ` · ${tx(lang, sortDir === 'asc' ? 'wl.sortAsc' : 'wl.sortDesc')}` : ''}`}
+                                                className={`${column.numeric ? 'ms-auto' : ''} inline-flex items-center gap-1 hover:text-foreground ${active ? 'text-foreground' : ''}`}
+                                            >
+                                                {tx(lang, column.label)}
+                                                {active && <Arrow className="size-3" aria-hidden />}
+                                            </button>
+                                        </th>
+                                    );
+                                })}
                                 <th className="w-[120px]"><span className="sr-only">{tx(lang, 'wl.actions')}</span></th>
                             </tr>
                         </thead>

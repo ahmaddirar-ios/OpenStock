@@ -381,6 +381,78 @@ export function customMetrics(result: Backtest, intervalId: string, riskFreeRate
     return metrics(result, barsPerYear(intervalId), riskFreeRate);
 }
 
+// --- basket -------------------------------------------------------------------
+
+/** The most symbols one basket run accepts: each one is a full backtest, and a page has to stay usable. */
+export const MAX_BASKET_SYMBOLS = 10;
+
+/**
+ * Reads what a trader typed into the basket field. Commas, semicolons and whitespace all separate
+ * symbols; duplicates collapse; the cap stops a pasted list from turning into a hundred runs.
+ */
+export function parseBasket(raw: unknown): { symbols: string[]; truncated: boolean } {
+    const parts = String(raw ?? '')
+        .split(/[\s,;]+/)
+        .map((part) => part.trim().toUpperCase())
+        .filter(Boolean);
+    const symbols = [...new Set(parts)];
+    return { symbols: symbols.slice(0, MAX_BASKET_SYMBOLS), truncated: symbols.length > MAX_BASKET_SYMBOLS };
+}
+
+export type BasketMember = {
+    symbol: string;
+    result: Backtest;
+    metrics: Metrics;
+};
+
+/**
+ * One row per symbol and one aggregate line. The aggregate pools every trade of every symbol —
+ * it is the record a trader would have had by running the same rules on each name — while the
+ * equity curve and the annualisation still come from the symbols that traded. A symbol that could
+ * not be priced is simply absent: it never counts as a zero-return run.
+ */
+export function basketSummary(members: readonly BasketMember[], intervalId: string, riskFreeRate = 0): {
+    metrics: Metrics;
+    /** Symbols whose run produced at least one trade. */
+    traded: number;
+    /** Symbol with the best total return, for the one-line verdict. */
+    best: string | null;
+    worst: string | null;
+} {
+    const pooled: Backtest = { trades: [], signals: [], equity: [], drawdown: [] };
+    for (const member of members) {
+        pooled.trades.push(...member.result.trades);
+        pooled.signals.push(...member.result.signals);
+    }
+    // The curve is a sum only of the symbols that traded; a symbol with no run has no curve to add.
+    const curves = members.filter((member) => member.result.equity.length > 0);
+    if (curves.length > 0) {
+        const length = Math.min(...curves.map((member) => member.result.equity.length));
+        pooled.equity = curves[0].result.equity.slice(0, length).map((point, index) => ({
+            time: point.time,
+            value: curves.reduce((sum, member) => sum + member.result.equity[index].value, 0) / curves.length,
+            benchmark: curves.reduce((sum, member) => sum + member.result.equity[index].benchmark, 0) / curves.length,
+        }));
+        let peak = pooled.equity[0]?.value ?? 1;
+        pooled.drawdown = pooled.equity.map((point) => {
+            peak = Math.max(peak, point.value);
+            return { time: point.time, value: peak > 0 ? point.value / peak - 1 : 0 };
+        });
+    }
+
+    const ranked = members
+        .filter((member) => member.metrics.totalReturn != null)
+        .slice()
+        .sort((a, b) => (b.metrics.totalReturn ?? 0) - (a.metrics.totalReturn ?? 0));
+
+    return {
+        metrics: metrics(pooled, barsPerYear(intervalId), riskFreeRate),
+        traded: members.filter((member) => member.metrics.trades > 0).length,
+        best: ranked[0]?.symbol ?? null,
+        worst: ranked.length > 1 ? ranked[ranked.length - 1].symbol : null,
+    };
+}
+
 // --- optimizer ---------------------------------------------------------------
 
 export type OptimizerRow = { values: Record<string, number>; metrics: Metrics };

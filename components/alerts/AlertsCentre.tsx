@@ -10,6 +10,7 @@ import { alertSource, hasSecondNumber, PARAM_BOUNDS, needsCandles, type AlertCon
 import { cn } from '@/lib/utils';
 import { arDigits, tx, type Lang, type StringKey } from '@/lib/i18n';
 import { ALERT_CONDITIONS, alertConditionLabel, alertParamsLabel, alertTargetLabel, alertTargetPlaceholder, alertTargetUnit, isTextAlert, measureLabel } from '@/lib/alert-labels';
+import { isDrawingCondition } from '@/lib/chart/drawing-alert';
 import { checkFormula, describeFormulaError } from '@/lib/formula/formula';
 import { loadSavedStrategies, type SavedStrategy } from '@/lib/strategy/library-custom';
 import PushToggle from '@/components/alerts/PushToggle';
@@ -265,6 +266,8 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
     const [checking, setChecking] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [editing, setEditing] = useState<string | null>(null);
+    const [editSymbol, setEditSymbol] = useState('');
+    const [editCondition, setEditCondition] = useState<AlertCondition>('ABOVE');
     const [editTarget, setEditTarget] = useState('');
     const [editParam, setEditParam] = useState('');
     const [symbol, setSymbol] = useState('');
@@ -423,12 +426,23 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
     };
 
     const saveEdit = async (alert: AlertRow) => {
-        const next = Number(editTarget);
-        const patch: Parameters<typeof updateAlert>[1] = { targetPrice: next };
-        if (needsCandles(alert.condition)) patch.params = paramObject(alert.condition, editParam);
+        // The edit row can change what the rule watches as well as its target, so the patch carries
+        // the symbol and the condition too. A text rule (formula/strategy) has no number to send.
+        const patch: Parameters<typeof updateAlert>[1] = {
+            symbol: editSymbol.trim(),
+            condition: editCondition,
+        };
+        if (!isTextAlert(editCondition) && !isDrawingCondition(editCondition)) {
+            patch.targetPrice = Number(editTarget);
+            if (needsCandles(editCondition)) patch.params = paramObject(editCondition, editParam);
+        }
         await act(alert._id, () => updateAlert(alert._id, patch), 'alerts.updated');
         setEditing(null);
     };
+
+    /** The conditions the edit row offers: every price/series rule, plus the alert's own drawing rule. */
+    const editConditions = (current: AlertCondition): AlertCondition[] =>
+        isDrawingCondition(current) ? [current, ...ALERT_CONDITIONS] : ALERT_CONDITIONS;
 
     const whenLabel = (value: string) => {
         const date = new Date(value);
@@ -576,20 +590,44 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                                 </div>
 
                                 {editing === alert._id && single ? (
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex flex-wrap items-center gap-1">
                                         <input
-                                            value={editTarget}
-                                            onChange={(event) => setEditTarget(event.target.value)}
-                                            inputMode="decimal"
-                                            aria-label={t('alerts.target')}
-                                            className="num h-7 w-20 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
+                                            value={editSymbol}
+                                            onChange={(event) => setEditSymbol(event.target.value)}
+                                            aria-label={t('alerts.symbol')}
+                                            dir="ltr"
+                                            className="mono h-7 w-24 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
                                         />
-                                        {hasSecondNumber(alert.condition) && (
+                                        <select
+                                            value={editCondition}
+                                            onChange={(event) => {
+                                                const next = event.target.value as AlertCondition;
+                                                setEditCondition(next);
+                                                setEditTarget('');
+                                                setEditParam(paramFor(next));
+                                            }}
+                                            aria-label={t('alerts.condition')}
+                                            className="h-7 max-w-[150px] rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
+                                        >
+                                            {editConditions(alert.condition).map((value) => (
+                                                <option key={value} value={value}>{alertConditionLabel(lang, value)}</option>
+                                            ))}
+                                        </select>
+                                        {!isTextAlert(editCondition) && !isDrawingCondition(editCondition) && (
+                                            <input
+                                                value={editTarget}
+                                                onChange={(event) => setEditTarget(event.target.value)}
+                                                inputMode="decimal"
+                                                aria-label={t('alerts.target')}
+                                                className="num h-7 w-20 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
+                                            />
+                                        )}
+                                        {hasSecondNumber(editCondition) && (
                                             <input
                                                 value={editParam}
                                                 onChange={(event) => setEditParam(event.target.value)}
                                                 inputMode="numeric"
-                                                aria-label={t(alert.condition === 'VOLUME_SPIKE' ? 'alerts.param.window' : 'alerts.param.period')}
+                                                aria-label={t(editCondition === 'VOLUME_SPIKE' ? 'alerts.param.window' : 'alerts.param.period')}
                                                 className="num h-7 w-16 rounded-full bg-page px-2 text-[12px] shadow-[inset_0_0_0_1px_var(--line)] outline-none"
                                             />
                                         )}
@@ -601,10 +639,16 @@ export default function AlertsCentre({ alerts, lang }: { alerts: AlertRow[]; lan
                                         </button>
                                     </div>
                                 ) : (
-                                    single && !isTextAlert(alert.condition) && (
+                                    single && (
                                         <button
                                             type="button"
-                                            onClick={() => { setEditing(alert._id); setEditTarget(String(alert.targetPrice)); setEditParam(paramFor(alert.condition, alert)); }}
+                                            onClick={() => {
+                                                setEditing(alert._id);
+                                                setEditSymbol(alert.symbol);
+                                                setEditCondition(alert.condition);
+                                                setEditTarget(String(alert.targetPrice));
+                                                setEditParam(paramFor(alert.condition, alert));
+                                            }}
                                             className="icon-btn"
                                             title={t('alerts.edit')}
                                             aria-label={t('alerts.edit')}

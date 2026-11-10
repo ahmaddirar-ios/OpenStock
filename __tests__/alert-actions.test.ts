@@ -107,6 +107,7 @@ describe('alert actions are scoped to the session user', () => {
         findOne.mockResolvedValue({
             _id: 'alert-1',
             userId: 'user-123',
+            symbol: 'AAPL',
             condition: 'ABOVE',
             targetPrice: 200,
             active: true,
@@ -168,6 +169,92 @@ describe('alerts work without OpenStock Cloud', () => {
         expect(result.checked).toBe(1);
         expect(result.fired).toHaveLength(1);
         expect(result.fired[0]).toMatchObject({ symbol: '2222.SR', price: 26 });
+    });
+});
+
+describe('updateAlert can change what a rule watches', () => {
+    const base = {
+        _id: 'alert-1',
+        userId: 'user-123',
+        symbol: 'AAPL',
+        condition: 'ABOVE' as const,
+        targetPrice: 200,
+        params: {},
+        rules: [{ condition: 'ABOVE' as const, targetPrice: 200, params: {}, lastValue: 190 }],
+        active: true,
+        triggered: true,
+        triggeredAt: new Date(),
+        triggeredPrice: 201,
+        seen: false,
+    };
+
+    it('moves the rule to another symbol and clears the stale cross and firing', async () => {
+        findOne.mockResolvedValue({ ...base });
+        await updateAlert('alert-1', { symbol: 'MSFT' });
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { _id: 'alert-1', userId: 'user-123' },
+            expect.objectContaining({
+                symbol: 'MSFT',
+                lastPrice: null,
+                triggered: false,
+                triggeredAt: null,
+                triggeredPrice: null,
+                seen: false,
+                rules: [expect.objectContaining({ condition: 'ABOVE', targetPrice: 200, lastValue: null })],
+            }),
+            { new: true },
+        );
+    });
+
+    it('normalises a lowercase symbol before storing it', async () => {
+        findOne.mockResolvedValue({ ...base });
+        await updateAlert('alert-1', { symbol: ' msft ' });
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { _id: 'alert-1', userId: 'user-123' },
+            expect.objectContaining({ symbol: 'MSFT' }),
+            { new: true },
+        );
+    });
+
+    it('keeps rules[0] in step with the document’s own fields', async () => {
+        findOne.mockResolvedValue({ ...base });
+        await updateAlert('alert-1', { condition: 'BELOW', targetPrice: 180 });
+        const update = findOneAndUpdate.mock.calls.at(-1)?.[1] as { rules: unknown[] };
+        expect(update.rules[0]).toMatchObject({ condition: 'BELOW', targetPrice: 180, lastValue: null });
+    });
+
+    it('refuses a symbol the app cannot price', async () => {
+        findOne.mockResolvedValue({ ...base });
+        await expect(updateAlert('alert-1', { symbol: 'RELIANCE.NS' })).rejects.toThrow('unsupportedSymbol');
+        expect(findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('refuses to move a drawing alert, whose line belongs to one chart', async () => {
+        findOne.mockResolvedValue({
+            ...base,
+            condition: 'DRAWING_CROSS_UP',
+            targetPrice: 150,
+            anchor: { price: 150, at: new Date() },
+            rules: [{ condition: 'DRAWING_CROSS_UP', targetPrice: 150, params: {} }],
+        });
+        await expect(updateAlert('alert-1', { symbol: 'MSFT' })).rejects.toThrow('invalidAnchor');
+        expect(findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('drops the anchor when a drawing rule becomes a price rule', async () => {
+        findOne.mockResolvedValue({
+            ...base,
+            condition: 'DRAWING_CROSS_UP',
+            targetPrice: 150,
+            anchor: { price: 150, at: new Date() },
+            rules: [{ condition: 'DRAWING_CROSS_UP', targetPrice: 150, params: {} }],
+        });
+        await updateAlert('alert-1', { condition: 'ABOVE', targetPrice: 160 });
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { _id: 'alert-1', userId: 'user-123' },
+            expect.objectContaining({ condition: 'ABOVE', anchor: null, lastGap: null }),
+            { new: true },
+        );
     });
 });
 
