@@ -5,8 +5,10 @@ services:
       args:
         # Fixed into the app at build time; set it in .env, then rebuild
         NEXT_PUBLIC_OPENSTOCK_DATA_MODE: ${NEXT_PUBLIC_OPENSTOCK_DATA_MODE:-cached}
+    # Bound to loopback on purpose: the tunnel (or a reverse proxy) reaches the app, and nothing
+    # else on the network can. A bare "3000:3000" would publish it on every interface.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
     restart: unless-stopped

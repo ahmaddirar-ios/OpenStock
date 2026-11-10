@@ -1,0 +1,27 @@
+# Cloudflare Tunnel for rovexjo.com.
+#
+# Copy to ~/.cloudflared/config.yml and fill in the two placeholders:
+#   <TUNNEL_ID>          printed by `cloudflared tunnel create rovex`
+#   <YOUR_USER>          your macOS user name
+#
+# Then:  cloudflared tunnel run rovex
+#        sudo cloudflared service install     (to keep it running)
+
+tunnel: <TUNNEL_ID>
+credentials-file: /Users/<YOUR_USER>/.cloudflared/<TUNNEL_ID>.json
+
+# The app listens on 3000 (docker-compose.yml publishes it on 127.0.0.1 only).
+ingress:
+  - hostname: rovexjo.com
+    service: http://localhost:3000
+  - hostname: www.rovexjo.com
+    service: http://localhost:3000
+  # Anything else is refused rather than forwarded.
+  - service: http_status:404
+
+# Keep the tunnel from holding a dead connection after a network change.
+originRequest:
+  connectTimeout: 30s
+  noTLSVerify: false
+  keepAliveConnections: 10
+  keepAliveTimeout: 90s
