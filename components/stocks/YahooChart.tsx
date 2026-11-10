@@ -2364,6 +2364,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     onGestureStart={beginGesture}
                     onGestureEnd={endGesture}
                     snapPoint={snapDrawingPoint}
+                    paletteText={effectivePalette.text}
                     onEditText={editText}
                     onToolConsumed={() => {
                         // "Stay in drawing mode" keeps the tool armed, so a run of shapes needs no re-pick.
@@ -3025,7 +3026,7 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                 {/* The stroke palette: the eight colours the drawings ship with, one click each. */}
                 <div role="group" aria-label={t('chart.tool.color')} className="flex items-center gap-0.5">
                     {COLOR_KEYS.map((key) => {
-                        const active = selectedDrawing ? drawingColor(selectedDrawing) === DRAWING_COLORS[key].toLowerCase() : false;
+                        const active = selectedDrawing ? drawingColor(selectedDrawing, effectivePalette.text) === DRAWING_COLORS[key].toLowerCase() : false;
                         return (
                             <button
                                 key={key}
@@ -3053,11 +3054,11 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                     <span
                         aria-hidden
                         className="absolute inset-0 rounded-[5px]"
-                        style={{ background: selectedDrawing ? drawingColor(selectedDrawing) : 'transparent' }}
+                        style={{ background: selectedDrawing ? drawingColor(selectedDrawing, effectivePalette.text) : 'transparent' }}
                     />
                     <input
                         type="color"
-                        value={selectedDrawing ? drawingColor(selectedDrawing) : '#2962ff'}
+                        value={selectedDrawing ? drawingColor(selectedDrawing, effectivePalette.text) : '#2962ff'}
                         disabled={!selectedId}
                         onChange={(event) => restyleDrawing({ customColor: event.target.value })}
                         className="absolute inset-0 size-full cursor-pointer opacity-0"
@@ -3125,12 +3126,12 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                                     key={key}
                                     type="button"
                                     onClick={() => restyleDrawing({ textColor: key, customTextColor: undefined })}
-                                    aria-pressed={textColorOf(selectedDrawing) === key}
+                                    aria-pressed={textColorOf(selectedDrawing, effectivePalette.text) === key}
                                     aria-label={`${t('chart.text.color')} ${key}`}
                                     title={`${t('chart.text.color')} ${key}`}
                                     className={cn(
                                         'size-4 rounded-[4px] border border-white/25 transition-transform hover:scale-110',
-                                        textColorOf(selectedDrawing) === key && 'ring-2 ring-brand',
+                                        textColorOf(selectedDrawing, effectivePalette.text) === key && 'ring-2 ring-brand',
                                     )}
                                     style={{ background: DRAWING_COLORS[key] }}
                                 />
@@ -3650,9 +3651,9 @@ export default function YahooChart({ symbol, tvSymbol, lang, preferredInterval, 
                                 type="button"
                                 onClick={() => cycleColor(drawing.id)}
                                 title={t('chart.color')}
-                                aria-label={`${t('chart.color')}: ${drawingColor(drawing)}`}
+                                aria-label={`${t('chart.color')}: ${drawingColor(drawing, effectivePalette.text)}`}
                                 className="size-4 shrink-0 rounded-full border border-line-strong"
-                                style={{ backgroundColor: drawingColor(drawing) }}
+                                style={{ backgroundColor: drawingColor(drawing, effectivePalette.text) }}
                             />
                             <button
                                 type="button"

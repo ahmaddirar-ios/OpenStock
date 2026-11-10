@@ -158,6 +158,15 @@ describe('colours', () => {
         expect(drawingColor({ tool: 'fib', color: 'red' })).toBe(DRAWING_COLORS.red);
         expect(drawingColor({ tool: 'gann' })).toBe(DRAWING_COLORS.violet);
     });
+
+    // A brush, a note and a vertical line default to white, which is invisible on the light chart.
+    it('follows the chart text colour when a white default would vanish on a light chart', () => {
+        expect(drawingColor({ tool: 'brush' })).toBe(DRAWING_COLORS.white);
+        expect(drawingColor({ tool: 'brush' }, '#3d3a34')).toBe('#3d3a34');
+        // A colour the trader picked stays exactly as picked.
+        expect(drawingColor({ tool: 'brush', color: 'white' }, '#3d3a34')).toBe(DRAWING_COLORS.white);
+        expect(drawingColor({ tool: 'fib' }, '#3d3a34')).toBe(DRAWING_COLORS.gold);
+    });
 });
 
 describe('fibLevels', () => {

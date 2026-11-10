@@ -363,6 +363,17 @@ describe('an open-ended tool', () => {
     });
 });
 
+describe('the cursors', () => {
+    // Regression: arming the measure tool after an undo/redo re-rendered the rail hint, which asked
+    // pointsNeeded('measure') and dereferenced an undefined tool definition — the pane crashed.
+    it('report zero points instead of throwing when the chart asks how many clicks they need', () => {
+        expect(() => pointsNeeded('measure')).not.toThrow();
+        expect(() => pointsNeeded('select')).not.toThrow();
+        expect(pointsNeeded('measure')).toBe(0);
+        expect(pointsNeeded('select')).toBe(0);
+    });
+});
+
 describe('the seven basic line tools', () => {
     const lines = toolsInGroup('lines').map((d) => d.tool);
 

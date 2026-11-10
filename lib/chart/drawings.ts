@@ -182,12 +182,17 @@ export const textStyleOf = (drawing: Pick<Drawing, 'textSize' | 'bold' | 'italic
 });
 
 /** The colour a drawing's words are painted in: its own, or the stroke's. */
-export const textColorOf = (drawing: Pick<Drawing, 'textColor' | 'color' | 'tool' | 'customColor' | 'customTextColor'>): string =>
-    isCustomColor(drawing.customTextColor)
-        ? drawing.customTextColor.toLowerCase()
-        : drawing.customColor && !drawing.color && !drawing.textColor
-          ? drawing.customColor.toLowerCase()
-          : DRAWING_COLORS[drawing.textColor ?? drawing.color ?? toolDef(drawing.tool).defaultColor];
+export const textColorOf = (
+    drawing: Pick<Drawing, 'textColor' | 'color' | 'tool' | 'customColor' | 'customTextColor'>,
+    themeText?: string,
+): string => {
+    if (isCustomColor(drawing.customTextColor)) return drawing.customTextColor.toLowerCase();
+    if (drawing.customColor && !drawing.color && !drawing.textColor) return drawing.customColor.toLowerCase();
+    const key = drawing.textColor ?? drawing.color;
+    if (key) return DRAWING_COLORS[key];
+    const fallback = toolDef(drawing.tool).defaultColor;
+    return fallback === 'white' && themeText ? themeText : DRAWING_COLORS[fallback];
+};
 
 /** The tool's own fill strength, so a box and a circle keep the look they had before fills were editable. */
 const TOOL_FILL_DEFAULT: Partial<Record<ShapeTool, number>> = {
@@ -439,10 +444,14 @@ export const isShapeTool = (value: unknown): value is ShapeTool => typeof value 
 
 export const toolDef = (tool: ShapeTool): ToolDef => TOOL_BY_ID[tool];
 
+/** The definition of an armed tool, or undefined for the two cursors (`select`, `measure`). */
+export const toolDefOrUndefined = (tool: string): ToolDef | undefined => TOOL_BY_ID[tool as ShapeTool];
+
 /** How many chart clicks the tool needs; shapes with one point are placed in a single click, and an
  *  open-ended tool (a polyline, a freehand stroke) reports 0 because it takes points until the
- *  trader finishes it. */
-export const pointsNeeded = (tool: ShapeTool): number => toolDef(tool).clicks;
+ *  trader finishes it. `select` and `measure` are cursors with no definition, so asking about them
+ *  reports 0 rather than throwing — the chart calls this for whatever tool is armed. */
+export const pointsNeeded = (tool: ShapeTool | 'select' | 'measure'): number => toolDef(tool as ShapeTool)?.clicks ?? 0;
 
 /**
  * Tools whose drawing carries the trader's own words (a note, a callout, a balloon, a flag): the
@@ -1189,10 +1198,20 @@ export function arrowHeadPoints(from: { x: number; y: number }, to: { x: number;
 }
 
 /** The colour a shape is painted with: its own, or its tool's default. */
-export const drawingColor = (drawing: Pick<Drawing, 'tool' | 'color' | 'customColor'>): string =>
-    isCustomColor(drawing.customColor)
-        ? drawing.customColor.toLowerCase()
-        : DRAWING_COLORS[isColorKey(drawing.color) ? drawing.color : toolDef(drawing.tool).defaultColor];
+/**
+ * The colour a drawing is painted in. A tool whose default is white (a brush, a note, a vertical
+ * line) would vanish on a light chart, so an *unset* colour follows the chart's own text colour
+ * instead; a trader who picks white on purpose still gets white.
+ */
+export const drawingColor = (
+    drawing: Pick<Drawing, 'tool' | 'color' | 'customColor'>,
+    themeText?: string,
+): string => {
+    if (isCustomColor(drawing.customColor)) return drawing.customColor.toLowerCase();
+    if (isColorKey(drawing.color)) return DRAWING_COLORS[drawing.color];
+    const fallback = toolDef(drawing.tool).defaultColor;
+    return fallback === 'white' && themeText ? themeText : DRAWING_COLORS[fallback];
+};
 
 /** A colour a trader picked themselves: one hex triplet, nothing else gets stored. */
 export const CUSTOM_COLOR = /^#[0-9a-fA-F]{6}$/;

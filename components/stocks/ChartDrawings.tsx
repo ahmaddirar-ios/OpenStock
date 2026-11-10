@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, extendSegment, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fibWedgeLines, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, gannSquareFixedCorner, GANN_SQUARE_FIXED_SIDE, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart/drawings';
+import { DRAWING_COLORS, FIB_EXT_RATIOS, FIB_TREND_EXT_RATIOS, ICON_GLYPHS, MAX_STROKE_POINTS, anchoredVwapBands, annotationText, arcThrough, arrowHeadPoints, extendSegment, candlesBetween, carriesText, channelRails, circleFrom, cleanText, cycleIndices, dashOf, disjointChannel, doubleCurvePath, drawingColor, ellipseFrom, extendedEnds, fibArcRadii, fibChannelLevels, fibExtension, fibFanEnds, fibLevels, fibRatiosOf, fibSpiralPoints, fibTimeMultiples, fibWedgeLines, fillOf, flattenLines, gannBoxGuides, gannFanEnds, gannGuides, gannSquareCorner, gannSquareFixedCorner, GANN_SQUARE_FIXED_SIDE, handleIndex, hitTest, isFreehand, isImageUrl, labelsFor, measureSpan, nearestTime, newDrawingId, pitchforkLines, pointsNeeded, polygonPoints, polylinePath, positionZones, priceLabel, projectionEnds, quadraticPath, rangeReadout, rayEnd, regressionChannel, rotatedRectCorners, sinePoints, speedFanEnds, strokeWidthOf, TABLE_MAX, tableGrid, textColorOf, textStyleOf, toolDef, toolDefOrUndefined, trendAngleDeg, type DrawCandle, type DrawPoint, type Drawing, type ScreenPoint, type ShapeKind, type ShapeTool, volumeProfile } from '@/lib/chart/drawings';
 import { measureDetail, measureHeadline, measureReadout } from '@/lib/chart/measure';
 import type { StringKey } from '@/lib/i18n';
 
@@ -45,6 +45,8 @@ type Props = {
     snapPoint?: (point: DrawPoint) => DrawPoint;
     /** A right-click: the drawing under the pointer (already selected), or null on empty chart space. */
     onContextMenu?: (hit: { id: string; x: number; y: number } | null) => void;
+    /** The chart's own text colour, so a tool that defaults to white stays visible on a light chart. */
+    paletteText?: string;
     label: (key: StringKey) => string;
 };
 
@@ -78,6 +80,7 @@ export default function ChartDrawings({
     onGestureEnd,
     snapPoint,
     onContextMenu,
+    paletteText,
     onEditText,
     onToolConsumed,
     label,
@@ -154,6 +157,16 @@ export default function ChartDrawings({
             onSelect([]);
             onContextMenu?.(null);
         }
+    };
+
+    // With no tool armed the layer itself ignores the pointer so the chart keeps panning, but a
+    // drawing still answers a right-click: only its painted pixels take the event.
+    const onShapeContextMenu = (event: React.MouseEvent, id: string) => {
+        if (interactive) return; // the layer's own handler owns the armed case
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect([id]);
+        onContextMenu?.({ id, x: event.clientX, y: event.clientY });
     };
 
     const onPointerDown = (event: React.PointerEvent) => {
@@ -258,7 +271,7 @@ export default function ChartDrawings({
             setDraft(next);
             return;
         }
-        const glyphs = labels ?? toolDef(tool).pointLabels;
+        const glyphs = labels ?? toolDefOrUndefined(tool)?.pointLabels;
         onCommit({
             id: newDrawingId(),
             tool,
@@ -450,8 +463,11 @@ export default function ChartDrawings({
         while (points.length < needed) points.push(preview);
         return points.slice(0, Math.max(needed, points.length));
     })();
-    const shapes: Drawing[] = draftPoints && tool && tool !== 'select'
-        ? [...drawings, { id: 'draft', tool: tool as ShapeTool, points: draftPoints, labels: labels ?? toolDef(tool as ShapeTool).pointLabels }]
+    // The draft is only a drawing when the armed tool is a real shape: `select` and `measure` have no
+    // definition, and rendering one as a draft reads `kind` off undefined.
+    const draftTool = tool ? toolDefOrUndefined(tool) : undefined;
+    const shapes: Drawing[] = draftPoints && draftTool
+        ? [...drawings, { id: 'draft', tool: tool as ShapeTool, points: draftPoints, labels: labels ?? draftTool.pointLabels }]
         : drawings;
 
     const dot = (x: number, y: number, key: string, color: string, opacity: number, radius = 4) => (
@@ -463,14 +479,14 @@ export default function ChartDrawings({
         if (points.some((point) => !point)) return null;
         const screen = points as ScreenPoint[];
         const kind = toolDef(drawing.tool).kind;
-        const color = drawingColor(drawing);
+        const color = drawingColor(drawing, paletteText);
         const previewing = drawing.id === 'draft';
         const opacity = previewing ? 0.65 : 1;
         // The fill is its own choice now: a box can be filled with a different colour at a strength
         // the trader picked, and the tool's original look is the default rather than the only option.
         const paint = fillOf(drawing);
         // Words can wear their own colour: a note in white over a busy candle is a choice, not a bug.
-        const ink = textColorOf(drawing);
+        const ink = textColorOf(drawing, paletteText);
         const fill = paint.opacity > 0 ? `color-mix(in oklab, ${paint.color} ${paint.opacity}%, transparent)` : 'none';
         const selected = selectedSet.has(drawing.id);
         const locked = drawing.locked === true;
@@ -1821,7 +1837,15 @@ export default function ChartDrawings({
                 role="application"
                 aria-label={label('chart.canvas')}
             >
-                {shapes.map((drawing) => shapeFor(drawing))}
+                {shapes.map((drawing) => (
+                    <g
+                        key={drawing.id}
+                        style={{ pointerEvents: interactive ? 'none' : 'visiblePainted' }}
+                        onContextMenu={(event) => onShapeContextMenu(event, drawing.id)}
+                    >
+                        {shapeFor(drawing)}
+                    </g>
+                ))}
                 {tool === 'measure' && measureBox}
                 {draftPath && <path d={draftPath} fill="none" stroke="var(--brand)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />}
                 {draftPath && draft.length >= 2 && lastDraftAt && draftHint && (
