@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { connectToDatabase } from '@/database/mongoose';
 import { Position } from '@/database/models/position.model';
 import { Transaction } from '@/database/models/transaction.model';
+import { PortfolioCash, type CashBalance } from '@/database/models/portfolio-cash.model';
 import { requireUserId } from '@/lib/better-auth/auth';
-import { parseAmount } from '@/lib/portfolio';
+import { parseAmount, normalizeCurrency, parseCashBalance, sumByCurrency } from '@/lib/portfolio';
+import { isTadawulSymbol } from '@/lib/market/yahoo';
 import { buildLedger, mergePositions, parseTradesCsv, type TradeSide } from '@/lib/portfolio-ledger';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { getWatchlistData } from '@/lib/actions/finnhub.actions';
@@ -293,6 +295,55 @@ export async function importTradesCsv(text: string): Promise<ImportResult> {
     }
 }
 
+// -- Cash --------------------------------------------------------------------------------------
+
+export type CashResult = { ok: true } | { error: 'invalidCurrency' | 'invalidAmount' };
+
+/** The user's cash, one entry per currency, largest first. Missing documents read as empty. */
+export async function getCashBalances(): Promise<CashBalance[]> {
+    const userId = await requireUserId();
+    try {
+        await connectToDatabase();
+        const doc = await PortfolioCash.findOne({ userId }).lean();
+        const balances = (doc?.balances ?? []).map((entry) => ({
+            currency: String(entry.currency).toUpperCase(),
+            amount: Number.isFinite(entry.amount) ? Math.max(0, Number(entry.amount)) : 0,
+        }));
+        return balances.sort((a, b) => b.amount - a.amount || a.currency.localeCompare(b.currency));
+    } catch (error) {
+        console.error('Error reading cash balances:', error);
+        return [];
+    }
+}
+
+/**
+ * Sets the cash held in one currency. A zero removes the entry, so an emptied account does not
+ * leave a row of zeros behind. Never touches other currencies.
+ */
+export async function setCashBalance(currency: string, amount: number | string): Promise<CashResult> {
+    const code = String(currency ?? '').trim().toUpperCase();
+    if (!/^[A-Z]{3,5}$/.test(code)) return { error: 'invalidCurrency' };
+    const parsed = parseCashBalance({ currency: code, amount });
+    if (!parsed) return { error: 'invalidAmount' };
+
+    const userId = await requireUserId();
+    await connectToDatabase();
+    const doc = await PortfolioCash.findOne({ userId });
+    const balances: CashBalance[] = (doc?.balances ?? []).map((entry) => ({ currency: entry.currency, amount: entry.amount }));
+    const rest = balances.filter((entry) => entry.currency !== parsed.currency);
+    const next = parsed.amount > 0 ? [...rest, parsed] : rest;
+
+    if (doc) {
+        doc.balances = next;
+        await doc.save();
+    } else if (next.length > 0) {
+        await PortfolioCash.create({ userId, balances: next });
+    }
+
+    revalidatePath('/portfolio');
+    return { ok: true };
+}
+
 // -- Benchmark ---------------------------------------------------------------------------------
 
 export type BenchmarkPoint = { time: number; value: number };
@@ -363,6 +414,10 @@ export type PortfolioSummary = {
     /** Profit already banked. */
     realizedPnl: number;
     currency: string;
+    /** True when the account holds more than one currency; the figures above cover `currency` only. */
+    mixed: boolean;
+    /** Every currency held, largest by value first. */
+    currencies: string[];
     /** How many symbols are held. */
     count: number;
 };
@@ -395,29 +450,44 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary | null> {
 
         const quotes = await getWatchlistData(merged.map((position) => position.symbol));
         const bySymbol = new Map(quotes.map((quote) => [quote.symbol, quote]));
+        const currencyOf = (symbol: string) => normalizeCurrency(bySymbol.get(symbol)?.currency ?? (isTadawulSymbol(symbol) ? 'SAR' : 'USD'));
 
-        let value = 0;
-        let cost = 0;
-        let previous = 0;
-        let currency = 'USD';
+        // One bucket per currency, so the widget's headline never adds riyals to dollars.
+        type Bucket = { value: number; cost: number; previous: number };
+        const buckets = new Map<string, Bucket>();
         for (const position of merged) {
             const quote = bySymbol.get(position.symbol);
             const price = quote?.price ?? position.averageCost;
             const change = quote?.change ?? 0;
-            value += position.quantity * price;
-            cost += position.quantity * position.averageCost;
-            previous += position.quantity * (price - change);
-            if (quote?.currency) currency = quote.currency;
+            const code = currencyOf(position.symbol);
+            const bucket = buckets.get(code) ?? { value: 0, cost: 0, previous: 0 };
+            bucket.value += position.quantity * price;
+            bucket.cost += position.quantity * position.averageCost;
+            bucket.previous += position.quantity * (price - change);
+            buckets.set(code, bucket);
         }
 
-        const openPnl = value - cost;
+        const ranked = [...buckets.entries()].sort((a, b) => {
+            if (b[1].value !== a[1].value) return b[1].value - a[1].value;
+            return b[1].cost - a[1].cost;
+        });
+        const [currency, bucket] = ranked[0] ?? ['USD', { value: 0, cost: 0, previous: 0 }];
+        const realizedPnl = sumByCurrency(
+            ledger.sales,
+            (sale) => currencyOf(sale.symbol),
+            (sale) => sale.pnl
+        ).find((entry) => entry.currency === currency)?.value ?? 0;
+
+        const openPnl = bucket.value - bucket.cost;
         return {
-            value: Math.round(value * 100) / 100,
-            dayChangePct: previous > 0 ? Math.round(((value - previous) / previous) * 10000) / 100 : 0,
+            value: Math.round(bucket.value * 100) / 100,
+            dayChangePct: bucket.previous > 0 ? Math.round(((bucket.value - bucket.previous) / bucket.previous) * 10000) / 100 : 0,
             openPnl: Math.round(openPnl * 100) / 100,
-            openPnlPct: cost > 0 ? Math.round((openPnl / cost) * 10000) / 100 : 0,
-            realizedPnl: ledger.totalRealized,
+            openPnlPct: bucket.cost > 0 ? Math.round((openPnl / bucket.cost) * 10000) / 100 : 0,
+            realizedPnl,
             currency,
+            mixed: ranked.length > 1,
+            currencies: ranked.map(([code]) => code),
             count: merged.length,
         };
     } catch (error) {

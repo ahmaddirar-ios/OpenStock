@@ -15,7 +15,7 @@ if (!uri || !email) {
     process.exit(2);
 }
 
-const OWNED = ['positions', 'transactions', 'alerts', 'watchlists', 'watchlistlists', 'customstrategies', 'chartsetups', 'dashboardlayouts', 'formulas', 'apikeys', 'api_keys', 'pushsubscriptions'];
+const OWNED = ['positions', 'transactions', 'portfoliocashes', 'alerts', 'watchlists', 'watchlistlists', 'customstrategies', 'chartsetups', 'dashboardlayouts', 'formulas', 'apikeys', 'api_keys', 'pushsubscriptions'];
 
 const client = new MongoClient(uri);
 try {

@@ -108,6 +108,7 @@ export default function PortfolioTable({ initialRows, lang }: { initialRows: Por
         <>
             {groups.length > 0 && (
                 <div className="flex flex-col gap-3">
+                    {multiCurrency && <p className="text-[12px] text-faint">{tx(lang, 'pf.mixedRows')}</p>}
                     {groups.map(({ currency, totals }) => (
                         <div key={currency}>
                             {multiCurrency && <p className="kicker mb-1.5 text-faint" dir="ltr">{currency}</p>}

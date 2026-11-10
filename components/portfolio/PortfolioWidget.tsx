@@ -31,6 +31,8 @@ export default async function PortfolioWidget({ lang }: { lang: Lang }) {
                         <p className="kicker text-faint">{tx(lang, 'pf.equityValue')}</p>
                         <p className="num mt-1 truncate text-lg font-bold text-foreground">
                             <Price value={summary.value} currency={summary.currency} lang={lang} />
+                            {/* A mixed book is shown in its largest currency only; name it. */}
+                            {summary.mixed && <span className="ms-1 text-[11px] font-medium text-faint">{summary.currency}</span>}
                         </p>
                     </div>
                     <div className="flex flex-col items-end gap-1">

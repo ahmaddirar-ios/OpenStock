@@ -78,9 +78,25 @@ const EXEC = resolveChromium();
     const pTxt = await body();
     check('portfolio: curve/benchmark render', !(await crashes()) && /2222/.test(pTxt), '');
 
-    // cleanup the position
-    const rm = page.getByRole('button', { name: 'Remove', exact: true }).first();
-    if (await rm.count()) { await rm.click(); await page.waitForTimeout(3000); }
+    // A second currency must stay its own total, never be folded into the first.
+    await page.getByRole('button', { name: 'Add position', exact: true }).click();
+    dlg = page.getByRole('dialog').last();
+    await dlg.waitFor();
+    await dlg.getByLabel('Symbol', { exact: true }).fill('AAPL');
+    await dlg.getByLabel('Quantity', { exact: true }).fill('10');
+    await dlg.getByLabel('Average cost', { exact: true }).fill('150');
+    await dlg.getByRole('button', { name: 'Save', exact: true }).click();
+    const mixed = await waitText(/holds more than one currency/i, 25000);
+    const mixedTxt = await body();
+    check('portfolio: mixed currencies stay separate', mixed && /USD/.test(mixedTxt) && /SAR/.test(mixedTxt), mixed ? 'SAR + USD groups' : 'no mixed note');
+
+    // cleanup both positions
+    for (let i = 0; i < 4; i += 1) {
+        const rm = page.getByRole('button', { name: 'Remove', exact: true }).first();
+        if ((await rm.count()) === 0) break;
+        await rm.click();
+        await page.waitForTimeout(2500);
+    }
     check('portfolio: position removed', !/2222/.test(await body()));
 
     const failed = out.filter((o) => !o.ok);

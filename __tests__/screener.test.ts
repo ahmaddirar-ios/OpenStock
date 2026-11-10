@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    coverage,
     criteriaToQuery,
     DEFAULT_CRITERIA,
     filterRows,
@@ -166,5 +167,27 @@ describe('toCsv', () => {
         expect(sortRows([small, big], 'value', 'desc').map((r) => r.symbol)).toEqual(['B', 'A']);
         expect(sortRows([small, big], 'marketCap', 'desc').map((r) => r.symbol)).toEqual(['B', 'A']);
         expect(sortRows([small, big], 'pe').map((r) => r.symbol)).toEqual(['B', 'A']);
+    });
+});
+describe('coverage', () => {
+    it('reports a complete snapshot as not partial', () => {
+        expect(coverage(906, 906)).toEqual({ priced: 906, total: 906, missing: 0, partial: false, percent: 100 });
+    });
+
+    it('makes the shortfall explicit', () => {
+        const c = coverage(12, 906);
+        expect(c).toMatchObject({ priced: 12, total: 906, missing: 894, partial: true });
+        expect(c.percent).toBe(1);
+    });
+
+    it('never reports more priced symbols than the universe holds', () => {
+        expect(coverage(1000, 906).priced).toBe(906);
+        expect(coverage(1000, 906).missing).toBe(0);
+    });
+
+    it('survives nonsense input rather than printing NaN', () => {
+        expect(coverage(Number.NaN, 906)).toMatchObject({ priced: 0, missing: 906, percent: 0 });
+        expect(coverage(5, 0)).toEqual({ priced: 0, total: 0, missing: 0, partial: false, percent: 0 });
+        expect(coverage(-3, -9)).toEqual({ priced: 0, total: 0, missing: 0, partial: false, percent: 0 });
     });
 });

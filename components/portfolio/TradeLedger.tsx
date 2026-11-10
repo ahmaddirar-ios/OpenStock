@@ -27,16 +27,20 @@ const dateLabel = (iso: string, lang: Lang) => {
 export default function TradeLedger({
     trades,
     sales,
-    totalRealized,
+    realized,
     warnings,
     currency,
+    currencyBySymbol,
     lang,
 }: {
     trades: TradeRecord[];
     sales: RealizedSale[];
-    totalRealized: number;
+    /** Realised profit per currency: a SAR profit and a USD profit are never summed. */
+    realized: { currency: string; value: number }[];
     warnings: string[];
+    /** The header currency, used only when the ledger has no realised sale to name its own. */
     currency: string;
+    currencyBySymbol: Record<string, string>;
     lang: Lang;
 }) {
     const router = useRouter();
@@ -136,8 +140,16 @@ export default function TradeLedger({
                         <div className="grid gap-3 border-b border-line px-3.5 py-3 sm:grid-cols-3">
                             <div>
                                 <p className="kicker text-faint">{tx(lang, 'pf.realized')}</p>
-                                <p className={`num mt-1 text-lg font-bold ${tone(totalRealized)}`}>
-                                    <Price value={totalRealized} currency={currency} lang={lang} />
+                                <p className="num mt-1 flex flex-wrap items-baseline gap-x-2 text-lg font-bold">
+                                    {realized.length === 0 ? (
+                                        <Price value={0} currency={currency} lang={lang} />
+                                    ) : (
+                                        realized.map((entry) => (
+                                            <span key={entry.currency} className={tone(entry.value)}>
+                                                <Price value={entry.value} currency={entry.currency} lang={lang} />
+                                            </span>
+                                        ))
+                                    )}
                                 </p>
                             </div>
                             <div>
@@ -187,8 +199,8 @@ export default function TradeLedger({
                                                 </span>
                                             </td>
                                             <td className="is-num text-muted-foreground">{num(trade.quantity, lang, 0)}</td>
-                                            <td className="is-num font-semibold text-foreground"><Price value={trade.price} currency={currency} lang={lang} /></td>
-                                            <td className="is-num text-muted-foreground">{trade.fee > 0 ? <Price value={trade.fee} currency={currency} lang={lang} /> : '—'}</td>
+                                            <td className="is-num font-semibold text-foreground"><Price value={trade.price} currency={currencyBySymbol[trade.symbol] ?? currency} lang={lang} /></td>
+                                            <td className="is-num text-muted-foreground">{trade.fee > 0 ? <Price value={trade.fee} currency={currencyBySymbol[trade.symbol] ?? currency} lang={lang} /> : '—'}</td>
                                             <td>
                                                 <div className="flex justify-end">
                                                     <button
@@ -242,11 +254,11 @@ export default function TradeLedger({
                                             <span dir="ltr" className="mono block text-[12px] text-faint">{sale.symbol}</span>
                                         </td>
                                         <td className="is-num text-muted-foreground">{num(sale.quantity, lang, 0)}</td>
-                                        <td className="is-num text-muted-foreground"><Price value={sale.proceeds} currency={currency} lang={lang} /></td>
-                                        <td className="is-num text-muted-foreground"><Price value={sale.cost} currency={currency} lang={lang} /></td>
+                                        <td className="is-num text-muted-foreground"><Price value={sale.proceeds} currency={currencyBySymbol[sale.symbol] ?? currency} lang={lang} /></td>
+                                        <td className="is-num text-muted-foreground"><Price value={sale.cost} currency={currencyBySymbol[sale.symbol] ?? currency} lang={lang} /></td>
                                         <td className="is-num">
                                             <span className="inline-flex items-center justify-end gap-2">
-                                                <span className={tone(sale.pnl)}><Price value={sale.pnl} currency={currency} lang={lang} /></span>
+                                                <span className={tone(sale.pnl)}><Price value={sale.pnl} currency={currencyBySymbol[sale.symbol] ?? currency} lang={lang} /></span>
                                                 <ChangePill value={sale.pnlPercent} lang={lang} />
                                             </span>
                                         </td>

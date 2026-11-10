@@ -43,11 +43,14 @@ export async function PortfolioCard({ lang }: { lang: Lang }) {
     const summary = await getPortfolioSummary().catch(() => null);
     const title = tx(lang, 'board.portfolio');
     if (!summary) return <CardShell href="/portfolio" title={title} icon={Wallet} value="—" sub={tx(lang, 'board.empty')} />;
-    const value = summary.value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    const value = summary.value.toLocaleString('en-US', { maximumFractionDigits: 2 }) + (summary.mixed ? ` ${summary.currency}` : '');
     const tone = summary.dayChangePct > 0 ? 'up' : summary.dayChangePct < 0 ? 'down' : 'none';
     const change = `${summary.dayChangePct > 0 ? '+' : ''}${summary.dayChangePct.toFixed(2)}%`;
+    // A mixed book is summarised in its largest currency only; the card says which, so the figure is
+    // never read as the whole account.
+    const sub = summary.mixed ? `${arDigits(change, lang)} · ${summary.currency}` : arDigits(change, lang);
     return (
-        <CardShell href="/portfolio" title={title} icon={Wallet} value={arNumberDigits(value, lang)} sub={arDigits(change, lang)} tone={tone} />
+        <CardShell href="/portfolio" title={title} icon={Wallet} value={arNumberDigits(value, lang)} sub={sub} tone={tone} />
     );
 }
 

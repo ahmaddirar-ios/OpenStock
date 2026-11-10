@@ -7,7 +7,7 @@ import { ArrowDown, ArrowUp, Download, FlaskConical, RefreshCw, X } from "lucide
 import Price from "@/components/Price";
 import ChangePill from "@/components/ChangePill";
 import { sectorLabel } from "@/lib/i18n";
-import { criteriaToQuery, filterRows, sortRows, toCsv, type ScreenerCriteria, type ScreenerRow, type ScreenerSortKey, type SortDirection } from "@/lib/screener";
+import { coverage, criteriaToQuery, filterRows, sortRows, toCsv, type ScreenerCriteria, type ScreenerRow, type ScreenerSortKey, type SortDirection } from "@/lib/screener";
 import { tx, arDigits, type Lang, type StringKey } from "@/lib/i18n";
 import { MAX_SCREEN_SYMBOLS, screenBatches } from "@/lib/formula/screener";
 import { checkFormula, describeFormulaError } from "@/lib/formula/formula";
@@ -98,6 +98,10 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
         const query = criteriaToQuery(activeCriteria);
         router.replace(query ? `/screener?${query}` : '/screener', { scroll: false });
     }, [activeCriteria, router]);
+
+    // How much of the universe the snapshot actually prices. The shortfall is stated, not smoothed
+    // over: a screen over 12 of 906 companies is a different search from one over all 906.
+    const known = useMemo(() => coverage(rows.filter((row) => row.price > 0).length, total), [rows, total]);
 
     const narrowed = useMemo(() => filterRows(rows, activeCriteria), [rows, activeCriteria]);
     const results = useMemo(() => {
@@ -292,7 +296,7 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
                     <div className="min-w-0">
                         <h2 className="section-title">{tx(lang, 'scr.results')}</h2>
                         <p className="section-sub num">
-                            {arDigits(results.length, lang)} {tx(lang, 'scr.of')} {arDigits(rows.length, lang)} · {tx(lang, 'scr.coverage').replace('{n}', arDigits(total, lang))}
+                            {arDigits(results.length, lang)} {tx(lang, 'scr.of')} {arDigits(rows.length, lang)} · {tx(lang, 'scr.coverage').replace('{n}', arDigits(known.priced, lang)).replace('{total}', arDigits(known.total, lang))}
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -304,6 +308,21 @@ export default function ScreenerTable({ rows, criteria, sectors, total, lang }: 
                         </button>
                     </div>
                 </div>
+                {known.partial ? (
+                    <p className="mx-3 mb-2 flex flex-wrap items-center gap-2 text-[12px] text-warn" dir="auto">
+                        <span className="num">{tx(lang, 'scr.gap').replace('{n}', arDigits(known.missing, lang))}</span>
+                        <button
+                            type="button"
+                            onClick={() => void onRefresh()}
+                            disabled={refresh.running}
+                            className="pill h-7 px-2.5 text-[11.5px] hover:bg-hover hover:text-foreground disabled:opacity-50"
+                        >
+                            <RefreshCw className={refresh.running ? 'animate-spin size-3.5' : 'size-3.5'} /> {tx(lang, 'scr.gapBuild')}
+                        </button>
+                    </p>
+                ) : (
+                    <p className="mx-3 mb-2 text-[12px] text-faint">{tx(lang, 'scr.complete')}</p>
+                )}
                 <div className="card overflow-x-auto rounded-[14px]">
                     <table className="data-table">
                         <thead>

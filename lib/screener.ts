@@ -150,6 +150,37 @@ export function latestUpdatedAt(rows: ScreenerRow[]): number {
     return rows.reduce((latest, row) => (row.updatedAt > latest ? row.updatedAt : latest), 0);
 }
 
+export type ScreenerCoverage = {
+    /** Symbols the snapshot actually carries (a row exists and has a price). */
+    priced: number;
+    /** Symbols the universe names. */
+    total: number;
+    /** Symbols the universe names that the snapshot does not price. */
+    missing: number;
+    /** True when the snapshot is smaller than the universe, so any screen is incomplete. */
+    partial: boolean;
+    /** 0..100, rounded. */
+    percent: number;
+};
+
+/**
+ * How much of the universe the snapshot really knows. The screener used to print the universe size
+ * next to the word "covered", which read as if every company had been priced when only a handful
+ * had. This makes the shortfall a number the screen has to state.
+ */
+export function coverage(priced: number, total: number): ScreenerCoverage {
+    const safeTotal = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
+    const safePriced = Number.isFinite(priced) && priced > 0 ? Math.min(Math.floor(priced), safeTotal) : 0;
+    const missing = Math.max(0, safeTotal - safePriced);
+    return {
+        priced: safePriced,
+        total: safeTotal,
+        missing,
+        partial: missing > 0,
+        percent: safeTotal > 0 ? Math.round((safePriced / safeTotal) * 100) : 0,
+    };
+}
+
 const csvCell = (value: string | number): string => {
     const text = String(value ?? '');
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;

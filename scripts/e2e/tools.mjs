@@ -76,6 +76,29 @@ const EXEC = resolveChromium();
     const tradeGone = !/AAPL/.test(await body());
     check('portfolio: delete trade', hasTradeRemove && tradeGone, hasTradeRemove ? (tradeGone ? '' : 'trade still there') : 'no remove button');
 
+    // ---------- 2b. portfolio: cash and buying power -----------------------------------
+    await page.getByRole('button', { name: 'Set cash', exact: true }).click();
+    await page.getByLabel('Set cash', { exact: true }).fill('5000');
+    await page.getByRole('button', { name: 'Save', exact: true }).last().click();
+    // The success toast fires before the server re-render lands, so wait for the row's own control.
+    const editCash = page.getByRole('button', { name: /Edit USD Cash/i }).first();
+    const cashSet = await editCash.waitFor({ state: 'visible', timeout: 25000 }).then(() => true).catch(() => false);
+    check('portfolio: set cash', cashSet, cashSet ? '' : 'cash row did not appear');
+
+    // A zero clears the entry, so the account is left as empty as the sweep found it.
+    if (cashSet) {
+        await editCash.click();
+        await page.getByLabel('Cash USD', { exact: true }).fill('0');
+        await page.getByRole('button', { name: 'Save', exact: true }).last().click();
+        const t0 = Date.now();
+        while (Date.now() - t0 < 20000) {
+            await page.waitForTimeout(400);
+            if ((await page.getByRole('button', { name: /Edit USD Cash/i }).count()) === 0) break;
+        }
+    }
+    const cashCleared = (await page.getByRole('button', { name: /Edit USD Cash/i }).count()) === 0;
+    check('portfolio: clear cash', cashSet && cashCleared, cashSet ? (cashCleared ? '' : 'row still there') : 'no edit control');
+
     // ---------- 3. alerts: create -> pause -> resume -> delete -------------------------
     await page.goto(BASE + '/alerts', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3000);
@@ -173,7 +196,11 @@ const EXEC = resolveChromium();
     await page.goto(BASE + '/screener', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3000);
     const rowsBefore = ((await body()).match(/Results[\s\S]{0,40}/) || [''])[0];
-    check('screener renders', /Results|companies covered|Building the screener/.test(await body()) && !(await crashes()));
+    check('screener renders', /Results|priced|Building the screener/.test(await body()) && !(await crashes()));
+
+    // The results line must state how much of the universe is priced, not claim all of it.
+    const coverageLine = ((await body()).match(/\d+ of \d+ priced/) || [''])[0];
+    check('screener: states its coverage', !!coverageLine, coverageLine);
 
     const search = page.getByPlaceholder(/Company or symbol/i).first();
     let filtered = false;

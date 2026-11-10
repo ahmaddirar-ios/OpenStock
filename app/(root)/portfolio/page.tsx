@@ -1,13 +1,14 @@
 import { Plus } from 'lucide-react';
-import { getUserPositions, getUserTrades, getPortfolioBenchmark } from '@/lib/actions/portfolio.actions';
+import { getUserPositions, getUserTrades, getPortfolioBenchmark, getCashBalances } from '@/lib/actions/portfolio.actions';
 import { getWatchlistData } from '@/lib/actions/finnhub.actions';
 import PortfolioTable, { type PortfolioRow } from '@/components/portfolio/PortfolioTable';
 import PositionFormModal from '@/components/portfolio/PositionFormModal';
 import TradeLedger from '@/components/portfolio/TradeLedger';
 import BenchmarkCard from '@/components/portfolio/BenchmarkCard';
+import CashCard from '@/components/portfolio/CashCard';
 import EquityCurveCard from '@/components/portfolio/EquityCurveCard';
 import { buildLedger, buildEquityCurve, mergePositions, totalReturnPercent, type PriceBar } from '@/lib/portfolio-ledger';
-import { summarizePortfolio, computePositionMetrics } from '@/lib/portfolio';
+import { groupByCurrency, normalizeCurrency, sumByCurrency, computePositionMetrics } from '@/lib/portfolio';
 import { getStrategyCandles } from '@/lib/actions/yahoo-candles.actions';
 import { isTadawulSymbol } from '@/lib/market/yahoo';
 import { getLang } from '@/lib/i18n-server';
@@ -22,7 +23,7 @@ import { requireFeaturePage } from '@/lib/entitlements-server';
 export default async function PortfolioPage() {
     await requireFeaturePage('page.portfolio');
 
-    const [positions, trades] = await Promise.all([getUserPositions(), getUserTrades()]);
+    const [positions, trades, cash] = await Promise.all([getUserPositions(), getUserTrades(), getCashBalances()]);
     const ledger = buildLedger(trades);
     const merged = mergePositions(positions, ledger.positions);
 
@@ -47,18 +48,33 @@ export default async function PortfolioPage() {
         };
     });
 
-    // The benchmark follows the money: riyals are measured against TASI, dollars against the S&P.
-    const sar = rows.some((row) => row.currency === 'SAR') || symbols.some((symbol) => isTadawulSymbol(symbol));
-    const currency = sar ? 'SAR' : 'USD';
-    const sameCurrency = rows.filter((row) => (row.currency || 'USD') === currency);
-    const totals = summarizePortfolio(
-        sameCurrency.map((row) => computePositionMetrics({ quantity: row.quantity, averageCost: row.averageCost, price: row.price, change: row.change }))
-    );
-    const realizedCostBasis = ledger.sales.reduce((sum, sale) => sum + sale.cost, 0);
+    // Totals are per currency, never added across currencies: a riyal total and a dollar total are
+    // different money, and converting them needs an FX rate this app does not keep. The benchmark,
+    // the headline return and the ledger all speak for the currency that carries the most value.
+    const metricsOf = (row: PortfolioRow) =>
+        computePositionMetrics({ quantity: row.quantity, averageCost: row.averageCost, price: row.price, change: row.change });
+    const split = groupByCurrency(rows, (row) => row.currency, metricsOf);
+    const currency = split.dominant;
+    const headline = split.groups.find((group) => group.currency === currency)?.totals
+        ?? { costBasis: 0, marketValue: 0, unrealizedPnl: 0, unrealizedPnlPercent: 0, dayChangeValue: 0, positions: 0, priced: 0 };
+
+    // A symbol's currency is the quote's, and for a symbol the ledger has closed but the table no
+    // longer holds, the exchange the ticker belongs to decides it.
+    const currencyBySymbol: Record<string, string> = {};
+    for (const row of rows) currencyBySymbol[row.symbol] = normalizeCurrency(row.currency);
+    for (const trade of trades) {
+        if (!currencyBySymbol[trade.symbol]) currencyBySymbol[trade.symbol] = isTadawulSymbol(trade.symbol) ? 'SAR' : 'USD';
+    }
+
+    const realizedByCurrency = sumByCurrency(ledger.sales, (sale) => currencyBySymbol[sale.symbol], (sale) => sale.pnl);
+    const realizedInHeadline = realizedByCurrency.find((entry) => entry.currency === currency)?.value ?? 0;
+    const realizedCostBasis = ledger.sales
+        .filter((sale) => normalizeCurrency(currencyBySymbol[sale.symbol]) === currency)
+        .reduce((sum, sale) => sum + sale.cost, 0);
     const portfolioReturnPct = totalReturnPercent({
-        unrealizedPnl: totals.unrealizedPnl,
-        realizedPnl: ledger.totalRealized,
-        openCostBasis: totals.costBasis,
+        unrealizedPnl: headline.unrealizedPnl,
+        realizedPnl: realizedInHeadline,
+        openCostBasis: headline.costBasis,
         realizedCostBasis,
     });
 
@@ -100,7 +116,14 @@ export default async function PortfolioPage() {
                 <div className="flex min-w-0 flex-col gap-3">
                     <PortfolioTable initialRows={rows} lang={lang} />
                 </div>
-                <BenchmarkCard benchmark={benchmark} portfolioReturnPct={portfolioReturnPct} lang={lang} />
+                <div className="flex min-w-0 flex-col gap-3">
+                    <BenchmarkCard benchmark={benchmark} portfolioReturnPct={portfolioReturnPct} currency={currency} mixed={split.mixed} lang={lang} />
+                    <CashCard
+                        balances={cash}
+                        invested={split.groups.map((group) => ({ currency: group.currency, marketValue: group.totals.marketValue, costBasis: group.totals.costBasis }))}
+                        lang={lang}
+                    />
+                </div>
             </div>
 
             <EquityCurveCard points={equity} lang={lang} />
@@ -108,9 +131,10 @@ export default async function PortfolioPage() {
             <TradeLedger
                 trades={trades}
                 sales={ledger.sales}
-                totalRealized={ledger.totalRealized}
+                realized={realizedByCurrency}
                 warnings={ledger.warnings}
                 currency={currency}
+                currencyBySymbol={currencyBySymbol}
                 lang={lang}
             />
         </>

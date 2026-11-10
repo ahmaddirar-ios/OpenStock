@@ -34,10 +34,16 @@ function Spark({ points, positive }: { points: { value: number }[]; positive: bo
 export default function BenchmarkCard({
     benchmark,
     portfolioReturnPct,
+    currency,
+    mixed = false,
     lang,
 }: {
     benchmark: PortfolioBenchmark | null;
     portfolioReturnPct: number;
+    /** The currency the portfolio return is measured in. */
+    currency: string;
+    /** True when the account holds more than one currency; the comparison covers only this one. */
+    mixed?: boolean;
     lang: Lang;
 }) {
     const tone = (value: number) => (value > 0 ? 'text-up' : value < 0 ? 'text-down' : 'text-foreground');
@@ -81,6 +87,11 @@ export default function BenchmarkCard({
                         {tx(lang, diff >= 0 ? 'pf.ahead' : 'pf.behind').replace('{n}', `${num(Math.abs(diff), lang)}%`)}
                     </span>
                 </div>
+                {mixed && (
+                    <p className="border-t border-line pt-2 text-[11.5px] leading-relaxed text-faint" dir="auto">
+                        {tx(lang, 'pf.mixedNote').replace('{c}', currency)}
+                    </p>
+                )}
             </div>
         </Panel>
     );

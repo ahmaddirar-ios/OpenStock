@@ -21,10 +21,10 @@ This is a behavioural pass, not a replacement for `npm test` (Vitest, unit and c
 | Suite | Checks | Result |
 | --- | --- | --- |
 | `chart-tools.mjs` | 34 | 34/34 |
-| `tools.mjs` | 23 | 23/23 |
-| `depth.mjs` | 10 | 10/10 |
+| `tools.mjs` | 26 | 26/26 |
+| `depth.mjs` | 11 | 11/11 |
 | `boards.mjs` | 11 | 11/11 |
-| **Total** | **78** | **78/78, zero page errors** |
+| **Total** | **82** | **82/82, zero page errors** |
 
 Alongside these, the repository's own gate is green: `npm test` (1,598 passed / 4 skipped across 104
 files), `npx tsc --noEmit`, `npm run lint`, `npm run build`.
@@ -50,8 +50,12 @@ Arabic-Indic digits and all rail controls present.
 ### Portfolio
 
 Add a position (symbol, quantity, average cost) and remove it; record a trade (buy/sell, quantity,
-price, fee, date, note) and delete it. The position metrics, the benchmark card and the equity curve
-render with a real holding.
+price, fee, date, note) and delete it. Set cash and clear it again. The position metrics, the
+benchmark card, the cash/equity card and the equity curve render with a real holding.
+
+Totals are per currency and are never added across currencies: with a SAR holding and a USD holding
+at once, the table shows two groups, the page says the book holds more than one currency, and the
+dashboard card names the currency it summarised.
 
 ### Alerts
 
@@ -69,8 +73,9 @@ strategy to the account and delete it.
 ### Watchlist and screener
 
 Add a symbol from its stock page, see it on the watchlist, remove it. On the screener: filter, run a
-formula over each symbol's history (`close > sma(close, 20)` → "9 of 12 matched"), and export the
-current results as CSV.
+formula over each symbol's history (`close > sma(close, 20)` → "9 of 12 matched"), export the
+current results as CSV, and check the results line states how much of the universe is priced
+(`12 of 906 priced`) instead of claiming the whole universe is covered.
 
 ### Boards and palette
 
