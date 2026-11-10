@@ -162,6 +162,44 @@ cloudflared tunnel run rovex                   # test it in the foreground first
 sudo cloudflared service install               # then run it as a service
 ```
 
+### 2.5b If you have a static IP: direct, with Caddy
+
+A fixed public IP and a stable connection make direct hosting possible without a tunnel. It is
+shorter to set up and one hop faster, but the Mac is then reachable from the whole internet, so the
+firewall, the updates and the certificate become your job.
+
+```bash
+brew install caddy
+```
+
+`/opt/homebrew/etc/Caddyfile` (Intel: `/usr/local/etc/Caddyfile`):
+
+```caddyfile
+rovexjo.com, www.rovexjo.com {
+    encode gzip zstd
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+```bash
+sudo caddy start          # or: brew services start caddy
+```
+
+Then forward TCP **80** and **443** on the router to the Mac, and point the domain's A record at
+the static IP. Caddy obtains and renews the certificate on its own.
+
+| | Tunnel (§2.5) | Direct + Caddy (§2.5b) |
+| --- | --- | --- |
+| Open ports | none | 80, 443 |
+| Certificate | Cloudflare | Caddy (automatic) |
+| DDoS protection | yes | none |
+| DNS change | nameservers → Cloudflare | one A record |
+| Latency | one extra hop | shortest |
+| Keeps working if the IP changes | yes | no |
+
+With a static IP and no CDN, every visitor is served from one city. That is fine for a regional
+audience and noticeable for a distant one.
+
 ### 2.6 Keeping it up
 
 A laptop that sleeps is a website that is down. On the Mac that hosts:
